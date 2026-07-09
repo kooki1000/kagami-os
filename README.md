@@ -1,8 +1,6 @@
 # Kagami OS
 
-<!-- Replace OWNER with the GitHub org/user once a remote is added (P9.1). -->
-
-[![CI](https://github.com/OWNER/kagami-os/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/kagami-os/actions/workflows/ci.yml)
+[![CI](https://github.com/kooki1000/kagami-os/actions/workflows/ci.yml/badge.svg)](https://github.com/kooki1000/kagami-os/actions/workflows/ci.yml)
 
 A browser-based desktop environment — windowing shell, virtual file system,
 and a suite of built-in apps, all client-side. Built with React, TypeScript,
