@@ -182,3 +182,9 @@ dist
 
 # Dev-server launch config carries a machine-specific absolute Node path
 .claude/launch.json
+
+# Playwright E2E artifacts
+/playwright-report
+/test-results
+/blob-report
+/playwright/.cache
