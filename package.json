@@ -16,7 +16,8 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bench": "vitest bench --run"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
