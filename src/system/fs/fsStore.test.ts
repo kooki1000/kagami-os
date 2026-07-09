@@ -2,10 +2,12 @@ import type { FsNode } from "./types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   childrenOf,
+  expiredTrashIds,
   indexNodes,
   isDescendantOf,
   isValidNodeName,
   pathOf,
+  TRASH_MAX_AGE_MS,
   uniqueChildName,
   useFsStore,
 } from "./fsStore";
@@ -45,6 +47,36 @@ describe("tree helpers", () => {
     api().createFolder(DOCUMENTS_ID, "Archive");
     const names = childrenOf(api().nodes, DOCUMENTS_ID).map(n => n.name);
     expect(names).toEqual(["Archive", "Reports", "note.md"]);
+  });
+
+  it("childrenOf sorts by name descending while keeping folders first", () => {
+    api().createFolder(DOCUMENTS_ID, "Archive");
+    const names = childrenOf(api().nodes, DOCUMENTS_ID, { key: "name", dir: "desc" }).map(n => n.name);
+    // Folders (Reports, Archive) still precede files, but each group reversed.
+    expect(names).toEqual(["Reports", "Archive", "note.md"]);
+  });
+
+  it("childrenOf sorts by date, tie-breaking on name", () => {
+    const map = indexNodes([
+      node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+      node({ id: "a", parentId: ROOT_ID, name: "a.txt", type: "file", modifiedAt: 300 }),
+      node({ id: "b", parentId: ROOT_ID, name: "b.txt", type: "file", modifiedAt: 100 }),
+      node({ id: "c", parentId: ROOT_ID, name: "c.txt", type: "file", modifiedAt: 100 }),
+    ]);
+    useFsStore.setState({ nodes: map, ready: true });
+    expect(childrenOf(map, ROOT_ID, { key: "date", dir: "asc" }).map(n => n.id)).toEqual(["b", "c", "a"]);
+    expect(childrenOf(map, ROOT_ID, { key: "date", dir: "desc" }).map(n => n.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("childrenOf sorts by kind (mime type), tie-breaking on name", () => {
+    const map = indexNodes([
+      node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+      node({ id: "pic", parentId: ROOT_ID, name: "pic.png", type: "file", mimeType: "image/png" }),
+      node({ id: "doc", parentId: ROOT_ID, name: "doc.md", type: "file", mimeType: "text/markdown" }),
+      node({ id: "txt", parentId: ROOT_ID, name: "txt.txt", type: "file", mimeType: "text/markdown" }),
+    ]);
+    // image/* before text/*; within text/markdown, name order.
+    expect(childrenOf(map, ROOT_ID, { key: "kind", dir: "asc" }).map(n => n.id)).toEqual(["pic", "doc", "txt"]);
   });
 
   it("pathOf returns the chain from root to the node", () => {
@@ -187,5 +219,35 @@ describe("trash lifecycle", () => {
     expect(get("deep")).toBeUndefined();
     api().deleteForever(DOCUMENTS_ID);
     expect(get(DOCUMENTS_ID)).toBeDefined();
+  });
+
+  it("expiredTrashIds picks only trash items older than the horizon, with subtrees", () => {
+    const now = 1_000_000_000_000;
+    const map = indexNodes([
+      node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+      node({ id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder" }),
+      // Trashed 40 days ago (expired) — a folder with a child.
+      node({ id: "old", parentId: TRASH_ID, name: "old", type: "folder", modifiedAt: now - 40 * 864e5 }),
+      node({ id: "oldChild", parentId: "old", name: "c.txt", type: "file", modifiedAt: now - 40 * 864e5 }),
+      // Trashed 5 days ago (fresh).
+      node({ id: "recent", parentId: TRASH_ID, name: "recent.txt", type: "file", modifiedAt: now - 5 * 864e5 }),
+    ]);
+    const ids = expiredTrashIds(map, TRASH_MAX_AGE_MS, now).sort();
+    expect(ids).toEqual(["old", "oldChild"]);
+  });
+
+  it("purgeExpiredTrash removes expired items and leaves fresh ones", () => {
+    const now = Date.now();
+    const map = indexNodes([
+      node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+      node({ id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder" }),
+      node({ id: "stale", parentId: TRASH_ID, name: "stale.txt", type: "file", modifiedAt: now - 31 * 864e5 }),
+      node({ id: "fresh", parentId: TRASH_ID, name: "fresh.txt", type: "file", modifiedAt: now - 1 * 864e5 }),
+    ]);
+    useFsStore.setState({ nodes: map, ready: true });
+    const removed = api().purgeExpiredTrash();
+    expect(removed).toBe(1);
+    expect(get("stale")).toBeUndefined();
+    expect(get("fresh")).toBeDefined();
   });
 });

@@ -14,14 +14,55 @@ function logPersistError(error: unknown): void {
 
 export type NodeMap = Record<string, FsNode>;
 
-export function childrenOf(nodes: NodeMap, parentId: string): FsNode[] {
+export type SortKey = "name" | "date" | "kind";
+export type SortDir = "asc" | "desc";
+export interface SortSpec {
+  key: SortKey;
+  dir: SortDir;
+}
+
+/** Folders-first, name ascending — matches how listings looked pre-sort. */
+export const DEFAULT_SORT: SortSpec = { key: "name", dir: "asc" };
+
+function byName(a: FsNode, b: FsNode): number {
+  return a.name.localeCompare(b.name, undefined, { numeric: true });
+}
+
+/**
+ * Compare two same-type siblings on the sort key alone (no tie-break).
+ * Kind sorts by mime type — the store stays app-agnostic; the Files kind
+ * labels are a presentation concern.
+ */
+function byKey(a: FsNode, b: FsNode, key: SortKey): number {
+  switch (key) {
+    case "date":
+      return a.modifiedAt - b.modifiedAt;
+    case "kind":
+      return (a.mimeType ?? "").localeCompare(b.mimeType ?? "");
+    case "name":
+      return byName(a, b);
+  }
+}
+
+/**
+ * One folder's children. Folders always precede files (the desktop
+ * convention); `sort` orders within each group. Direction applies to the
+ * key only — ties always resolve by name ascending, so reversing the order
+ * doesn't scramble same-key items.
+ */
+export function childrenOf(
+  nodes: NodeMap,
+  parentId: string,
+  sort: SortSpec = DEFAULT_SORT,
+): FsNode[] {
   return Object.values(nodes)
     .filter(n => n.parentId === parentId)
-    .sort((a, b) =>
-      a.type === b.type
-        ? a.name.localeCompare(b.name, undefined, { numeric: true })
-        : a.type === "folder" ? -1 : 1,
-    );
+    .sort((a, b) => {
+      if (a.type !== b.type)
+        return a.type === "folder" ? -1 : 1;
+      const primary = byKey(a, b, sort.key);
+      return (sort.dir === "desc" ? -primary : primary) || byName(a, b);
+    });
 }
 
 /** Path from the root down to (and including) the node. */
@@ -93,6 +134,25 @@ export function isValidNodeName(name: string): boolean {
   return trimmed.length > 0 && !trimmed.includes("/");
 }
 
+/** Default horizon for auto-emptying the Trash: 30 days. */
+export const TRASH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Ids of trashed items (and their subtrees) trashed longer ago than
+ * `maxAgeMs`. `modifiedAt` is stamped when a node is moved to Trash, so it
+ * doubles as the trashed-at time. Pure — unit-tested without the store.
+ */
+export function expiredTrashIds(
+  nodes: NodeMap,
+  maxAgeMs: number,
+  now: number = Date.now(),
+): string[] {
+  const cutoff = now - maxAgeMs;
+  return childrenOf(nodes, TRASH_ID)
+    .filter(n => n.modifiedAt <= cutoff)
+    .flatMap(n => subtreeIds(nodes, n.id));
+}
+
 /* ---------- store ---------- */
 
 export interface FsStore {
@@ -109,6 +169,8 @@ export interface FsStore {
   restoreFromTrash: (id: string) => void;
   emptyTrash: () => void;
   deleteForever: (id: string) => void;
+  /** Permanently remove trash items older than `maxAgeMs`; returns the count. */
+  purgeExpiredTrash: (maxAgeMs?: number) => number;
 }
 
 let initPromise: Promise<void> | null = null;
@@ -283,6 +345,13 @@ export const useFsStore = create<FsStore>()((set, get) => {
       if (!nodes[id] || isSystemNode(id))
         return;
       removeIds(subtreeIds(nodes, id));
+    },
+
+    purgeExpiredTrash(maxAgeMs = TRASH_MAX_AGE_MS) {
+      const ids = expiredTrashIds(get().nodes, maxAgeMs);
+      if (ids.length)
+        removeIds(ids);
+      return ids.length;
     },
   };
 });

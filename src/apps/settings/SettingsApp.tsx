@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
 import type { ThemePreference } from "@/system/theme/themeStore";
-import { Check, Info, Monitor, Palette } from "lucide-react";
+import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { useDockStore } from "@/system/dock/dockStore";
 import { FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
@@ -13,11 +13,12 @@ import {
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useThemeStore } from "@/system/theme/themeStore";
 
-type Section = "appearance" | "dock" | "about";
+type Section = "appearance" | "dock" | "general" | "about";
 
 const NAV: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "dock", label: "Dock", icon: Monitor },
+  { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -178,6 +179,56 @@ function DockSection() {
   );
 }
 
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`relative h-4.5 w-8 flex-none rounded-full transition-colors ${
+        checked ? "bg-accent" : "bg-ph"
+      }`}
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className={`absolute top-0.5 size-3.5 rounded-full bg-white transition-[left] ${
+          checked ? "left-4" : "left-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function GeneralSection() {
+  const autoEmptyTrash = useSettingsStore(s => s.autoEmptyTrash);
+  const setAutoEmptyTrash = useSettingsStore(s => s.setAutoEmptyTrash);
+
+  return (
+    <Row label="Trash">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-[12px] leading-relaxed text-ink-2">
+          Empty the Trash automatically, removing items more than 30 days old
+          when the desktop starts.
+        </p>
+        <Switch
+          checked={autoEmptyTrash}
+          onChange={setAutoEmptyTrash}
+          label="Auto-empty Trash after 30 days"
+        />
+      </div>
+    </Row>
+  );
+}
+
 function FlagsDebug() {
   // Flags aren't reactive (a device override applies on reload); bump local
   // state so the row reflects the click, and note that a reload is needed.
@@ -209,25 +260,14 @@ function FlagsDebug() {
                 </div>
                 <div className="truncate text-[11px] text-ink-2">{flag.description}</div>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={on}
-                aria-label={`Toggle ${flag.label}`}
-                className={`relative h-4.5 w-8 flex-none rounded-full transition-colors ${
-                  on ? "bg-accent" : "bg-ph"
-                }`}
-                onClick={() => {
-                  setFlagOverride(flag.id, !on);
+              <Switch
+                checked={on}
+                label={`Toggle ${flag.label}`}
+                onChange={(value) => {
+                  setFlagOverride(flag.id, value);
                   setTick(n => n + 1);
                 }}
-              >
-                <span
-                  className={`absolute top-0.5 size-3.5 rounded-full bg-white transition-[left] ${
-                    on ? "left-4" : "left-0.5"
-                  }`}
-                />
-              </button>
+              />
             </div>
           );
         })}
@@ -304,6 +344,7 @@ export default function SettingsApp() {
       <div className="min-w-0 flex-1 overflow-auto">
         {section === "appearance" && <AppearanceSection />}
         {section === "dock" && <DockSection />}
+        {section === "general" && <GeneralSection />}
         {section === "about" && <AboutSection />}
       </div>
     </div>

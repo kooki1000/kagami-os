@@ -1,8 +1,10 @@
 import type { MouseEvent } from "react";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
+import type { SortKey } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
 import {
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   FolderPlus,
@@ -28,10 +30,17 @@ import {
   TRASH_ID,
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
+import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 
 type ViewMode = "grid" | "list";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  name: "Name",
+  date: "Date Added",
+  kind: "Kind",
+};
 
 interface MenuState {
   x: number;
@@ -50,6 +59,9 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const emptyTrash = useFsStore(s => s.emptyTrash);
   const deleteForever = useFsStore(s => s.deleteForever);
 
+  const sortByFolder = useViewPrefsStore(s => s.sortByFolder);
+  const setSortPref = useViewPrefsStore(s => s.setSort);
+
   const [history, setHistory] = useState<string[]>([HOME_ID]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [view, setView] = useState<ViewMode>("grid");
@@ -57,9 +69,25 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirmEmpty, setConfirmEmpty] = useState(false);
 
   const cwd = history[historyIndex] ?? HOME_ID;
+  const sort = sortForFolder(sortByFolder, cwd);
+
+  /** Pick a sort key for the current folder; re-picking it flips direction. */
+  function applySort(key: SortKey): void {
+    setSortPref(
+      cwd,
+      key === sort.key
+        ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" },
+    );
+  }
+
+  function toggleSortDir(): void {
+    setSortPref(cwd, { key: sort.key, dir: sort.dir === "asc" ? "desc" : "asc" });
+  }
 
   // If the current folder vanished (trashed/deleted elsewhere), go home.
   if (ready && !nodes[cwd]) {
@@ -138,6 +166,18 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       case "files.viewList":
         setView("list");
         break;
+      case "files.sortName":
+        applySort("name");
+        break;
+      case "files.sortDate":
+        applySort("date");
+        break;
+      case "files.sortKind":
+        applySort("kind");
+        break;
+      case "files.sortReverse":
+        toggleSortDir();
+        break;
       case "files.goHome":
         navigate(HOME_ID);
         break;
@@ -154,7 +194,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   });
 
   const inTrash = cwd === TRASH_ID;
-  const children = useMemo(() => childrenOf(nodes, cwd), [nodes, cwd]);
+  const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? children.filter(n => n.name.toLowerCase().includes(q)) : children;
@@ -187,6 +227,18 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     ];
   }
 
+  function sortEntries(): ContextMenuEntry[] {
+    const check = (on: boolean) => (on ? "✓  " : "  ");
+    return [
+      ...(Object.keys(SORT_LABELS) as SortKey[]).map((key, i, arr) => ({
+        label: `${check(sort.key === key)}${SORT_LABELS[key]}`,
+        run: () => applySort(key),
+        dividerAfter: i === arr.length - 1,
+      })),
+      { label: `${check(sort.dir === "desc")}Reverse order`, run: toggleSortDir },
+    ];
+  }
+
   function onItemContextMenu(e: MouseEvent, node: FsNode): void {
     setMenu({ x: e.clientX, y: e.clientY, node });
   }
@@ -211,6 +263,15 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           y={menu.y}
           entries={menuEntries(menu)}
           onClose={() => setMenu(null)}
+        />
+      )}
+      {sortMenu && (
+        <ContextMenu
+          x={sortMenu.x}
+          y={sortMenu.y}
+          header="Sort By"
+          entries={sortEntries()}
+          onClose={() => setSortMenu(null)}
         />
       )}
       <FilesSidebar
@@ -296,6 +357,16 @@ export default function FilesApp({ windowId }: AppWindowProps) {
                 onChange={e => setQuery(e.target.value)}
               />
             </div>
+            <button
+              type="button"
+              aria-label="Sort"
+              title={`Sort by ${SORT_LABELS[sort.key]} (${sort.dir === "asc" ? "ascending" : "descending"})`}
+              className="grid size-6 place-items-center rounded-[6px] hover:bg-ph"
+              onClick={e =>
+                setSortMenu({ x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().bottom })}
+            >
+              <ArrowUpDown className="size-4" />
+            </button>
             {!inTrash && (
               <button
                 type="button"

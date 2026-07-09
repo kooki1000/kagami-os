@@ -46,8 +46,12 @@ export default function App() {
   }, [setViewport]);
 
   useEffect(() => {
-    // Bring the virtual file system up as part of boot (idempotent).
-    void useFsStore.getState().init();
+    // Bring the virtual file system up as part of boot (idempotent). Once
+    // it's ready, honor the "auto-empty Trash after 30 days" preference.
+    void useFsStore.getState().init().then(() => {
+      if (useSettingsStore.getState().autoEmptyTrash)
+        useFsStore.getState().purgeExpiredTrash();
+    });
     // Boot experience: greet with the Welcome window. Guarded so React
     // StrictMode's double-invoked effects don't open it twice.
     if (useWindowStore.getState().windows.length === 0) {
