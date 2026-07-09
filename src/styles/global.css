@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Kagami OS design tokens — "Lagoon" direction.
+   Values extracted verbatim from the KagamiOS.html prototype
+   (token sheet: "Design tokens — Lagoon"). Variable names match
+   the prototype's CSS custom properties.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* accent + window-control triad (Lagoon) */
+  --accent: #0f9b8e;
+  --accent-2: #f2765b;
+  --ctl1: #f2765b; /* close */
+  --ctl2: #17b0a1; /* minimize */
+  --ctl3: #0c8074; /* zoom */
+
+  /* neutral surfaces — warm base */
+  --surface: #faf8f4;
+  --surface-2: #efece4;
+  --text: #2b2925;
+  --text-2: #75706a;
+  --border: rgba(30, 25, 18, 0.1);
+  --border-out: rgba(30, 25, 18, 0.1);
+  --chrome: rgba(250, 248, 244, 0.74);
+  --chrome-2: rgba(250, 248, 244, 0.58);
+  --ph: rgba(30, 25, 18, 0.065);
+  --ph-2: rgba(30, 25, 18, 0.11);
+  --dot: rgba(30, 25, 18, 0.17);
+  --tile: #ffffff;
+
+  /* wallpaper — layered geometric */
+  --wall: linear-gradient(140deg, #0e8f83 0%, #17a89a 42%, #74cabf 100%);
+  --wsh1: #f2765b;
+  --wsh2: #bfe6df;
+
+  --shadow-window: 0 8px 22px -8px rgba(0, 0, 0, 0.32);
+  --shadow-window-focus: 0 30px 65px -18px rgba(0, 0, 0, 0.5), 0 6px 18px -8px rgba(0, 0, 0, 0.3);
+  --shadow-deep: 0 22px 55px -16px rgba(28, 22, 14, 0.42);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --accent: #2fb9ab;
+  --accent-2: #ff8368;
+
+  --surface: #201e1a;
+  --surface-2: #2a2823;
+  --text: #efece5;
+  --text-2: #9c968b;
+  --border: rgba(255, 251, 244, 0.1);
+  --border-out: rgba(0, 0, 0, 0.5);
+  --chrome: rgba(26, 24, 20, 0.72);
+  --chrome-2: rgba(20, 18, 15, 0.56);
+  --ph: rgba(255, 251, 244, 0.075);
+  --ph-2: rgba(255, 251, 244, 0.13);
+  --dot: rgba(255, 251, 244, 0.24);
+  --tile: #2e2b26;
+
+  --wall: linear-gradient(140deg, #0a3b37 0%, #0f6b62 55%, #123f3a 100%);
+  --wsh1: #e0654c;
+  --wsh2: #0e5850;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-hairline: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-ph: var(--ph);
+  --color-ph-2: var(--ph-2);
+  --color-tile: var(--tile);
+
+  /* radius pairing: window 14 / dock tile 13 / button 7 */
+  --radius-window: 14px;
+  --radius-tile: 13px;
+  --radius-btn: 7px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- translucent chrome (menu bar / dock / flyouts) ---- */
+@utility chrome {
+  background: var(--chrome);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+}
+@utility chrome-2 {
+  background: var(--chrome-2);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+}
+
+/* ---- wallpaper: layered geometric artwork ---- */
+@utility wallpaper {
+  position: absolute;
+  inset: 0;
+  background: var(--wall);
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    width: 44vmax;
+    height: 44vmax;
+    top: -14vmax;
+    right: -8vmax;
+    background: var(--wsh1);
+    border-radius: 42% 58% 60% 40% / 45% 45% 55% 55%;
+    filter: blur(4px);
+    opacity: 0.9;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    width: 34vmax;
+    height: 34vmax;
+    left: -10vmax;
+    bottom: 6vmax;
+    background: var(--wsh2);
+    border-radius: 6vmax;
+    transform: rotate(26deg);
+    opacity: 0.5;
+  }
+}
+@utility wallpaper-ring {
+  position: absolute;
+  width: 28vmax;
+  height: 28vmax;
+  right: 16vmax;
+  bottom: -8vmax;
+  border: 3.4vmax solid var(--wsh1);
+  border-radius: 50%;
+  opacity: 0.26;
+  filter: blur(1px);
+}
+
+/* ---- window controls: monochrome at rest, duotone + glyph on hover.
+   Each dot carries its brand color in --dot-accent (set inline);
+   focus (.titlebar-focused) and cluster hover reveal it. ---- */
+@utility win-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--dot);
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  transition: background 0.15s;
+  border: none;
+  padding: 0;
+  cursor: default;
+
+  & > span {
+    opacity: 0;
+    color: rgb(0 0 0 / 55%);
+  }
+}
+@utility win-controls {
+  &:hover .win-dot {
+    background: var(--dot-accent);
+  }
+
+  &:hover .win-dot > span {
+    opacity: 1;
+  }
+}
+@utility titlebar-focused {
+  & .win-dot {
+    background: var(--dot-accent);
+  }
+}
+
+/* hairline borders (0.5px reads as a crisp hairline on retina) */
+@utility hairline {
+  border: 0.5px solid var(--border);
+}
+@utility hairline-b {
+  border-bottom: 0.5px solid var(--border);
+}
+@utility hairline-t {
+  border-top: 0.5px solid var(--border);
+}
+@utility hairline-r {
+  border-right: 0.5px solid var(--border);
+}
+
+/* ---- notification / flyout entrance animations ---- */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+@utility animate-toast-in {
+  animation: toast-in 0.2s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+
+@keyframes flyout-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@utility animate-flyout-in {
+  animation: flyout-in 0.16s ease-out both;
+}
