@@ -8,8 +8,9 @@ import { RenameInput } from "@/components/ui/RenameInput";
 import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
-import { isDescendantOf, useFsStore } from "@/system/fs/fsStore";
+import { isDescendantOf, isValidNodeName, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, TRASH_ID } from "@/system/fs/types";
+import { notify } from "@/system/notifications/notificationStore";
 
 const AUTOSAVE_MS = 600;
 
@@ -170,6 +171,14 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
                       value={d.name}
                       selectStem
                       onCommit={(name) => {
+                        if (name.trim() && !isValidNodeName(name)) {
+                          notify({
+                            title: "Can’t rename",
+                            body: "Names can’t contain a slash (/).",
+                            tone: "danger",
+                          });
+                          return;
+                        }
                         rename(d.id, name);
                         setRenamingId(null);
                       }}

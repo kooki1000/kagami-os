@@ -17,6 +17,7 @@ import { appIdForFile, openFile } from "@/system/apps/openFile";
 import {
   childrenOf,
   isSystemNode,
+  isValidNodeName,
   pathOf,
   useFsStore,
 } from "@/system/fs/fsStore";
@@ -345,6 +346,14 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           onItemContextMenu={onItemContextMenu}
           onBackgroundContextMenu={onBackgroundContextMenu}
           onRenameCommit={(id, name) => {
+            if (name.trim() && !isValidNodeName(name)) {
+              notify({
+                title: "Can’t rename",
+                body: "Names can’t contain a slash (/).",
+                tone: "danger",
+              });
+              return;
+            }
             rename(id, name);
             setRenamingId(null);
           }}

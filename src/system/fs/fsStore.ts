@@ -83,6 +83,16 @@ export function isSystemNode(id: string): boolean {
   return SYSTEM_IDS.has(id);
 }
 
+/**
+ * A name is addressable by the Terminal's path resolver only if it has no
+ * `/` (which would read as a path separator) — reject those, plus blanks.
+ * `rename` enforces this; UIs should pre-check to show a friendly toast.
+ */
+export function isValidNodeName(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed.length > 0 && !trimmed.includes("/");
+}
+
 /* ---------- store ---------- */
 
 export interface FsStore {
@@ -193,7 +203,7 @@ export const useFsStore = create<FsStore>()((set, get) => {
     rename(id, name) {
       const node = get().nodes[id];
       const trimmed = name.trim();
-      if (!node || !trimmed || isSystemNode(id) || trimmed === node.name)
+      if (!node || !isValidNodeName(trimmed) || isSystemNode(id) || trimmed === node.name)
         return;
       const unique = uniqueChildName(get().nodes, node.parentId ?? "", trimmed, id);
       commit([{ ...node, name: unique, modifiedAt: Date.now() }]);

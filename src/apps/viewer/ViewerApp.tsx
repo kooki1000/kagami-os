@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
 import { useFsStore } from "@/system/fs/fsStore";
+import { useWindowStore } from "@/system/windows/windowStore";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
@@ -25,6 +26,14 @@ interface NaturalSize {
 export default function ViewerApp({ windowId, payload }: AppWindowProps) {
   const fileId = payloadFileId(payload);
   const node = useFsStore(s => (fileId ? s.nodes[fileId] : undefined));
+  const setWindowTitle = useWindowStore(s => s.setWindowTitle);
+
+  // Viewer windows are titled after their file; keep the title bar in step
+  // when the file is renamed elsewhere (Files, Terminal) while it's open.
+  useEffect(() => {
+    if (node?.name)
+      setWindowTitle(windowId, node.name);
+  }, [node?.name, windowId, setWindowTitle]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<NaturalSize | null>(null);

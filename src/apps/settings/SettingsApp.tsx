@@ -4,6 +4,7 @@ import type { ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette } from "lucide-react";
 import { useState } from "react";
 import { useDockStore } from "@/system/dock/dockStore";
+import { FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import {
   ACCENTS,
   accentSwatch,
@@ -177,6 +178,65 @@ function DockSection() {
   );
 }
 
+function FlagsDebug() {
+  // Flags aren't reactive (a device override applies on reload); bump local
+  // state so the row reflects the click, and note that a reload is needed.
+  const [tick, setTick] = useState(0);
+  if (FLAGS.length === 0)
+    return null;
+
+  return (
+    <div key={tick} className="mt-6 w-full max-w-72 text-left">
+      <div className="mb-1.5 px-1 text-[11px] font-semibold tracking-wide text-ink-2 uppercase">
+        Feature flags
+      </div>
+      <div className="overflow-hidden rounded-[12px] bg-surface-2 hairline">
+        {FLAGS.map((flag, i) => {
+          const on = isFlagEnabled(flag.id);
+          return (
+            <div
+              key={flag.id}
+              className={`flex items-center justify-between gap-3 px-3.5 py-2.5 ${
+                i < FLAGS.length - 1 ? "hairline-b" : ""
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-medium text-ink">
+                  {flag.label}
+                  {hasFlagOverride(flag.id) && (
+                    <span className="ml-1.5 text-[10px] text-ink-2">(overridden)</span>
+                  )}
+                </div>
+                <div className="truncate text-[11px] text-ink-2">{flag.description}</div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={on}
+                aria-label={`Toggle ${flag.label}`}
+                className={`relative h-4.5 w-8 flex-none rounded-full transition-colors ${
+                  on ? "bg-accent" : "bg-ph"
+                }`}
+                onClick={() => {
+                  setFlagOverride(flag.id, !on);
+                  setTick(n => n + 1);
+                }}
+              >
+                <span
+                  className={`absolute top-0.5 size-3.5 rounded-full bg-white transition-[left] ${
+                    on ? "left-4" : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 px-1 text-[11px] text-ink-2">Reload to apply flag changes.</p>
+    </div>
+  );
+}
+
 function AboutSection() {
   const facts: Array<[string, string]> = [
     ["Version", "0.6.0 — “Lagoon”"],
@@ -203,6 +263,8 @@ function AboutSection() {
           </div>
         ))}
       </div>
+
+      <FlagsDebug />
 
       <p className="mt-5 max-w-72 text-[11.5px] leading-relaxed text-ink-2">
         An original desktop environment — no Apple or third-party OS code,

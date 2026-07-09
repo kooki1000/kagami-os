@@ -39,6 +39,17 @@ describe("openWindow", () => {
     expect(win(id).mode).toBe("normal");
   });
 
+  it("setWindowTitle updates the title in place", () => {
+    const id = open("viewer", { title: "old.png" });
+    api().setWindowTitle(id, "new.png");
+    expect(win(id).title).toBe("new.png");
+    // No-op for unknown ids / unchanged titles (no needless re-render churn).
+    const before = api().windows;
+    api().setWindowTitle(id, "new.png");
+    api().setWindowTitle("nope", "x");
+    expect(api().windows).toBe(before);
+  });
+
   it("keeps windows within the viewport and below the menu bar", () => {
     const id = open("notes", { size: { width: 400, height: 300 } });
     const { rect } = win(id);

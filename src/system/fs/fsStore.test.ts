@@ -4,6 +4,7 @@ import {
   childrenOf,
   indexNodes,
   isDescendantOf,
+  isValidNodeName,
   pathOf,
   uniqueChildName,
   useFsStore,
@@ -98,6 +99,14 @@ describe("create + rename", () => {
   it("rename ignores empty names", () => {
     api().rename("note", "   ");
     expect(get("note").name).toBe("note.md");
+  });
+
+  it("rename rejects names containing a slash (keeps nodes Terminal-addressable)", () => {
+    api().rename("note", "a/b.md");
+    expect(get("note").name).toBe("note.md");
+    expect(isValidNodeName("a/b.md")).toBe(false);
+    expect(isValidNodeName("valid name.md")).toBe(true);
+    expect(isValidNodeName("   ")).toBe(false);
   });
 });
 

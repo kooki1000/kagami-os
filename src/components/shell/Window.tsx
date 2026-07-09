@@ -3,6 +3,7 @@ import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { getApp } from "@/system/apps/registry";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
+import { WindowErrorBoundary } from "./WindowErrorBoundary";
 
 const SNAP_EDGE_PX = 8;
 const MINIMIZE_MS = 240;
@@ -292,7 +293,9 @@ export function Window({ win, focused }: { win: OsWindow; focused: boolean }) {
             </div>
           )}
         >
-          <AppComponent windowId={win.id} focused={focused} payload={win.payload} />
+          <WindowErrorBoundary appName={app.name} onClose={() => closeWindow(win.id)}>
+            <AppComponent windowId={win.id} focused={focused} payload={win.payload} />
+          </WindowErrorBoundary>
         </Suspense>
       </div>
 

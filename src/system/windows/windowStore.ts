@@ -59,6 +59,8 @@ export interface WindowStore {
 
   setViewport: (viewport: Viewport) => void;
   openWindow: (appId: string, opts: OpenWindowOptions) => string;
+  /** Update a window's title bar text (e.g. when its open file is renamed). */
+  setWindowTitle: (id: string, title: string) => void;
   closeWindow: (id: string) => void;
   closeApp: (appId: string) => void;
   focusWindow: (id: string) => void;
@@ -127,6 +129,15 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   snapPreview: null,
 
   setViewport: viewport => set({ viewport }),
+
+  setWindowTitle: (id, title) => {
+    const { windows } = get();
+    if (!windows.some(w => w.id === id && w.title !== title))
+      return;
+    set({
+      windows: windows.map(w => (w.id === id ? { ...w, title } : w)),
+    });
+  },
 
   openWindow: (appId, opts) => {
     const state = get();
