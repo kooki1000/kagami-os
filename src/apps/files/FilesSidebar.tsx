@@ -16,6 +16,7 @@ import {
   PICTURES_ID,
   TRASH_ID,
 } from "@/system/fs/types";
+import { useSettingsStore } from "@/system/settings/settingsStore";
 import { draggedNodeId, hasNodeDrag } from "./dnd";
 
 const PLACES: Array<{ id: string; label: string; icon: LucideIcon }> = [
@@ -31,6 +32,7 @@ interface SidebarItemProps {
   label: string;
   icon: LucideIcon;
   trailing?: string;
+  title?: string;
   active: boolean;
   isDropTarget: boolean;
   onNavigate: (id: string) => void;
@@ -43,6 +45,7 @@ function SidebarItem({
   label,
   icon,
   trailing,
+  title,
   active,
   isDropTarget,
   onNavigate,
@@ -53,6 +56,7 @@ function SidebarItem({
   return (
     <button
       type="button"
+      title={title}
       className={`flex w-full items-center gap-[9px] rounded-[8px] px-[9px] py-1.5 text-left text-[12.5px] font-medium ${
         active
           ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent"
@@ -90,6 +94,7 @@ interface FilesSidebarProps {
 
 export function FilesSidebar({ cwd, trashCount, onNavigate, onDropNode }: FilesSidebarProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const autoEmptyTrash = useSettingsStore(s => s.autoEmptyTrash);
 
   const shared = {
     onNavigate,
@@ -121,6 +126,7 @@ export function FilesSidebar({ cwd, trashCount, onNavigate, onDropNode }: FilesS
         label="Trash"
         icon={Trash2}
         trailing={trashCount > 0 ? String(trashCount) : undefined}
+        title={autoEmptyTrash ? "Items are removed automatically after 30 days" : undefined}
         active={cwd === TRASH_ID}
         isDropTarget={dropTarget === TRASH_ID}
         {...shared}
