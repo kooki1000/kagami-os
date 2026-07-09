@@ -31,6 +31,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Fail on high/critical advisories (caught the vitest CVE); lower
+      # severities stay visible without blocking on transient dev-dep noise.
+      - name: Security audit
+        run: pnpm audit --audit-level=high
+
       - name: Lint
         run: pnpm lint
 
