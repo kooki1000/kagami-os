@@ -24,8 +24,14 @@ export interface SortSpec {
 /** Folders-first, name ascending — matches how listings looked pre-sort. */
 export const DEFAULT_SORT: SortSpec = { key: "name", dir: "asc" };
 
+// One shared collator, reused across every comparison. `String.localeCompare`
+// spins up a fresh collator per call, which dominated `childrenOf` at scale
+// (~147 ms vs ~3.5 ms for the numeric-only date sort on 10k nodes — see
+// docs/perf-baseline.md). Reusing it keeps identical ordering, far cheaper.
+const collator = new Intl.Collator(undefined, { numeric: true });
+
 function byName(a: FsNode, b: FsNode): number {
-  return a.name.localeCompare(b.name, undefined, { numeric: true });
+  return collator.compare(a.name, b.name);
 }
 
 /**
@@ -38,7 +44,7 @@ function byKey(a: FsNode, b: FsNode, key: SortKey): number {
     case "date":
       return a.modifiedAt - b.modifiedAt;
     case "kind":
-      return (a.mimeType ?? "").localeCompare(b.mimeType ?? "");
+      return collator.compare(a.mimeType ?? "", b.mimeType ?? "");
     case "name":
       return byName(a, b);
   }
