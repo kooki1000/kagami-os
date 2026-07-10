@@ -47,11 +47,12 @@ render recomputes.
 
 ## Recommendations for Phase 10 (in impact order)
 
-1. **Reuse a single `Intl.Collator`.** Replace per-call `localeCompare` with a
-   module-level `new Intl.Collator(undefined, { numeric: true }).compare`.
-   This is a few lines and should reclaim most of the ~40× gap — the single
-   biggest, cheapest win. Revisit T7's framing: the fix is the comparator,
-   not (yet) the scan.
+1. **Reuse a single `Intl.Collator`.** ✅ **Done** (Phase 10 kickoff) — a
+   module-level `new Intl.Collator(undefined, { numeric: true })` replaced the
+   per-call `localeCompare`. Measured result: 10k-node name sort **~147 ms →
+   ~9 ms** (~16×), kind sort **~112 ms → ~8 ms**, both now under the 16 ms
+   frame budget. Ordering is unchanged (27 sort tests green). Confirms the
+   comparator, not the scan, was the hotspot.
 2. **Memoize sorted children per `(folderId, sort)`** so re-renders that don't
    change the folder or its contents don't re-sort at all.
 3. **Virtualize the Files grid/list.** This benchmark is data-layer only
