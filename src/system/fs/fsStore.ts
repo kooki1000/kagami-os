@@ -1,6 +1,7 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
 import { hashBlob } from "./blobHash";
+import { migrateInlineBlobs } from "./blobMigration";
 import { blobStore } from "./blobStore";
 import { createIdbAdapter } from "./idbAdapter";
 import { createSeedNodes } from "./seed";
@@ -235,6 +236,21 @@ export const useFsStore = create<FsStore>()((set, get) => {
         const nodes: NodeMap = {};
         for (const node of list)
           nodes[node.id] = node;
+
+        // B1 migration: move any oversized inline data-URL bytes into the
+        // blob store. Idempotent, and isolated so a failure never blocks boot.
+        try {
+          const migrated = await migrateInlineBlobs(nodes, blobStore);
+          if (migrated.length > 0) {
+            for (const node of migrated)
+              nodes[node.id] = node;
+            await adapter.putMany(migrated);
+          }
+        }
+        catch (error) {
+          logPersistError(error);
+        }
+
         set({ nodes, ready: true });
       })();
       return initPromise;
