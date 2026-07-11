@@ -46,6 +46,23 @@ export interface StorageAdapter {
 }
 
 /**
+ * Binary content seam (B1). File bytes live here, content-addressed by a
+ * SHA-256 hash, separate from the metadata nodes — so `loadAll` stays small
+ * and identical bytes are stored once. The MVP backend is IndexedDB; a
+ * server (S3 presigned URLs) swaps in here later. See
+ * `docs/blob-architecture.md`.
+ */
+export interface BlobStore {
+  /** Is a blob with this hash already stored? (Enables skip-if-present writes.) */
+  has: (hash: string) => Promise<boolean>;
+  get: (hash: string) => Promise<Blob | null>;
+  put: (hash: string, blob: Blob) => Promise<void>;
+  delete: (hashes: string[]) => Promise<void>;
+  /** Every stored hash — the input to the GC refcount sweep. */
+  listHashes: () => Promise<string[]>;
+}
+
+/**
  * App-facing async file system API (what Terminal & co. program against).
  * UI code may instead subscribe to the reactive store for live updates —
  * both views are backed by the same state.
