@@ -1,5 +1,7 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
+import { hashBlob } from "./blobHash";
+import { blobStore } from "./blobStore";
 import { createIdbAdapter } from "./idbAdapter";
 import { createSeedNodes } from "./seed";
 import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
@@ -167,6 +169,13 @@ export interface FsStore {
   init: () => Promise<void>;
   createFolder: (parentId: string, name?: string) => FsNode;
   createFile: (parentId: string, name: string, content: string, mimeType?: string) => FsNode;
+  /**
+   * Create a file whose bytes live in the blob store (B1) — the path uploads
+   * (B2) and other binary producers use. Content-addressed, so identical
+   * bytes are stored once. Async: the blob is durably written before the node
+   * that references it is committed.
+   */
+  createBlobFile: (parentId: string, name: string, blob: Blob, mimeType?: string) => Promise<FsNode>;
   updateFileContent: (id: string, content: string) => void;
   rename: (id: string, name: string) => void;
   /** Returns false when the move is invalid (into itself, a descendant, or a non-folder). */
@@ -254,6 +263,28 @@ export const useFsStore = create<FsStore>()((set, get) => {
         type: "file",
         mimeType,
         content,
+        createdAt: now,
+        modifiedAt: now,
+      };
+      commit([node]);
+      return node;
+    },
+
+    async createBlobFile(parentId, name, blob, mimeType = blob.type || undefined) {
+      // Hash first, store the bytes (skipping the write when an identical
+      // blob already exists), then commit the node — blob-before-node so a
+      // failure can only leave an orphan blob, never a dangling reference.
+      const hash = await hashBlob(blob);
+      if (!(await blobStore.has(hash)))
+        await blobStore.put(hash, blob);
+      const now = Date.now();
+      const node: FsNode = {
+        id: crypto.randomUUID(),
+        parentId,
+        name: uniqueChildName(get().nodes, parentId, name),
+        type: "file",
+        mimeType,
+        contentRef: { hash, size: blob.size, mimeType },
         createdAt: now,
         modifiedAt: now,
       };
