@@ -1,5 +1,16 @@
 export type FsNodeType = "file" | "folder";
 
+/**
+ * Reference to a file's bytes in the {@link BlobStore} (B1). Present instead
+ * of inline `content` for binaries and large text; the bytes are addressed
+ * by their SHA-256 `hash`.
+ */
+export interface ContentRef {
+  hash: string;
+  size: number;
+  mimeType?: string;
+}
+
 export interface FsNode {
   id: string;
   /** `null` only for the root node. */
@@ -7,13 +18,26 @@ export interface FsNode {
   name: string;
   type: FsNodeType;
   mimeType?: string;
-  /** Text content, or a data URL for images. */
+  /**
+   * Inline text content, kept only for small text (≤ {@link BLOB_INLINE_THRESHOLD}).
+   * Larger text and all binaries live in the blob store via `contentRef`.
+   * A node has at most one of `content` / `contentRef`.
+   */
   content?: string;
+  /** Reference to blob-stored bytes; mutually exclusive with `content`. */
+  contentRef?: ContentRef;
   createdAt: number;
   modifiedAt: number;
   /** Original parent id, present while the node sits in the trash. */
   trashedFrom?: string;
 }
+
+/**
+ * Size boundary between inline `content` and blob storage: text at or under
+ * this stays a string (Notes, Terminal, sync ops keep their simple path);
+ * everything larger, and all binaries, go to the blob store.
+ */
+export const BLOB_INLINE_THRESHOLD = 64 * 1024;
 
 /** Well-known node ids; seeded folders that always exist. */
 export const ROOT_ID = "root";
