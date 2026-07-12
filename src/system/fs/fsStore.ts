@@ -1,5 +1,6 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
+import { sweepUnreferencedBlobs } from "./blobGc";
 import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
 import { blobStore } from "./blobStore";
@@ -211,6 +212,10 @@ export const useFsStore = create<FsStore>()((set, get) => {
       return { nodes };
     });
     adapter.removeMany(ids).catch(logPersistError);
+    // GC: a removed node's blob (if any) may now be unreferenced. Sweeping
+    // after every removal, rather than only on emptyTrash, also catches
+    // purgeExpiredTrash's auto-empty and deleteForever on a single item.
+    sweepUnreferencedBlobs(get().nodes, blobStore).catch(logPersistError);
   }
 
   return {
@@ -252,6 +257,12 @@ export const useFsStore = create<FsStore>()((set, get) => {
         }
 
         set({ nodes, ready: true });
+
+        // Idle-time GC: catches orphan blobs from edge cases the removeIds
+        // sweep can't see (e.g. a blob write that completed just before a
+        // crash interrupted the node commit that would have referenced it).
+        // Fire-and-forget — never blocks boot.
+        sweepUnreferencedBlobs(nodes, blobStore).catch(logPersistError);
       })();
       return initPromise;
     },
