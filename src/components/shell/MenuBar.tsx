@@ -82,9 +82,13 @@ function Clock() {
 
 export function MenuBar() {
   const focusedId = useWindowStore(s => s.focusedId);
-  const focusedWin = useWindowStore(s =>
-    s.windows.find(w => w.id === s.focusedId && !w.minimized),
-  );
+  // Select just the appId (a primitive), not the window object — the menu
+  // bar only needs to know *which app* is focused, so it shouldn't
+  // re-render on every drag/resize frame of the focused window.
+  const focusedAppId = useWindowStore((s) => {
+    const w = s.windows.find(win => win.id === s.focusedId && !win.minimized);
+    return w?.appId;
+  });
   const preference = useThemeStore(s => s.preference);
   const resolved = useThemeStore(s => s.resolved);
   const setPreference = useThemeStore(s => s.setPreference);
@@ -104,7 +108,7 @@ export function MenuBar() {
     setOpenKey(null);
   }
 
-  const app = focusedWin ? getApp(focusedWin.appId) : undefined;
+  const app = focusedAppId ? getApp(focusedAppId) : undefined;
 
   const appearanceItem = (label: string, pref: ThemePreference): BarMenuItem => ({
     label,

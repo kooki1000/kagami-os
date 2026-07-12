@@ -1,6 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { memo, Suspense, useEffect, useRef, useState } from "react";
 import { getApp } from "@/system/apps/registry";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
@@ -68,7 +68,10 @@ function dockTarget(appId: string): { x: number; y: number } {
   return { x: window.innerWidth / 2, y: window.innerHeight };
 }
 
-export function Window({ win, focused }: { win: OsWindow; focused: boolean }) {
+// Memoized so dragging/resizing one window doesn't re-render every other
+// open window — moveWindow/resizeWindow leave untouched windows' `win`
+// object references untouched, so this only re-renders on real changes.
+export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean }) => {
   const app = getApp(win.appId);
   const focusWindow = useWindowStore(s => s.focusWindow);
   const moveWindow = useWindowStore(s => s.moveWindow);
@@ -312,4 +315,5 @@ export function Window({ win, focused }: { win: OsWindow; focused: boolean }) {
         ))}
     </div>
   );
-}
+});
+Window.displayName = "Window";

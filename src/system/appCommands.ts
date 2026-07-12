@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 type AppCommandHandler = (command: string) => void;
 
@@ -11,8 +11,12 @@ export function emitAppCommand(windowId: string, command: string): void {
 
 /** Subscribe a window's app component to its menu commands. */
 export function useAppCommand(windowId: string, handler: AppCommandHandler): void {
+  // Synced in an effect (not during render) so refs stay outside the
+  // render phase, per react-hooks/refs.
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+  useLayoutEffect(() => {
+    handlerRef.current = handler;
+  });
 
   useEffect(() => {
     const stable: AppCommandHandler = command => handlerRef.current(command);

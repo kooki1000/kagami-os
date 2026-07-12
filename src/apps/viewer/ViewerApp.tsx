@@ -7,7 +7,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
 import { useFsStore } from "@/system/fs/fsStore";
@@ -61,8 +61,12 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
   }
 
   // Latest fit inputs for the resize observer, which lives outside renders.
+  // Synced in an effect (not during render) so refs stay outside the
+  // render phase, per react-hooks/refs.
   const fitStateRef = useRef({ fitted, rotatedWidth, rotatedHeight });
-  fitStateRef.current = { fitted, rotatedWidth, rotatedHeight };
+  useLayoutEffect(() => {
+    fitStateRef.current = { fitted, rotatedWidth, rotatedHeight };
+  });
 
   useEffect(() => {
     const body = bodyRef.current;
