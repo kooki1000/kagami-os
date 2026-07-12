@@ -2,6 +2,7 @@ import type { AppManifest } from "@/system/apps/types";
 import type { DockPosition } from "@/system/dock/dockStore";
 import type { OsWindow } from "@/system/windows/windowStore";
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { launchApp } from "@/system/apps/launch";
 import { getApp } from "@/system/apps/registry";
 import { DOCK_TILE_PX, useDockStore } from "@/system/dock/dockStore";
@@ -57,7 +58,10 @@ export function Dock() {
   const position = useDockStore(s => s.position);
   const pin = useDockStore(s => s.pin);
   const unpin = useDockStore(s => s.unpin);
-  const windows = useWindowStore(s => s.windows);
+  // Only the set of running app ids is reactive here — Dock renders an
+  // "app is running" dot, not window geometry, so it must not re-render
+  // on every drag/resize frame of an unrelated window.
+  const runningIds = useWindowStore(useShallow(s => [...new Set(s.windows.map(w => w.appId))]));
   const focusWindow = useWindowStore(s => s.focusWindow);
   const restoreWindow = useWindowStore(s => s.restoreWindow);
   const closeApp = useWindowStore(s => s.closeApp);
@@ -68,7 +72,6 @@ export function Dock() {
   const tilePx = DOCK_TILE_PX[size];
   const iconPx = Math.round(tilePx * 0.46);
 
-  const runningIds = [...new Set(windows.map(w => w.appId))];
   const itemIds = [
     ...pinnedIds,
     ...runningIds.filter(id => !pinnedIds.includes(id)),
@@ -80,7 +83,7 @@ export function Dock() {
   const systemZone = items.filter(a => a.dockZone === "system");
 
   function onTileClick(appId: string) {
-    const appWindows = windows.filter(w => w.appId === appId);
+    const appWindows = useWindowStore.getState().windows.filter(w => w.appId === appId);
     if (appWindows.length === 0) {
       launchApp(appId);
       return;
@@ -96,7 +99,7 @@ export function Dock() {
 
   function renderTile(app: AppManifest) {
     const Icon = app.icon;
-    const running = windows.some(w => w.appId === app.id);
+    const running = runningIds.includes(app.id);
     return (
       <button
         key={app.id}
@@ -133,7 +136,7 @@ export function Dock() {
       {menu && (
         <DockContextMenu
           menu={menu}
-          running={windows.some(w => w.appId === menu.appId)}
+          running={runningIds.includes(menu.appId)}
           pinned={pinnedIds.includes(menu.appId)}
           onPin={pin}
           onUnpin={unpin}
