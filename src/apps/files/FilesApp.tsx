@@ -1,4 +1,5 @@
 import type { ChangeEvent, MouseEvent } from "react";
+import type { SelectMode } from "./FilesView";
 import type { UploadEntry } from "./upload";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
@@ -14,7 +15,7 @@ import {
   Search,
   Upload,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
@@ -35,7 +36,8 @@ import {
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
-import { downloadFile, downloadFolder } from "./download";
+import { useWindowStore } from "@/system/windows/windowStore";
+import { downloadMany } from "./download";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { entriesFromDataTransfer, entriesFromFileList, uploadEntries } from "./upload";
@@ -74,7 +76,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [view, setView] = useState<ViewMode>("grid");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [anchorId, setAnchorId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
@@ -108,6 +111,10 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   if (ready && !nodes[cwd]) {
     setHistory([HOME_ID]);
     setHistoryIndex(0);
+    if (selectedIds.size > 0)
+      setSelectedIds(new Set());
+    if (anchorId !== null)
+      setAnchorId(null);
   }
 
   function navigate(id: string): void {
@@ -117,7 +124,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     setHistory(next);
     setHistoryIndex(next.length - 1);
     setQuery("");
-    setSelectedId(null);
+    setSelectedIds(new Set());
+    setAnchorId(null);
     setRenamingId(null);
     setConfirmEmpty(false);
   }
@@ -137,31 +145,40 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     if (target !== cwd)
       navigate(target);
     const node = createFolder(target);
-    setSelectedId(node.id);
+    setSelectedIds(new Set([node.id]));
+    setAnchorId(node.id);
     setRenamingId(node.id);
   }
 
-  /** Trash an item and offer a one-click Undo via the notification. */
-  function trashWithUndo(id: string): void {
-    const node = nodes[id];
-    // Already in the Trash: moveToTrash would no-op, so don't show a
-    // "Moved to Trash" toast whose Undo would pull the item out.
-    if (!node || node.parentId === TRASH_ID)
+  /** Trash one or more items (B4 bulk) and offer a one-click Undo via the notification. */
+  function trashManyWithUndo(ids: string[]): void {
+    // Already in the Trash: moveToTrash would no-op, so don't include those —
+    // an Undo that pulls them back out would be surprising.
+    const targets = ids
+      .map(id => nodes[id])
+      .filter((n): n is FsNode => !!n && n.parentId !== TRASH_ID);
+    if (targets.length === 0)
       return;
-    const name = node.name;
-    moveToTrash(id);
+    targets.forEach(t => moveToTrash(t.id));
+    setSelectedIds(new Set());
+    const label = targets.length === 1 ? `“${targets[0].name}”` : `${targets.length} items`;
     notify({
       title: "Moved to Trash",
-      body: `“${name}” was moved to the Trash.`,
+      body: `${label} ${targets.length === 1 ? "was" : "were"} moved to the Trash.`,
       appId: "files",
-      action: { label: "Undo", run: () => restoreFromTrash(id) },
+      action: { label: "Undo", run: () => targets.forEach(t => restoreFromTrash(t.id)) },
     });
   }
 
-  function handleDrop(targetFolderId: string, nodeId: string): void {
-    if (targetFolderId === TRASH_ID)
-      trashWithUndo(nodeId);
-    else move(nodeId, targetFolderId);
+  function handleDrop(targetFolderId: string, nodeIds: string[]): void {
+    if (targetFolderId === TRASH_ID) {
+      trashManyWithUndo(nodeIds);
+      return;
+    }
+    nodeIds.forEach((id) => {
+      if (id !== targetFolderId)
+        move(id, targetFolderId);
+    });
   }
 
   /** Import files/folders into `targetFolderId` (B2), toasting the result. */
@@ -202,18 +219,19 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     e.target.value = "";
   }
 
-  /** Download a file, or a folder as a zip (B3), to the host OS. */
-  async function handleDownload(node: FsNode): Promise<void> {
+  /** Download a file, a folder as a zip (B3), or a multi-selection as one zip (B4), to the host OS. */
+  async function handleDownload(items: FsNode[]): Promise<void> {
     try {
-      if (node.type === "folder")
-        await downloadFolder(node, nodes, blobStore);
-      else
-        await downloadFile(node, blobStore);
+      await downloadMany(items, nodes, blobStore);
     }
     catch (error) {
       notify({
         title: "Download failed",
-        body: error instanceof Error ? error.message : `“${node.name}” couldn’t be downloaded.`,
+        body: error instanceof Error
+          ? error.message
+          : items.length === 1
+            ? `“${items[0].name}” couldn’t be downloaded.`
+            : "Some items couldn’t be downloaded.",
         tone: "danger",
       });
     }
@@ -224,6 +242,18 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       navigate(node.id);
     else openFile(node);
   }
+
+  const inTrash = cwd === TRASH_ID;
+  const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? children.filter(n => n.name.toLowerCase().includes(q)) : children;
+  }, [children, query]);
+  const crumbs = useMemo(() => pathOf(nodes, cwd).slice(1), [nodes, cwd]);
+  const trashCount = useMemo(
+    () => childrenOf(nodes, TRASH_ID).length,
+    [nodes],
+  );
 
   useAppCommand(windowId, (command) => {
     switch (command) {
@@ -266,20 +296,77 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       case "files.goTrash":
         navigate(TRASH_ID);
         break;
+      case "files.selectAll":
+        setSelectedIds(new Set(visible.map(n => n.id)));
+        setAnchorId(null);
+        break;
     }
   });
 
-  const inTrash = cwd === TRASH_ID;
-  const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? children.filter(n => n.name.toLowerCase().includes(q)) : children;
-  }, [children, query]);
-  const crumbs = useMemo(() => pathOf(nodes, cwd).slice(1), [nodes, cwd]);
-  const trashCount = useMemo(
-    () => childrenOf(nodes, TRASH_ID).length,
-    [nodes],
-  );
+  /** Click-selection for one item (B4): plain click replaces, ⌘/⌃ toggles, ⇧ extends from the anchor. */
+  function handleSelectNode(node: FsNode, mode: SelectMode): void {
+    if (mode === "toggle") {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(node.id))
+          next.delete(node.id);
+        else next.add(node.id);
+        return next;
+      });
+      setAnchorId(node.id);
+      return;
+    }
+    if (mode === "range") {
+      const ids = visible.map(n => n.id);
+      const anchor = anchorId ?? node.id;
+      const from = ids.indexOf(anchor);
+      const to = ids.indexOf(node.id);
+      if (from === -1 || to === -1) {
+        setSelectedIds(new Set([node.id]));
+        setAnchorId(node.id);
+        return;
+      }
+      const [lo, hi] = from <= to ? [from, to] : [to, from];
+      setSelectedIds(new Set(ids.slice(lo, hi + 1)));
+      return;
+    }
+    setSelectedIds(new Set([node.id]));
+    setAnchorId(node.id);
+  }
+
+  // Minimal keyboard affordances for the multi-selection (full roving-focus
+  // keyboard nav is B6): Escape clears it, Delete/Backspace trashes it. Scoped
+  // to this window being focused, and skipped while typing (filter, rename).
+  // Mirrors useAppCommand's ref-indirection so the listener itself never
+  // needs to be re-subscribed as selection/nodes change.
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useLayoutEffect(() => {
+    keyHandlerRef.current = (e: KeyboardEvent) => {
+      if (selectedIds.size === 0)
+        return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedIds(new Set());
+      }
+      else if ((e.key === "Delete" || e.key === "Backspace") && !inTrash) {
+        e.preventDefault();
+        trashManyWithUndo([...selectedIds]);
+      }
+    };
+  });
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable))
+        return;
+      if (useWindowStore.getState().focusedId !== windowId)
+        return;
+      keyHandlerRef.current(e);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [windowId]);
 
   function menuEntries(state: MenuState): ContextMenuEntry[] {
     const node = state.node;
@@ -288,23 +375,44 @@ export default function FilesApp({ windowId }: AppWindowProps) {
         { label: "New Folder", run: newFolder, disabled: inTrash },
       ];
     }
+    const multi = selectedIds.has(node.id) && selectedIds.size > 1;
+    const targets = multi
+      ? [...selectedIds].map(id => nodes[id]).filter((n): n is FsNode => !!n)
+      : [node];
     if (inTrash) {
       return [
-        { label: "Restore", run: () => restoreFromTrash(node.id), dividerAfter: true },
-        { label: "Delete Permanently", run: () => deleteForever(node.id), danger: true },
+        {
+          label: multi ? `Restore ${targets.length} Items` : "Restore",
+          run: () => targets.forEach(t => restoreFromTrash(t.id)),
+          dividerAfter: true,
+        },
+        {
+          label: multi ? `Delete ${targets.length} Items Permanently` : "Delete Permanently",
+          run: () => targets.forEach(t => deleteForever(t.id)),
+          danger: true,
+        },
       ];
     }
-    const system = isSystemNode(node.id);
-    const openable = node.type === "folder" || appIdForFile(node) !== null;
+    const system = targets.some(t => isSystemNode(t.id));
+    const openable = !multi && (node.type === "folder" || appIdForFile(node) !== null);
     return [
       ...(openable ? [{ label: "Open", run: () => openNode(node) }] : []),
       {
-        label: node.type === "folder" ? "Download as Zip" : "Download",
-        run: () => handleDownload(node),
+        label: multi
+          ? `Download ${targets.length} Items as Zip`
+          : node.type === "folder" ? "Download as Zip" : "Download",
+        run: () => handleDownload(targets),
         dividerAfter: true,
       },
-      { label: "Rename", run: () => setRenamingId(node.id), disabled: system, dividerAfter: true },
-      { label: "Move to Trash", run: () => trashWithUndo(node.id), disabled: system, danger: true },
+      ...(multi
+        ? []
+        : [{ label: "Rename", run: () => setRenamingId(node.id), disabled: system, dividerAfter: true }]),
+      {
+        label: multi ? `Move ${targets.length} Items to Trash` : "Move to Trash",
+        run: () => trashManyWithUndo(targets.map(t => t.id)),
+        disabled: system,
+        danger: true,
+      },
     ];
   }
 
@@ -495,7 +603,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
         <FilesView
           items={visible}
           view={view}
-          selectedId={selectedId}
+          selectedIds={selectedIds}
           renamingId={renamingId}
           emptyLabel={
             query
@@ -504,7 +612,9 @@ export default function FilesApp({ windowId }: AppWindowProps) {
                 ? "The Trash is empty"
                 : "This folder is empty"
           }
-          onSelect={setSelectedId}
+          onSelectNode={handleSelectNode}
+          onClearSelection={() => setSelectedIds(new Set())}
+          onMarqueeSelect={setSelectedIds}
           onOpen={openNode}
           onItemContextMenu={onItemContextMenu}
           onBackgroundContextMenu={onBackgroundContextMenu}

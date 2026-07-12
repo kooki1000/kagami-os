@@ -108,3 +108,26 @@ export async function downloadFolder(folder: FsNode, nodes: NodeMap, store: Blob
   const zipped = await zipInWorker(entries);
   triggerDownload(new Blob([zipped as Uint8Array<ArrayBuffer>], { type: "application/zip" }), `${folder.name}.zip`);
 }
+
+/**
+ * Download a multi-selection (B4): a single item behaves exactly like
+ * `downloadFile`/`downloadFolder`; two or more are flattened into one zip,
+ * folders nested under their own name, files placed at the archive root.
+ */
+export async function downloadMany(items: FsNode[], nodes: NodeMap, store: BlobStore): Promise<void> {
+  if (items.length === 1) {
+    const [only] = items;
+    if (only.type === "folder")
+      return downloadFolder(only, nodes, store);
+    return downloadFile(only, store);
+  }
+  const entries: Record<string, Uint8Array> = {};
+  for (const item of items) {
+    if (item.type === "folder")
+      Object.assign(entries, await buildZipEntries(item.id, nodes, store, item.name));
+    else
+      entries[item.name] = await resolveFileBytes(item, store);
+  }
+  const zipped = await zipInWorker(entries);
+  triggerDownload(new Blob([zipped as Uint8Array<ArrayBuffer>], { type: "application/zip" }), "Items.zip");
+}

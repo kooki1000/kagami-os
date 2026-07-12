@@ -23,6 +23,12 @@ export const filesApp: AppManifest = {
       ],
     },
     {
+      title: "Edit",
+      items: [
+        { label: "Select All", appCommand: "files.selectAll", shortcut: "⌘A" },
+      ],
+    },
+    {
       title: "View",
       items: [
         { label: "As Icons", appCommand: "files.viewGrid" },
