@@ -15,6 +15,21 @@ export function nameStem(name: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+const BYTE_UNITS = ["bytes", "KB", "MB", "GB"];
+
+/** Human file size ("512 bytes", "3.4 MB"). */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024)
+    return `${bytes} ${bytes === 1 ? "byte" : "bytes"}`;
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${BYTE_UNITS[unit]}`;
+}
+
 /** Compact relative time for notifications ("now", "3m", "2h", "Jul 4"). */
 export function formatRelativeTime(timestamp: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - timestamp) / 1000));

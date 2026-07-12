@@ -3,7 +3,8 @@ import type { FsNode } from "@/system/fs/types";
 import { useState } from "react";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { formatModified } from "@/lib/format";
-import { draggedNodeId, hasNodeDrag, startNodeDrag } from "./dnd";
+import { useBlobUrl } from "@/system/fs/useBlobUrl";
+import { draggedNodeId, hasExternalFiles, hasNodeDrag, startNodeDrag } from "./dnd";
 import { isImageNode, nodeKind } from "./fileMeta";
 import { NodeGlyph } from "./NodeGlyph";
 
@@ -20,6 +21,33 @@ export interface FilesViewProps {
   onRenameCommit: (id: string, name: string) => void;
   onRenameCancel: () => void;
   onDropInto: (folderId: string, nodeId: string) => void;
+  /** A drag from the host OS was dropped onto this folder (B2 upload). */
+  onUploadInto: (folderId: string, dataTransfer: DataTransfer) => void;
+  /** The folder `onUploadInto` targets when a drop lands on the background. */
+  cwdId: string;
+}
+
+/** Grid-view image preview: an uploaded/blob-backed image, or inline data URL. */
+function Thumbnail({ node }: { node: FsNode }) {
+  const blobUrl = useBlobUrl(node.contentRef);
+  const src = node.content ?? blobUrl;
+  if (isImageNode(node) && src) {
+    return (
+      <img
+        src={src}
+        alt={node.name}
+        draggable={false}
+        className="size-full object-cover"
+      />
+    );
+  }
+  return (
+    <NodeGlyph
+      node={node}
+      className={`size-8 ${node.type === "folder" ? "text-accent" : "text-ink-2"}`}
+      strokeWidth={1.4}
+    />
+  );
 }
 
 /** Grid (icon) and list presentation of one folder's children. */
@@ -37,16 +65,19 @@ export function FilesView(props: FilesViewProps) {
     onRenameCommit,
     onRenameCancel,
     onDropInto,
+    onUploadInto,
+    cwdId,
   } = props;
 
   const [dropFolderId, setDropFolderId] = useState<string | null>(null);
+  const [draggingOverBackground, setDraggingOverBackground] = useState(false);
 
   function dropHandlers(node: FsNode) {
     if (node.type !== "folder")
       return {};
     return {
       onDragOver: (e: DragEvent) => {
-        if (!hasNodeDrag(e))
+        if (!hasNodeDrag(e) && !hasExternalFiles(e))
           return;
         e.preventDefault();
         e.stopPropagation();
@@ -61,6 +92,8 @@ export function FilesView(props: FilesViewProps) {
         const dragged = draggedNodeId(e);
         if (dragged && dragged !== node.id)
           onDropInto(node.id, dragged);
+        else if (hasExternalFiles(e))
+          onUploadInto(node.id, e.dataTransfer);
       },
     };
   }
@@ -90,12 +123,31 @@ export function FilesView(props: FilesViewProps) {
       e.preventDefault();
       onBackgroundContextMenu(e);
     },
+    // Folder tiles stop propagation on both events, so this only fires for
+    // drops that land outside any tile — i.e. "upload into the open folder".
+    onDragOver: (e: DragEvent) => {
+      if (!hasExternalFiles(e))
+        return;
+      e.preventDefault();
+      setDraggingOverBackground(true);
+    },
+    onDragLeave: () => setDraggingOverBackground(false),
+    onDrop: (e: DragEvent) => {
+      if (!hasExternalFiles(e))
+        return;
+      e.preventDefault();
+      setDraggingOverBackground(false);
+      onUploadInto(cwdId, e.dataTransfer);
+    },
   };
+  const backgroundDropRing = draggingOverBackground
+    ? "outline-2 -outline-offset-4 outline-dashed outline-accent/60"
+    : "";
 
   if (items.length === 0) {
     return (
       <div
-        className="grid flex-1 place-items-center text-[13px] text-ink-2"
+        className={`grid flex-1 place-items-center text-[13px] text-ink-2 ${backgroundDropRing}`}
         {...backgroundProps}
       >
         {emptyLabel}
@@ -106,7 +158,7 @@ export function FilesView(props: FilesViewProps) {
   if (view === "grid") {
     return (
       <div
-        className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-3 overflow-auto p-3.5"
+        className={`grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-3 overflow-auto p-3.5 ${backgroundDropRing}`}
         {...backgroundProps}
       >
         {items.map((node) => {
@@ -124,22 +176,7 @@ export function FilesView(props: FilesViewProps) {
                   dropFolderId === node.id ? "ring-2 ring-accent" : ""
                 }`}
               >
-                {isImageNode(node) && node.content
-                  ? (
-                      <img
-                        src={node.content}
-                        alt={node.name}
-                        draggable={false}
-                        className="size-full object-cover"
-                      />
-                    )
-                  : (
-                      <NodeGlyph
-                        node={node}
-                        className={`size-8 ${node.type === "folder" ? "text-accent" : "text-ink-2"}`}
-                        strokeWidth={1.4}
-                      />
-                    )}
+                <Thumbnail node={node} />
               </div>
               {renamingId === node.id
                 ? (
@@ -168,7 +205,7 @@ export function FilesView(props: FilesViewProps) {
   }
 
   return (
-    <div className="flex-1 overflow-auto" {...backgroundProps}>
+    <div className={`flex-1 overflow-auto ${backgroundDropRing}`} {...backgroundProps}>
       <table className="w-full border-collapse text-[12.5px]">
         <thead>
           <tr className="text-left text-[11px] text-ink-2">

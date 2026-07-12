@@ -1,4 +1,5 @@
 import type { FsNode } from "@/system/fs/types";
+import { formatBytes } from "@/lib/format";
 import {
   childrenOf,
   isDescendantOf,
@@ -223,6 +224,12 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
       const target = nodes[targetId];
       if (target.type === "folder")
         return err(`cat: ${args[0]}: is a directory`);
+      // Blob-backed files (B1: uploads, oversized text) have no inline
+      // content to print — a size/type notice instead of a blank dump.
+      if (target.contentRef) {
+        const kind = target.mimeType?.startsWith("image/") ? "binary image" : "binary file";
+        return out(`[${target.name}: ${kind}, ${target.mimeType ?? "unknown type"}, ${formatBytes(target.contentRef.size)}]`);
+      }
       if (target.mimeType?.startsWith("image/"))
         return out(`[${target.name}: binary image, ${target.mimeType}]`);
       return out(target.content ?? "");
