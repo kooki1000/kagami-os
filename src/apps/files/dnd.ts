@@ -15,3 +15,13 @@ export function hasNodeDrag(e: DragEvent): boolean {
 export function draggedNodeId(e: DragEvent): string | null {
   return e.dataTransfer.getData(NODE_MIME) || null;
 }
+
+/**
+ * Is this a drag carrying real files from the host OS (upload, B2)? Checked
+ * via `types`, which (unlike `getData`) is readable during `dragover` in
+ * every browser. Internal node drags never set the `Files` type, so this
+ * never collides with `hasNodeDrag`.
+ */
+export function hasExternalFiles(e: DragEvent): boolean {
+  return e.dataTransfer.types.includes("Files");
+}

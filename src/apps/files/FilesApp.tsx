@@ -1,4 +1,5 @@
-import type { MouseEvent } from "react";
+import type { ChangeEvent, MouseEvent } from "react";
+import type { UploadEntry } from "./upload";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { SortKey } from "@/system/fs/fsStore";
@@ -11,9 +12,11 @@ import {
   LayoutGrid,
   List,
   Search,
+  Upload,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { appIdForFile, openFile } from "@/system/apps/openFile";
 import {
@@ -33,6 +36,7 @@ import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
+import { entriesFromDataTransfer, entriesFromFileList, uploadEntries } from "./upload";
 
 type ViewMode = "grid" | "list";
 
@@ -52,6 +56,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const nodes = useFsStore(s => s.nodes);
   const ready = useFsStore(s => s.ready);
   const createFolder = useFsStore(s => s.createFolder);
+  const createFile = useFsStore(s => s.createFile);
+  const createBlobFile = useFsStore(s => s.createBlobFile);
   const rename = useFsStore(s => s.rename);
   const move = useFsStore(s => s.move);
   const moveToTrash = useFsStore(s => s.moveToTrash);
@@ -71,6 +77,13 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirmEmpty, setConfirmEmpty] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
+  useEffect(() => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+  }, []);
 
   const cwd = history[historyIndex] ?? HOME_ID;
   const sort = sortForFolder(sortByFolder, cwd);
@@ -149,6 +162,44 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     else move(nodeId, targetFolderId);
   }
 
+  /** Import files/folders into `targetFolderId` (B2), toasting the result. */
+  async function handleUpload(targetFolderId: string, entries: UploadEntry[]): Promise<void> {
+    if (entries.length === 0)
+      return;
+    if (targetFolderId === TRASH_ID) {
+      notify({ title: "Can’t upload here", body: "Items can’t be uploaded directly into the Trash.", tone: "danger" });
+      return;
+    }
+    const result = await uploadEntries(
+      targetFolderId,
+      entries,
+      { createFolder, createFile, createBlobFile },
+      () => useFsStore.getState().nodes,
+    );
+    if (result.fileCount > 0) {
+      notify({
+        title: `Uploaded ${result.fileCount} ${result.fileCount === 1 ? "file" : "files"}`,
+        body: `${formatBytes(result.totalBytes)} added${result.failed > 0 ? ` · ${result.failed} failed` : ""}.`,
+        appId: "files",
+        tone: result.failed > 0 ? "danger" : "default",
+      });
+    }
+    else if (result.failed > 0) {
+      notify({ title: "Upload failed", body: `${result.failed} ${result.failed === 1 ? "item" : "items"} couldn’t be uploaded.`, tone: "danger" });
+    }
+  }
+
+  function onUploadInto(targetFolderId: string, dataTransfer: DataTransfer): void {
+    void entriesFromDataTransfer(dataTransfer).then(entries => handleUpload(targetFolderId, entries));
+  }
+
+  function onFileInputChange(e: ChangeEvent<HTMLInputElement>): void {
+    const { files } = e.target;
+    if (files && files.length > 0)
+      void handleUpload(cwd, entriesFromFileList(files));
+    e.target.value = "";
+  }
+
   function openNode(node: FsNode): void {
     if (node.type === "folder")
       navigate(node.id);
@@ -159,6 +210,12 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     switch (command) {
       case "files.newFolder":
         newFolder();
+        break;
+      case "files.uploadFiles":
+        fileInputRef.current?.click();
+        break;
+      case "files.uploadFolder":
+        folderInputRef.current?.click();
         break;
       case "files.viewGrid":
         setView("grid");
@@ -370,6 +427,17 @@ export default function FilesApp({ windowId }: AppWindowProps) {
             {!inTrash && (
               <button
                 type="button"
+                aria-label="Upload files"
+                title="Upload…"
+                className="grid size-6 place-items-center rounded-[6px] hover:bg-ph"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="size-4" />
+              </button>
+            )}
+            {!inTrash && (
+              <button
+                type="button"
                 aria-label="New folder"
                 className="grid size-6 place-items-center rounded-[6px] hover:bg-ph"
                 onClick={newFolder}
@@ -430,6 +498,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           }}
           onRenameCancel={() => setRenamingId(null)}
           onDropInto={handleDrop}
+          onUploadInto={onUploadInto}
+          cwdId={cwd}
         />
 
         <div className="flex h-6 flex-none items-center px-3 text-[11px] text-ink-2 select-none hairline-t">
@@ -443,6 +513,21 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           )}
         </div>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={onFileInputChange}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={onFileInputChange}
+      />
     </div>
   );
 }

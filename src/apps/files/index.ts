@@ -17,6 +17,8 @@ export const filesApp: AppManifest = {
       items: [
         { label: "New Window", command: "app.newWindow", shortcut: "⌘N" },
         { label: "New Folder", appCommand: "files.newFolder", shortcut: "⇧⌘N", dividerAfter: true },
+        { label: "Upload Files…", appCommand: "files.uploadFiles" },
+        { label: "Upload Folder…", appCommand: "files.uploadFolder", dividerAfter: true },
         { label: "Close Window", command: "window.close", shortcut: "⌘W" },
       ],
     },

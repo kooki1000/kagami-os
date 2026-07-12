@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
 import { useFsStore } from "@/system/fs/fsStore";
+import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { useWindowStore } from "@/system/windows/windowStore";
 
 const MIN_ZOOM = 0.1;
@@ -26,6 +27,8 @@ interface NaturalSize {
 export default function ViewerApp({ windowId, payload }: AppWindowProps) {
   const fileId = payloadFileId(payload);
   const node = useFsStore(s => (fileId ? s.nodes[fileId] : undefined));
+  const blobUrl = useBlobUrl(node?.contentRef);
+  const src = node?.content ?? blobUrl ?? undefined;
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
   // Viewer windows are titled after their file; keep the title bar in step
@@ -116,13 +119,25 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
     }
   });
 
-  if (!node?.content) {
+  // Blob-backed images resolve their object URL asynchronously; a node with
+  // a contentRef but no `src` yet is loading, not missing — don't flash the
+  // "no longer available" message while that read is in flight.
+  const hasSource = !!(node?.content || node?.contentRef);
+  if (!hasSource) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-2 select-none">
         <Image className="size-7" strokeWidth={1.4} />
         <span className="text-[13px]">
           {fileId ? "This image is no longer available" : "Open an image from Files"}
         </span>
+      </div>
+    );
+  }
+
+  if (!src) {
+    return (
+      <div className="grid h-full place-items-center">
+        <span className="size-2.5 animate-pulse rounded-full bg-accent" />
       </div>
     );
   }
@@ -166,8 +181,8 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
           }}
         >
           <img
-            src={node.content}
-            alt={node.name}
+            src={src}
+            alt={node?.name}
             draggable={false}
             className="max-w-none shadow-[0_8px_28px_-10px_rgba(0,0,0,.4)] transition-transform duration-150"
             style={{
