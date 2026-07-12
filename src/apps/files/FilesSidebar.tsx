@@ -17,7 +17,7 @@ import {
   TRASH_ID,
 } from "@/system/fs/types";
 import { useSettingsStore } from "@/system/settings/settingsStore";
-import { draggedNodeId, hasNodeDrag } from "./dnd";
+import { draggedNodeIds, hasNodeDrag } from "./dnd";
 
 const PLACES: Array<{ id: string; label: string; icon: LucideIcon }> = [
   { id: HOME_ID, label: "Home", icon: House },
@@ -36,7 +36,7 @@ interface SidebarItemProps {
   active: boolean;
   isDropTarget: boolean;
   onNavigate: (id: string) => void;
-  onDropNode: (targetFolderId: string, nodeId: string) => void;
+  onDropNode: (targetFolderId: string, nodeIds: string[]) => void;
   onDropHover: (id: string | null) => void;
 }
 
@@ -73,9 +73,9 @@ function SidebarItem({
       onDrop={(e) => {
         e.preventDefault();
         onDropHover(null);
-        const nodeId = draggedNodeId(e);
-        if (nodeId)
-          onDropNode(id, nodeId);
+        const nodeIds = draggedNodeIds(e);
+        if (nodeIds.length > 0)
+          onDropNode(id, nodeIds);
       }}
     >
       <Icon className="size-[15px] opacity-80" strokeWidth={1.8} />
@@ -89,7 +89,7 @@ interface FilesSidebarProps {
   cwd: string;
   trashCount: number;
   onNavigate: (id: string) => void;
-  onDropNode: (targetFolderId: string, nodeId: string) => void;
+  onDropNode: (targetFolderId: string, nodeIds: string[]) => void;
 }
 
 export function FilesSidebar({ cwd, trashCount, onNavigate, onDropNode }: FilesSidebarProps) {
