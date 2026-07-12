@@ -14,6 +14,8 @@ export interface FilesViewProps {
   items: FsNode[];
   view: "grid" | "list";
   selectedIds: Set<string>;
+  /** Items staged as a Finder-style Cut (B5) — rendered dimmed until pasted or replaced. */
+  cutIds: Set<string>;
   renamingId: string | null;
   emptyLabel: string;
   onSelectNode: (node: FsNode, mode: SelectMode) => void;
@@ -75,6 +77,7 @@ export function FilesView(props: FilesViewProps) {
     items,
     view,
     selectedIds,
+    cutIds,
     renamingId,
     emptyLabel,
     onSelectNode,
@@ -269,7 +272,7 @@ export function FilesView(props: FilesViewProps) {
                 key={node.id}
                 className={`flex cursor-default flex-col gap-1.5 rounded-[11px] p-1.5 ${
                   selected ? "bg-ph-2" : "hover:bg-ph"
-                }`}
+                } ${cutIds.has(node.id) ? "opacity-45" : ""}`}
                 {...itemProps(node)}
               >
                 <div
@@ -326,7 +329,9 @@ export function FilesView(props: FilesViewProps) {
                   key={node.id}
                   className={`cursor-default ${
                     selected ? "bg-[color-mix(in_oklab,var(--accent)_14%,transparent)]" : "hover:bg-ph"
-                  } ${dropFolderId === node.id ? "outline-1 -outline-offset-1 outline-accent" : ""}`}
+                  } ${dropFolderId === node.id ? "outline-1 -outline-offset-1 outline-accent" : ""} ${
+                    cutIds.has(node.id) ? "opacity-45" : ""
+                  }`}
                   {...itemProps(node)}
                 >
                   <td className="px-4 py-1.5">

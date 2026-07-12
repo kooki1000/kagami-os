@@ -29,11 +29,25 @@ function chordFromEvent(e: KeyboardEvent): string | null {
   return `${e.shiftKey ? "⇧" : ""}⌘${upper}`;
 }
 
+// Standard text-editing chords: when focus is in an editable control, these
+// stay with the browser/input (select-all-text, copy, cut, paste, undo) even
+// if the focused app also binds them to a menu item — otherwise e.g. Files'
+// ⌘A "Select All" would hijack selecting text in its own Filter field.
+const NATIVE_EDITING_LETTERS = new Set(["A", "C", "X", "V", "Z"]);
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement))
+    return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
+
 export function useGlobalShortcuts(): void {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const chord = chordFromEvent(e);
       if (!chord)
+        return;
+      if (NATIVE_EDITING_LETTERS.has(chord.slice(-1)) && isEditableTarget(e.target))
         return;
 
       const { focusedId, windows } = useWindowStore.getState();

@@ -168,6 +168,60 @@ describe("move", () => {
   });
 });
 
+describe("duplicate", () => {
+  it("copies a file into another folder, leaving the original in place", () => {
+    const copy = api().duplicate("note", "reports");
+    expect(copy).not.toBeNull();
+    expect(copy!.parentId).toBe("reports");
+    expect(copy!.content).toBe("hi");
+    expect(get("note").parentId).toBe(DOCUMENTS_ID);
+  });
+
+  it("dedupes the name when pasted back into its own folder", () => {
+    const copy = api().duplicate("note", DOCUMENTS_ID);
+    expect(copy!.name).toBe("note 2.md");
+    expect(get("note").name).toBe("note.md");
+  });
+
+  it("deep-copies a folder's whole subtree with fresh ids", () => {
+    const copy = api().duplicate("reports", HOME_ID);
+    expect(copy!.name).toBe("Reports");
+    const copiedChildren = childrenOf(api().nodes, copy!.id).map(n => n.name);
+    expect(copiedChildren.sort()).toEqual(["Child", "deep.txt"]);
+    const copiedChild = childrenOf(api().nodes, copy!.id).find(n => n.name === "Child")!;
+    expect(copiedChild.id).not.toBe("child");
+  });
+
+  it("preserves a blob-backed file's contentRef (bytes are shared, not duplicated)", () => {
+    useFsStore.setState({
+      nodes: {
+        ...api().nodes,
+        blobbed: node({
+          id: "blobbed",
+          parentId: DOCUMENTS_ID,
+          name: "photo.png",
+          type: "file",
+          contentRef: { hash: "h1", size: 10 },
+        }),
+      },
+    });
+    const copy = api().duplicate("blobbed", "reports");
+    expect(copy!.contentRef).toEqual({ hash: "h1", size: 10 });
+  });
+
+  it("rejects copying a folder into its own descendant", () => {
+    expect(api().duplicate("reports", "child")).toBeNull();
+  });
+
+  it("rejects copying into a non-folder", () => {
+    expect(api().duplicate("reports", "note")).toBeNull();
+  });
+
+  it("rejects copying a folder into itself", () => {
+    expect(api().duplicate("reports", "reports")).toBeNull();
+  });
+});
+
 describe("trash lifecycle", () => {
   it("moveToTrash records the original parent", () => {
     api().moveToTrash("note");

@@ -37,6 +37,7 @@ import {
 import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
 import { useWindowStore } from "@/system/windows/windowStore";
+import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
@@ -64,6 +65,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const createBlobFile = useFsStore(s => s.createBlobFile);
   const rename = useFsStore(s => s.rename);
   const move = useFsStore(s => s.move);
+  const duplicate = useFsStore(s => s.duplicate);
   const moveToTrash = useFsStore(s => s.moveToTrash);
   const restoreFromTrash = useFsStore(s => s.restoreFromTrash);
   const emptyTrash = useFsStore(s => s.emptyTrash);
@@ -71,6 +73,11 @@ export default function FilesApp({ windowId }: AppWindowProps) {
 
   const sortByFolder = useViewPrefsStore(s => s.sortByFolder);
   const setSortPref = useViewPrefsStore(s => s.setSort);
+
+  const clipboardIds = useClipboardStore(s => s.ids);
+  const clipboardMode = useClipboardStore(s => s.mode);
+  const setClipboard = useClipboardStore(s => s.setClipboard);
+  const clearClipboard = useClipboardStore(s => s.clear);
 
   const [history, setHistory] = useState<string[]>([HOME_ID]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -91,6 +98,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   }, []);
 
   const cwd = history[historyIndex] ?? HOME_ID;
+  const inTrash = cwd === TRASH_ID;
   const sort = sortForFolder(sortByFolder, cwd);
 
   /** Pick a sort key for the current folder; re-picking it flips direction. */
@@ -181,6 +189,50 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     });
   }
 
+  /** B5: stage the selection on the clipboard for a later Paste. */
+  function copySelection(): void {
+    if (selectedIds.size === 0)
+      return;
+    setClipboard([...selectedIds], "copy");
+  }
+
+  function cutSelection(): void {
+    const ids = [...selectedIds].filter(id => !isSystemNode(id));
+    if (ids.length === 0)
+      return;
+    setClipboard(ids, "cut");
+  }
+
+  /** Copy duplicates into `cwd`; Cut moves the originals here and clears the clipboard. */
+  function pasteClipboard(): void {
+    if (inTrash || clipboardIds.length === 0)
+      return;
+    const ids = clipboardIds.filter(id => nodes[id]);
+    if (ids.length === 0) {
+      clearClipboard();
+      return;
+    }
+    const landed: string[] = [];
+    if (clipboardMode === "cut") {
+      ids.forEach((id) => {
+        if (move(id, cwd))
+          landed.push(id);
+      });
+      clearClipboard();
+    }
+    else {
+      ids.forEach((id) => {
+        const copy = duplicate(id, cwd);
+        if (copy)
+          landed.push(copy.id);
+      });
+    }
+    if (landed.length > 0) {
+      setSelectedIds(new Set(landed));
+      setAnchorId(landed[landed.length - 1]);
+    }
+  }
+
   /** Import files/folders into `targetFolderId` (B2), toasting the result. */
   async function handleUpload(targetFolderId: string, entries: UploadEntry[]): Promise<void> {
     if (entries.length === 0)
@@ -243,7 +295,6 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     else openFile(node);
   }
 
-  const inTrash = cwd === TRASH_ID;
   const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -253,6 +304,10 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const trashCount = useMemo(
     () => childrenOf(nodes, TRASH_ID).length,
     [nodes],
+  );
+  const cutIds = useMemo(
+    () => (clipboardMode === "cut" ? new Set(clipboardIds) : new Set<string>()),
+    [clipboardMode, clipboardIds],
   );
 
   useAppCommand(windowId, (command) => {
@@ -299,6 +354,15 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       case "files.selectAll":
         setSelectedIds(new Set(visible.map(n => n.id)));
         setAnchorId(null);
+        break;
+      case "files.copy":
+        copySelection();
+        break;
+      case "files.cut":
+        cutSelection();
+        break;
+      case "files.paste":
+        pasteClipboard();
         break;
     }
   });
@@ -372,7 +436,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     const node = state.node;
     if (!node) {
       return [
-        { label: "New Folder", run: newFolder, disabled: inTrash },
+        { label: "New Folder", run: newFolder, disabled: inTrash, dividerAfter: true },
+        { label: "Paste", run: pasteClipboard, disabled: inTrash || clipboardIds.length === 0 },
       ];
     }
     const multi = selectedIds.has(node.id) && selectedIds.size > 1;
@@ -397,6 +462,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     const openable = !multi && (node.type === "folder" || appIdForFile(node) !== null);
     return [
       ...(openable ? [{ label: "Open", run: () => openNode(node) }] : []),
+      { label: multi ? `Copy ${targets.length} Items` : "Copy", run: copySelection },
+      { label: multi ? `Cut ${targets.length} Items` : "Cut", run: cutSelection, disabled: system, dividerAfter: true },
       {
         label: multi
           ? `Download ${targets.length} Items as Zip`
@@ -604,6 +671,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           items={visible}
           view={view}
           selectedIds={selectedIds}
+          cutIds={cutIds}
           renamingId={renamingId}
           emptyLabel={
             query

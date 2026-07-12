@@ -182,6 +182,15 @@ export interface FsStore {
   rename: (id: string, name: string) => void;
   /** Returns false when the move is invalid (into itself, a descendant, or a non-folder). */
   move: (id: string, newParentId: string) => boolean;
+  /**
+   * Deep-copy a node (and, for a folder, its whole subtree) under
+   * `targetParentId` — the paste half of B5's clipboard. Blob-backed files
+   * keep their `contentRef` (content-addressed, so the copy shares bytes
+   * with the original rather than duplicating them). Returns null when the
+   * copy would be invalid (into itself or a descendant, or a non-folder
+   * target) rather than creating a partial subtree.
+   */
+  duplicate: (id: string, targetParentId: string) => FsNode | null;
   moveToTrash: (id: string) => void;
   restoreFromTrash: (id: string) => void;
   emptyTrash: () => void;
@@ -357,6 +366,39 @@ export const useFsStore = create<FsStore>()((set, get) => {
         modifiedAt: Date.now(),
       }]);
       return true;
+    },
+
+    duplicate(id, targetParentId) {
+      const { nodes } = get();
+      const source = nodes[id];
+      const target = nodes[targetParentId];
+      if (!source || !target || target.type !== "folder")
+        return null;
+      if (id === targetParentId || isDescendantOf(nodes, targetParentId, id))
+        return null;
+
+      const now = Date.now();
+      const newNodes: FsNode[] = [];
+      function clone(node: FsNode, parentId: string): FsNode {
+        const copy: FsNode = {
+          ...node,
+          id: crypto.randomUUID(),
+          parentId,
+          name: uniqueChildName(nodes, parentId, node.name),
+          createdAt: now,
+          modifiedAt: now,
+          trashedFrom: undefined,
+        };
+        newNodes.push(copy);
+        if (node.type === "folder") {
+          for (const child of childrenOf(nodes, node.id))
+            clone(child, copy.id);
+        }
+        return copy;
+      }
+      const root = clone(source, targetParentId);
+      commit(newNodes);
+      return root;
     },
 
     moveToTrash(id) {

@@ -25,6 +25,9 @@ export const filesApp: AppManifest = {
     {
       title: "Edit",
       items: [
+        { label: "Cut", appCommand: "files.cut", shortcut: "⌘X" },
+        { label: "Copy", appCommand: "files.copy", shortcut: "⌘C" },
+        { label: "Paste", appCommand: "files.paste", shortcut: "⌘V", dividerAfter: true },
         { label: "Select All", appCommand: "files.selectAll", shortcut: "⌘A" },
       ],
     },
