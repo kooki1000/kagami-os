@@ -2,7 +2,7 @@ import type { MouseEvent } from "react";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { FsNode } from "@/system/fs/types";
 import { NotebookPen, Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { formatModified, nameStem } from "@/lib/format";
@@ -20,9 +20,13 @@ function NoteEditor({ doc }: { doc: FsNode }) {
   const [draft, setDraft] = useState(doc.content ?? "");
   const saved = draft === (doc.content ?? "");
 
-  // Keep latest values readable from the unmount flush below.
+  // Keep latest values readable from the unmount flush below. Synced in an
+  // effect (not during render) so refs stay outside the render phase, per
+  // react-hooks/refs.
   const flushRef = useRef({ saved, draft });
-  flushRef.current = { saved, draft };
+  useLayoutEffect(() => {
+    flushRef.current = { saved, draft };
+  });
 
   useEffect(() => {
     if (saved)

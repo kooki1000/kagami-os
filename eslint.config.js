@@ -1,5 +1,6 @@
 import antfu from "@antfu/eslint-config";
 import eslintPluginBetterTailwindcss from "eslint-plugin-better-tailwindcss";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default antfu(
   {
@@ -11,6 +12,10 @@ export default antfu(
       quotes: "double",
     },
     ignores: ["dist", "node_modules"],
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ...reactHooks.configs.flat.recommended,
   },
   {
     files: ["**/*.{jsx,tsx}"],
