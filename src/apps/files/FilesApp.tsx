@@ -19,6 +19,7 @@ import { ContextMenu } from "@/components/ui/ContextMenu";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { appIdForFile, openFile } from "@/system/apps/openFile";
+import { blobStore } from "@/system/fs/blobStore";
 import {
   childrenOf,
   isSystemNode,
@@ -34,6 +35,7 @@ import {
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
+import { downloadFile, downloadFolder } from "./download";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { entriesFromDataTransfer, entriesFromFileList, uploadEntries } from "./upload";
@@ -200,6 +202,23 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     e.target.value = "";
   }
 
+  /** Download a file, or a folder as a zip (B3), to the host OS. */
+  async function handleDownload(node: FsNode): Promise<void> {
+    try {
+      if (node.type === "folder")
+        await downloadFolder(node, nodes, blobStore);
+      else
+        await downloadFile(node, blobStore);
+    }
+    catch (error) {
+      notify({
+        title: "Download failed",
+        body: error instanceof Error ? error.message : `“${node.name}” couldn’t be downloaded.`,
+        tone: "danger",
+      });
+    }
+  }
+
   function openNode(node: FsNode): void {
     if (node.type === "folder")
       navigate(node.id);
@@ -279,6 +298,11 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     const openable = node.type === "folder" || appIdForFile(node) !== null;
     return [
       ...(openable ? [{ label: "Open", run: () => openNode(node) }] : []),
+      {
+        label: node.type === "folder" ? "Download as Zip" : "Download",
+        run: () => handleDownload(node),
+        dividerAfter: true,
+      },
       { label: "Rename", run: () => setRenamingId(node.id), disabled: system, dividerAfter: true },
       { label: "Move to Trash", run: () => trashWithUndo(node.id), disabled: system, danger: true },
     ];
