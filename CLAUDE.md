@@ -158,4 +158,4 @@ reading `node.content` directly once a node has a `contentRef`.
   headers at deploy time, not in the meta tag.
 - Feature flags: `src/system/flags.ts`, build-time `VITE_FLAG_*` env vars,
   overridable per device in Settings › About or via `localStorage
-  kagami:flag:<id>`.
+kagami:flag:<id>`.
