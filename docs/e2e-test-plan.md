@@ -14,27 +14,27 @@ landed on `test/e2e-files-b4-b5-trash`.
 
 ## 1. Where coverage stands today
 
-| Catalog # | Scenario | Spec | State |
-| --- | --- | --- | --- |
-| 1 | Cold boot renders, no console errors | `boot.spec.ts` | ✅ done |
-| 4 | Create → rename → **move (DnD)** → trash → restore | `files.spec.ts` | ⚠️ partial — **DnD move step missing** |
-| 5 | Trash → Empty (two-step confirm) → gone after reload | `files-trash.spec.ts` | ✅ done |
-| 6 | Notes edit → autosave → reload persists | `notes.spec.ts` | ✅ done |
-| — | B4 multi-select (click/⇧/⌘, marquee, bulk) | `files-multiselect.spec.ts` | ✅ done |
-| — | B5 clipboard (Copy/Cut/Paste, dedupe) | `files-clipboard.spec.ts` | ✅ done |
-| 2 | WM: drag → snap-left → restore-drag → close | — | ❌ todo |
-| 3 | Shortcut routing: app chord beats shell; ⌘W closes | — | ❌ todo |
-| 7 | Open file → Notes selects it; switch; re-open re-selects | — | ❌ todo |
-| 8 | Viewer: zoom / fit / rotate; window resize refits | — | ❌ todo |
-| 9 | Terminal: `mkdir`/`echo >`/`cat`/`rm` round-trip vs Files | — | ❌ todo |
-| 10 | Theme: dark toggle + accent + wallpaper; reload persists | — | ❌ todo |
-| 11 | Dock: pin/unpin, size/position relayout, running dots | — | ❌ todo |
-| 12 | Notification: Undo action restores; center marks read | — | ❌ todo |
-| 13 | Two windows: z-order, minimize→dock restore, ⌘Q all | — | ❌ todo |
-| 14 | Private-mode boot (no IDB): in-memory, banner shown | — | ❌ **blocked — banner UI does not exist** |
-| 15 | Forced app crash → error card; shell survives | — | ❌ **needs a crash-trigger hook** |
-| P10 | B2 upload from host OS | — | ❌ todo |
-| P10 | B3 download to host OS (file + folder-as-zip) | — | ❌ todo |
+| Catalog # | Scenario                                                  | Spec                        | State                                     |
+| --------- | --------------------------------------------------------- | --------------------------- | ----------------------------------------- |
+| 1         | Cold boot renders, no console errors                      | `boot.spec.ts`              | ✅ done                                   |
+| 4         | Create → rename → **move (DnD)** → trash → restore        | `files.spec.ts`             | ⚠️ partial — **DnD move step missing**    |
+| 5         | Trash → Empty (two-step confirm) → gone after reload      | `files-trash.spec.ts`       | ✅ done                                   |
+| 6         | Notes edit → autosave → reload persists                   | `notes.spec.ts`             | ✅ done                                   |
+| —         | B4 multi-select (click/⇧/⌘, marquee, bulk)                | `files-multiselect.spec.ts` | ✅ done                                   |
+| —         | B5 clipboard (Copy/Cut/Paste, dedupe)                     | `files-clipboard.spec.ts`   | ✅ done                                   |
+| 2         | WM: drag → snap-left → restore-drag → close               | —                           | ❌ todo                                   |
+| 3         | Shortcut routing: app chord beats shell; ⌘W closes        | —                           | ❌ todo                                   |
+| 7         | Open file → Notes selects it; switch; re-open re-selects  | —                           | ❌ todo                                   |
+| 8         | Viewer: zoom / fit / rotate; window resize refits         | —                           | ❌ todo                                   |
+| 9         | Terminal: `mkdir`/`echo >`/`cat`/`rm` round-trip vs Files | —                           | ❌ todo                                   |
+| 10        | Theme: dark toggle + accent + wallpaper; reload persists  | —                           | ❌ todo                                   |
+| 11        | Dock: pin/unpin, size/position relayout, running dots     | —                           | ❌ todo                                   |
+| 12        | Notification: Undo action restores; center marks read     | —                           | ❌ todo                                   |
+| 13        | Two windows: z-order, minimize→dock restore, ⌘Q all       | —                           | ❌ todo                                   |
+| 14        | Private-mode boot (no IDB): in-memory, banner shown       | —                           | ❌ **blocked — banner UI does not exist** |
+| 15        | Forced app crash → error card; shell survives             | —                           | ❌ **needs a crash-trigger hook**         |
+| P10       | B2 upload from host OS                                    | —                           | ❌ todo                                   |
+| P10       | B3 download to host OS (file + folder-as-zip)             | —                           | ❌ todo                                   |
 
 **Net:** 6 of the 15 catalog scenarios plus B4/B5 are covered; 9 catalog
 scenarios and the 2 Phase-10 flows remain. Two of the remaining nine need a
@@ -135,7 +135,7 @@ steps, the assertions, and the cross-browser risk.
   shell chord; native editing chords stay with inputs.
 - **Steps:** (a) open Files, press **⇧⌘N** → a new folder enters rename mode
   (app `files.newFolder` beat any shell binding). (b) Focus the Filter input,
-  press **⌘A** → text selects inside the field, folder selection does *not*
+  press **⌘A** → text selects inside the field, folder selection does _not_
   change (native-editing guard). (c) Press **⌘W** → focused window closes
   (shell fallback).
 - **Assertions:** rename input focused after ⇧⌘N; window count drops after
@@ -277,7 +277,7 @@ steps, the assertions, and the cross-browser risk.
 ### 5.1 #14 Private-mode boot — **banner UI does not exist**
 
 `idbAdapter.ts` already degrades to an in-memory no-op when `indexedDB` is
-undefined, so the OS *boots* without persistence — but there is **no banner**
+undefined, so the OS _boots_ without persistence — but there is **no banner**
 telling the user their session won't be saved. The catalog asserts "banner
 shown." Two options:
 
@@ -294,8 +294,8 @@ banner slips.
 
 ### 5.2 #15 Forced app crash — **needs a crash-trigger hook**
 
-The `WindowErrorBoundary` exists and renders a card ("*{app} stopped
-working*", "Reload app", "Close window") — but nothing can make an app throw
+The `WindowErrorBoundary` exists and renders a card ("_{app} stopped
+working_", "Reload app", "Close window") — but nothing can make an app throw
 on demand from a test. Add a **flag-gated crash trigger** (via
 `src/system/flags.ts`, e.g. `VITE_FLAG_e2e_crash` / a query param): when set,
 a tiny hidden dev app (or an appCommand) throws during render. Then:
@@ -313,15 +313,15 @@ a tiny hidden dev app (or an appCommand) throws during render. Then:
 Ordered by value-to-effort, front-loading the shared refactor and the
 regression-guard scenarios.
 
-| Step | Work | Size | Notes |
-| --- | --- | --- | --- |
-| 1 | `e2e/helpers.ts` + migrate existing 6 specs | S | No behavior change; unblocks the rest |
-| 2 | #9 Terminal, #7 Open-with, #10 Theme | M | Deterministic, low-risk, high regression value |
-| 3 | #3 Shortcuts, #13 Multi-window | M | Core shell seams |
-| 4 | #12 Notifications, #11 Dock | M | May add 1–2 small `data-*` hooks |
-| 5 | #2 WM snap, #8 Viewer refit | M | Pointer/observer timing — budget for flakiness |
-| 6 | B2 upload, B3 download + complete #4 DnD | M | Add `e2e/fixtures/`; DnD may be Chromium-tagged |
-| 7 | #14 banner (feature + test), #15 crash hook + test | M | **Source changes** — see §5 |
+| Step | Work                                               | Size | Notes                                           |
+| ---- | -------------------------------------------------- | ---- | ----------------------------------------------- |
+| 1    | `e2e/helpers.ts` + migrate existing 6 specs        | S    | No behavior change; unblocks the rest           |
+| 2    | #9 Terminal, #7 Open-with, #10 Theme               | M    | Deterministic, low-risk, high regression value  |
+| 3    | #3 Shortcuts, #13 Multi-window                     | M    | Core shell seams                                |
+| 4    | #12 Notifications, #11 Dock                        | M    | May add 1–2 small `data-*` hooks                |
+| 5    | #2 WM snap, #8 Viewer refit                        | M    | Pointer/observer timing — budget for flakiness  |
+| 6    | B2 upload, B3 download + complete #4 DnD           | M    | Add `e2e/fixtures/`; DnD may be Chromium-tagged |
+| 7    | #14 banner (feature + test), #15 crash hook + test | M    | **Source changes** — see §5                     |
 
 **Rough total:** ~2 focused engineering days for steps 1–6; steps 7 add ~0.5
 day plus the banner feature.
