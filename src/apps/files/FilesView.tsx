@@ -174,20 +174,24 @@ export function FilesView(props: FilesViewProps) {
 
   function itemProps(node: FsNode) {
     return {
-      ref: registerItemRef(node.id),
-      draggable: renamingId !== node.id,
-      onMouseDown: (e: ReactMouseEvent) => e.stopPropagation(),
-      onDragStart: (e: DragEvent) => {
+      "ref": registerItemRef(node.id),
+      // Item names can collide with the sidebar's "Places" labels (e.g. a
+      // folder named "Documents"), so give the item itself a stable,
+      // unambiguous hook rather than relying on text content.
+      "data-node-name": node.name,
+      "draggable": renamingId !== node.id,
+      "onMouseDown": (e: ReactMouseEvent) => e.stopPropagation(),
+      "onDragStart": (e: DragEvent) => {
         const ids = selectedIds.has(node.id) && selectedIds.size > 1 ? [...selectedIds] : [node.id];
         startNodeDrag(e, ids);
       },
-      onClick: (e: ReactMouseEvent) => {
+      "onClick": (e: ReactMouseEvent) => {
         e.stopPropagation();
         const mode: SelectMode = e.shiftKey ? "range" : e.metaKey || e.ctrlKey ? "toggle" : "replace";
         onSelectNode(node, mode);
       },
-      onDoubleClick: () => onOpen(node),
-      onContextMenu: (e: ReactMouseEvent) => {
+      "onDoubleClick": () => onOpen(node),
+      "onContextMenu": (e: ReactMouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
         if (!selectedIds.has(node.id))

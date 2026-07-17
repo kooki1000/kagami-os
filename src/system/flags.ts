@@ -20,13 +20,19 @@ export interface FlagDef {
   default: boolean;
 }
 
-export type FlagId = "online";
+export type FlagId = "online" | "e2e_crash";
 
 export const FLAGS: readonly FlagDef[] = [
   {
     id: "online",
     label: "Online mode",
     description: "Accounts, remote storage, and sync (Phase 13). Not yet wired up.",
+    default: false,
+  },
+  {
+    id: "e2e_crash",
+    label: "E2E crash trigger",
+    description: "Dev-only: registers a hidden app that throws on first render, for testing the per-window crash boundary. Off by default; never ship on.",
     default: false,
   },
 ];

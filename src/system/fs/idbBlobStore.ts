@@ -19,6 +19,12 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
+/** What's actually stored per hash — see `put`/`get` below for why. */
+interface StoredBlob {
+  buffer: ArrayBuffer;
+  type: string;
+}
+
 function done(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
@@ -76,12 +82,20 @@ export function createIdbBlobStore(): BlobStore {
       const tx = (await db()).transaction(STORE, "readonly");
       const request = tx.objectStore(STORE).get(hash);
       await done(tx);
-      return (request.result as Blob | undefined) ?? null;
+      const stored = request.result as StoredBlob | undefined;
+      return stored ? new Blob([stored.buffer], { type: stored.type }) : null;
     },
 
     async put(hash, blob) {
+      // Store the raw bytes + mime type rather than the Blob object itself:
+      // some IndexedDB implementations (WebKit's among them) fail to
+      // structured-clone a Blob into an object store ("Error preparing
+      // Blob/File data to be stored in object store"), silently losing the
+      // write. An ArrayBuffer has no such issue anywhere, and a Blob
+      // reconstructed from it on read is behaviorally identical.
+      const stored: StoredBlob = { buffer: await blob.arrayBuffer(), type: blob.type };
       const tx = (await db()).transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(blob, hash);
+      tx.objectStore(STORE).put(stored, hash);
       await done(tx);
     },
 
