@@ -24,6 +24,10 @@ interface ThemeStore {
   toggleResolved: () => void;
 }
 
+interface PersistedThemeState {
+  preference: ThemePreference;
+}
+
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set, get) => ({
@@ -37,12 +41,21 @@ export const useThemeStore = create<ThemeStore>()(
     }),
     {
       name: "kagami-theme",
-      // Only the preference is durable; `resolved` is recomputed from it
-      // (and the live OS setting) on every load.
+      // Only the preference is durable; `resolved` is recomputed from it (and
+      // the live OS setting) right here in `merge` rather than via a separate
+      // `onRehydrateStorage` callback. localStorage reads are synchronous, so
+      // persist's rehydration runs synchronously too — a callback that closes
+      // over `useThemeStore` to call `.setState()` fires before this
+      // module's own `const useThemeStore = ...` assignment has finished,
+      // reading it as undefined and throwing (silently, inside persist's
+      // promise chain) without ever recomputing `resolved`. `merge` gets the
+      // persisted state directly, with no such self-reference.
       partialize: state => ({ preference: state.preference }),
-      onRehydrateStorage: () => (state) => {
-        if (state)
-          useThemeStore.setState({ resolved: resolveTheme(state.preference) });
+      merge: (persistedState, currentState) => {
+        const preference
+          = (persistedState as Partial<PersistedThemeState> | undefined)?.preference
+            ?? currentState.preference;
+        return { ...currentState, preference, resolved: resolveTheme(preference) };
       },
     },
   ),

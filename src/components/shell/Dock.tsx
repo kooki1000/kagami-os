@@ -125,7 +125,7 @@ export function Dock() {
           {app.name}
         </span>
         {running && (
-          <span className={`absolute size-1 rounded-full bg-ink opacity-55 ${layout.dot}`} />
+          <span data-dock-running className={`absolute size-1 rounded-full bg-ink opacity-55 ${layout.dot}`} />
         )}
       </button>
     );

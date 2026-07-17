@@ -1,10 +1,12 @@
 import type { AppManifest } from "./types";
+import { devCrashApp } from "@/apps/devcrash";
 import { filesApp } from "@/apps/files";
 import { notesApp } from "@/apps/notes";
 import { settingsApp } from "@/apps/settings";
 import { terminalApp } from "@/apps/terminal";
 import { viewerApp } from "@/apps/viewer";
 import { welcomeApp } from "@/apps/welcome";
+import { isFlagEnabled } from "@/system/flags";
 
 /**
  * Every app the shell knows about. Adding an app = adding a manifest
@@ -17,6 +19,10 @@ export const apps: AppManifest[] = [
   terminalApp,
   welcomeApp,
   settingsApp,
+  // Dev-only crash trigger for E2E coverage of the per-window error
+  // boundary; excluded from the array entirely unless the `e2e_crash` flag
+  // is on, so a default build's `apps` is byte-for-byte what it was before.
+  ...(isFlagEnabled("e2e_crash") ? [devCrashApp] : []),
 ];
 
 const byId = new Map(apps.map(app => [app.id, app]));

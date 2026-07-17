@@ -1,18 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { boot, collectErrors } from "./helpers";
 
 test.describe("boot", () => {
   test("cold boot renders Welcome, dock and menu bar with no console errors", async ({ page }) => {
-    const errors: string[] = [];
-    page.on("console", (msg) => {
-      if (msg.type() === "error")
-        errors.push(msg.text());
-    });
-    page.on("pageerror", err => errors.push(err.message));
+    const errors = collectErrors(page);
 
-    await page.goto("/");
-
-    // The Welcome window greets a fresh boot.
-    await expect(page.getByText("A desktop that lives in your browser")).toBeVisible();
+    await boot(page);
 
     // Dock has the built-in apps; menu bar shows the brand menu.
     await expect(page.locator("[data-dock-app=\"files\"]")).toBeVisible();

@@ -1,24 +1,9 @@
-import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { createFolder, openFiles } from "./helpers";
 
 // B5 clipboard: Copy/Cut/Paste over the ⌘C/⌘X/⌘V chords. `ControlOrMeta` maps
 // to ⌘ on WebKit and Ctrl elsewhere; either way shortcuts.ts resolves the same
 // "⌘C" menu chord and routes it to the focused Files window.
-
-async function openFiles(page: Page): Promise<void> {
-  await page.goto("/");
-  await expect(page.getByText("A desktop that lives in your browser")).toBeVisible();
-  await page.locator("[data-dock-app=\"files\"]").click();
-  await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();
-}
-
-async function createFolder(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "New folder" }).click();
-  const rename = page.locator("input:focus");
-  await rename.fill(name);
-  await rename.press("Enter");
-  await expect(page.getByText(name, { exact: true })).toBeVisible();
-}
 
 test.describe("Files clipboard (B5)", () => {
   test("Copy then Paste duplicates into the same folder with a deduped name", async ({ page }) => {

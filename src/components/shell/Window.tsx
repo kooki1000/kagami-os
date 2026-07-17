@@ -249,6 +249,8 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         focused ? "" : "saturate-[.85]"
       }`}
       style={style}
+      data-window-id={win.id}
+      data-window-focused={focused}
       onPointerDownCapture={() => focusWindow(win.id)}
     >
       <div

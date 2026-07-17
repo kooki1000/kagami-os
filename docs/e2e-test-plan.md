@@ -1,6 +1,6 @@
 # E2E Test Plan — remaining scenarios
 
-**Status:** draft · 2026-07-17
+**Status:** done · 2026-07-17
 **Owner:** QA / platform
 **Scope:** Playwright suite under `e2e/`, run against a production preview
 build on Chromium + Firefox + WebKit (see `playwright.config.ts`).
@@ -14,31 +14,41 @@ landed on `test/e2e-files-b4-b5-trash`.
 
 ## 1. Where coverage stands today
 
-| Catalog # | Scenario                                                  | Spec                        | State                                     |
-| --------- | --------------------------------------------------------- | --------------------------- | ----------------------------------------- |
-| 1         | Cold boot renders, no console errors                      | `boot.spec.ts`              | ✅ done                                   |
-| 4         | Create → rename → **move (DnD)** → trash → restore        | `files.spec.ts`             | ⚠️ partial — **DnD move step missing**    |
-| 5         | Trash → Empty (two-step confirm) → gone after reload      | `files-trash.spec.ts`       | ✅ done                                   |
-| 6         | Notes edit → autosave → reload persists                   | `notes.spec.ts`             | ✅ done                                   |
-| —         | B4 multi-select (click/⇧/⌘, marquee, bulk)                | `files-multiselect.spec.ts` | ✅ done                                   |
-| —         | B5 clipboard (Copy/Cut/Paste, dedupe)                     | `files-clipboard.spec.ts`   | ✅ done                                   |
-| 2         | WM: drag → snap-left → restore-drag → close               | —                           | ❌ todo                                   |
-| 3         | Shortcut routing: app chord beats shell; ⌘W closes        | —                           | ❌ todo                                   |
-| 7         | Open file → Notes selects it; switch; re-open re-selects  | —                           | ❌ todo                                   |
-| 8         | Viewer: zoom / fit / rotate; window resize refits         | —                           | ❌ todo                                   |
-| 9         | Terminal: `mkdir`/`echo >`/`cat`/`rm` round-trip vs Files | —                           | ❌ todo                                   |
-| 10        | Theme: dark toggle + accent + wallpaper; reload persists  | —                           | ❌ todo                                   |
-| 11        | Dock: pin/unpin, size/position relayout, running dots     | —                           | ❌ todo                                   |
-| 12        | Notification: Undo action restores; center marks read     | —                           | ❌ todo                                   |
-| 13        | Two windows: z-order, minimize→dock restore, ⌘Q all       | —                           | ❌ todo                                   |
-| 14        | Private-mode boot (no IDB): in-memory, banner shown       | —                           | ❌ **blocked — banner UI does not exist** |
-| 15        | Forced app crash → error card; shell survives             | —                           | ❌ **needs a crash-trigger hook**         |
-| P10       | B2 upload from host OS                                    | —                           | ❌ todo                                   |
-| P10       | B3 download to host OS (file + folder-as-zip)             | —                           | ❌ todo                                   |
+| Catalog # | Scenario                                                  | Spec                        | State                                           |
+| --------- | --------------------------------------------------------- | --------------------------- | ----------------------------------------------- |
+| 1         | Cold boot renders, no console errors                      | `boot.spec.ts`              | ✅ done                                         |
+| 2         | WM: drag → snap-left → restore-drag → close               | `windows.spec.ts`           | ✅ done                                         |
+| 3         | Shortcut routing: app chord beats shell; ⌘W closes        | `shortcuts.spec.ts`         | ✅ done                                         |
+| 4         | Create → rename → **move (DnD)** → trash → restore        | `files.spec.ts`             | ✅ done — DnD leg is Chromium-only (see §7)     |
+| 5         | Trash → Empty (two-step confirm) → gone after reload      | `files-trash.spec.ts`       | ✅ done                                         |
+| 6         | Notes edit → autosave → reload persists                   | `notes.spec.ts`             | ✅ done                                         |
+| 7         | Open file → Notes selects it; switch; re-open re-selects  | `open-with.spec.ts`         | ✅ done                                         |
+| 8         | Viewer: zoom / fit / rotate; window resize refits         | `viewer.spec.ts`            | ✅ done                                         |
+| 9         | Terminal: `mkdir`/`echo >`/`cat`/`rm` round-trip vs Files | `terminal.spec.ts`          | ✅ done                                         |
+| 10        | Theme: dark toggle + accent + wallpaper; reload persists  | `theme.spec.ts`             | ✅ done (found + fixed a real persist bug)      |
+| 11        | Dock: pin/unpin, size/position relayout, running dots     | `dock.spec.ts`              | ✅ done                                         |
+| 12        | Notification: Undo action restores; center marks read     | `notifications.spec.ts`     | ✅ done                                         |
+| 13        | Two windows: z-order, minimize→dock restore, ⌘Q all       | `multi-window.spec.ts`      | ✅ done                                         |
+| 14        | Private-mode boot (no IDB): in-memory, banner shown       | `private-mode.spec.ts`      | ✅ done — scoped to option B (no banner UI yet) |
+| 15        | Forced app crash → error card; shell survives             | `crash.spec.ts`             | ✅ done — flag-gated `devcrash` app added       |
+| P10       | B2 upload from host OS                                    | `upload.spec.ts`            | ✅ done                                         |
+| P10       | B3 download to host OS (file + folder-as-zip)             | `download.spec.ts`          | ✅ done                                         |
+| —         | B4 multi-select (click/⇧/⌘, marquee, bulk)                | `files-multiselect.spec.ts` | ✅ done                                         |
+| —         | B5 clipboard (Copy/Cut/Paste, dedupe)                     | `files-clipboard.spec.ts`   | ✅ done                                         |
 
-**Net:** 6 of the 15 catalog scenarios plus B4/B5 are covered; 9 catalog
-scenarios and the 2 Phase-10 flows remain. Two of the remaining nine need a
-source change before they can be written (see §5).
+**Net:** all 15 catalog scenarios plus B2–B5 are covered — 19 spec files,
+70 passing test executions across Chromium/Firefox/WebKit (2 intentionally
+skipped: the native-HTML5-DnD leg of #4 on Firefox/WebKit, see §7). §5's two
+blocked scenarios were unblocked during this pass: #14 shipped scoped to
+option B, and #15 got the flag-gated crash-trigger hook. Along the way, two
+real (pre-existing, unrelated-to-this-plan) bugs were found and fixed:
+`themeStore.ts`'s dark-mode preference silently failing to restore after a
+reload (a self-referential `onRehydrateStorage` callback racing zustand's
+synchronous-storage rehydration — fixed via a `merge` function instead), and
+blob-backed uploads (any non-inline file, e.g. images) failing outright on
+WebKit (`idbBlobStore.ts` tried to structured-clone a `Blob` directly into
+IndexedDB, which WebKit rejects — fixed by storing the raw bytes +
+mime type instead and reconstructing the `Blob` on read).
 
 ---
 
@@ -274,6 +284,19 @@ steps, the assertions, and the cross-browser risk.
 
 ## 5. Blocked scenarios — need a source change first
 
+**Resolved.** #14 shipped as option B (scoped to in-memory behavior; the
+banner is still a real, separate UX gap worth its own small feature pass —
+see the note left on `private-mode.spec.ts`). #15 got the flag-gated
+`devcrash` app described below, with one change from the original sketch:
+the crash decision reads `isFlagEnabled("e2e_crash")` fresh on every render
+rather than a one-shot module flag mutated during render — React can retry a
+throwing render once before committing to the error boundary, and a flag
+flipped as a side effect of the first attempt was already "spent" by the
+retry, so the boundary never saw an error at all. Reading the flag is
+idempotent, so every attempt reaches the same outcome regardless of retries;
+a test recovers it by flipping the flag off (via `localStorage`) before
+clicking "Reload app".
+
 ### 5.1 #14 Private-mode boot — **banner UI does not exist**
 
 `idbAdapter.ts` already degrades to an in-memory no-op when `indexedDB` is
@@ -343,12 +366,18 @@ day plus the banner feature.
 
 ---
 
-## 8. Open questions for sign-off
+## 8. Open questions for sign-off — resolved
 
-1. **#14:** build the persistence banner now (option A), or ship the test
-   scoped to in-memory behavior (option B) and file the banner separately?
-2. **#15:** acceptable to add a flag-gated crash trigger to the app, or
-   prefer a test-only entry point kept entirely out of `src/`?
-3. **DnD (#4 move, #2 snap):** if these prove flaky on Firefox/WebKit, is
-   Chromium-only coverage acceptable for the drag interactions, given the
-   underlying store logic is already unit-tested?
+1. **#14:** shipped option B (scoped test); the banner (option A) is filed
+   as a follow-up feature, not bundled into this test-writing pass.
+2. **#15:** went with the flag-gated crash trigger in `src/apps/devcrash/`
+   (registered only when `e2e_crash` is on; off by default, never shipped
+   on).
+3. **DnD:** #4's move leg is Chromium-only (`test.skip` on Firefox/WebKit) —
+   Playwright's `dragTo()` reliably drives the app's real HTML5
+   draggable/dragstart/drop wiring on Chromium, but native DnD synthesis is
+   unreliable enough on the other two engines that it wasn't worth chasing;
+   the underlying move logic is already covered by `fsStore.test.ts`. #2's
+   snap/restore drag turned out **not** to need Chromium-only gating — it's
+   pointer-event-driven (not HTML5 DnD), which Playwright drives reliably
+   everywhere; it runs on the full matrix.
