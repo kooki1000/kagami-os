@@ -1,11 +1,41 @@
 import type { FsNode } from "@/system/fs/types";
 import { describe, expect, it } from "vitest";
 import { indexNodes } from "@/system/fs/fsStore";
-import { nodeSize } from "./fileMeta";
+import { isAudioNode, isVideoNode, nodeKind, nodeSize } from "./fileMeta";
 
 function node(partial: Partial<FsNode> & Pick<FsNode, "id" | "parentId" | "name" | "type">): FsNode {
   return { createdAt: 0, modifiedAt: 0, ...partial };
 }
+
+describe("audio/video classification (D5)", () => {
+  it("isAudioNode/isVideoNode match on the mimeType prefix only", () => {
+    const audio = node({ id: "a", parentId: "home", name: "song.mp3", type: "file", mimeType: "audio/mpeg" });
+    const video = node({ id: "v", parentId: "home", name: "clip.mp4", type: "file", mimeType: "video/mp4" });
+    const image = node({ id: "i", parentId: "home", name: "pic.png", type: "file", mimeType: "image/png" });
+    const folder = node({ id: "f", parentId: "home", name: "Box", type: "folder", mimeType: "audio/mpeg" });
+
+    expect(isAudioNode(audio)).toBe(true);
+    expect(isVideoNode(audio)).toBe(false);
+    expect(isVideoNode(video)).toBe(true);
+    expect(isAudioNode(video)).toBe(false);
+    expect(isAudioNode(image)).toBe(false);
+    expect(isVideoNode(image)).toBe(false);
+    // A folder never counts, even one somehow carrying a media mimeType.
+    expect(isAudioNode(folder)).toBe(false);
+  });
+
+  it("nodeKind falls back to a generic Audio/Video label for mimeTypes not in the lookup table", () => {
+    const flac = node({ id: "a", parentId: "home", name: "song.flac", type: "file", mimeType: "audio/flac" });
+    const mkv = node({ id: "v", parentId: "home", name: "clip.mkv", type: "file", mimeType: "video/x-matroska" });
+    expect(nodeKind(flac)).toBe("Audio");
+    expect(nodeKind(mkv)).toBe("Video");
+  });
+
+  it("nodeKind prefers the specific lookup-table label when one exists", () => {
+    const mp3 = node({ id: "a", parentId: "home", name: "song.mp3", type: "file", mimeType: "audio/mpeg" });
+    expect(nodeKind(mp3)).toBe("MP3 Audio");
+  });
+});
 
 describe("nodeSize (B8)", () => {
   it("sizes an inline-content file by its UTF-8 byte length, not character count", () => {

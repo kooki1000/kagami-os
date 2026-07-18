@@ -2,6 +2,7 @@ import type { AppManifest } from "./types";
 import { devCrashApp } from "@/apps/devcrash";
 import { filesApp } from "@/apps/files";
 import { notesApp } from "@/apps/notes";
+import { playerApp } from "@/apps/player";
 import { settingsApp } from "@/apps/settings";
 import { terminalApp } from "@/apps/terminal";
 import { viewerApp } from "@/apps/viewer";
@@ -16,6 +17,7 @@ export const apps: AppManifest[] = [
   filesApp,
   notesApp,
   viewerApp,
+  playerApp,
   terminalApp,
   welcomeApp,
   settingsApp,
