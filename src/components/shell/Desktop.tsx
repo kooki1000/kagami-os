@@ -232,9 +232,8 @@ export function Desktop() {
     );
   }
 
-  // Also wired to pointercancel: the browser fires that *instead of*
-  // pointerup when it takes the gesture over, which would otherwise leave
-  // the drag armed so the next pointermove teleports the icon.
+  // Also wired to pointercancel, which fires *instead of* pointerup when the
+  // browser takes over — otherwise the next pointermove teleports the icon.
   function onIconPointerUp(e: ReactPointerEvent<HTMLDivElement>): void {
     if (dragRef.current?.pointerId === e.pointerId)
       dragRef.current = null;

@@ -243,8 +243,7 @@ describe("setViewport re-layout", () => {
     api().moveWindow(id, 900, 700);
     api().setViewport({ width: 500, height: 400 });
 
-    // Still grabbable: at least 80px of width on screen, title bar above the
-    // bottom edge — otherwise the window can never be dragged back.
+    // Still grabbable, or it can never be dragged back.
     expect(win(id).rect.x).toBeLessThanOrEqual(500 - 80);
     expect(win(id).rect.y).toBeLessThanOrEqual(400 - 40);
   });

@@ -1,11 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { openFiles } from "./helpers";
 
-// Regression: the window store's viewport is fed by App.tsx's `resize`
-// listener, but nothing re-laid-out the windows when it changed. A maximized
-// window kept the *old* screen's dimensions, and a window near the old
-// bottom/right edge could end up stranded past the new one with its title bar
-// unreachable — no way to drag it back.
+// Regression: `setViewport` was fed by App.tsx's resize listener but never
+// re-laid-out the windows — maximized ones kept the old screen's dimensions,
+// and edge-adjacent ones could strand their title bar out of reach.
 
 test.describe("windows track viewport resizes", () => {
   test("a maximized window re-fills the viewport after the browser shrinks", async ({ page }) => {

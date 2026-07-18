@@ -111,14 +111,10 @@ function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
 }
 
 /**
- * `rootIds` and everything beneath them, de-duplicated. Indexing children
- * once up front (rather than rescanning every node per level, as a naive
- * recursive walk does) keeps this linear in the tree instead of quadratic —
- * it's what `emptyTrash` / `deleteForever` / `purgeExpiredTrash` run over a
- * whole subtree. Iterative, so depth is bounded by memory, not stack; the
- * `seen` set also means a corrupt parent cycle terminates rather than
- * hanging. Callers only ever use the result as a removal set, so the
- * parent-before-child order is incidental, not contractual.
+ * `rootIds` and everything beneath them, de-duplicated. Indexing children once
+ * keeps this linear rather than quadratic; iterating (with `seen`) means deep
+ * trees and corrupt parent cycles terminate instead of overflowing the stack.
+ * Callers use the result as a removal set, so ordering isn't contractual.
  */
 function collectSubtrees(nodes: NodeMap, rootIds: string[]): string[] {
   const index = childIdsByParent(nodes);
@@ -211,9 +207,8 @@ export interface FsStore {
   createBlobFile: (parentId: string, name: string, blob: Blob, mimeType?: string) => Promise<FsNode>;
   updateFileContent: (id: string, content: string) => void;
   /**
-   * Bump a node's `modifiedAt` without touching its bytes — Terminal `touch`
-   * on an existing file. Deliberately not `updateFileContent(id, content)`,
-   * which would clear a blob-backed file's `contentRef` and drop its bytes.
+   * Bump `modifiedAt` only — Terminal `touch`. Not `updateFileContent`, which
+   * would clear a blob-backed file's `contentRef` and drop its bytes.
    */
   touchFile: (id: string) => void;
   rename: (id: string, name: string) => void;
@@ -369,11 +364,8 @@ export const useFsStore = create<FsStore>()((set, get) => {
       const node = get().nodes[id];
       if (!node || node.type !== "file")
         return;
-      // `content` and `contentRef` are mutually exclusive (see FsNode). A
-      // blob-backed file edited inline — a >64 KB text upload opened in
-      // Notes — must drop its ref, or every reader that prefers the ref
-      // (download, Viewer, Terminal `cat`) keeps serving the pre-edit bytes
-      // and the edit is silently invisible.
+      // `content` and `contentRef` are mutually exclusive (see FsNode): readers
+      // prefer the ref, so keeping it would serve pre-edit bytes forever.
       const releasedRef = node.contentRef !== undefined;
       commit([{ ...node, content, contentRef: undefined, modifiedAt: Date.now() }]);
       if (releasedRef)

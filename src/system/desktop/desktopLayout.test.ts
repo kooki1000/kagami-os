@@ -44,8 +44,7 @@ describe("clampIconPosition (B7)", () => {
   });
 
   it("re-clamps a stored position when the viewport shrinks below it", () => {
-    // The persisted-layout case: dragged to the corner of a large display,
-    // then reopened on a small one.
+    // Dragged to the corner of a large display, reopened on a small one.
     const stored = clampIconPosition({ x: 900, y: 700 }, viewport);
     const onSmaller = clampIconPosition(stored, { width: 500, height: 400 });
     expect(onSmaller.x).toBeLessThanOrEqual(500 - DESKTOP_CELL_W);

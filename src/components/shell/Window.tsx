@@ -98,9 +98,8 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Closing a window mid-minimize would otherwise leave the fly-to-dock
-  // timer to fire against an unmounted component and a window id the store
-  // no longer has.
+  // Else closing mid-minimize leaves the fly-to-dock timer to fire against an
+  // unmounted component and a window id the store no longer has.
   useEffect(() => () => {
     if (minimizeTimerRef.current !== null)
       window.clearTimeout(minimizeTimerRef.current);
@@ -166,12 +165,9 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     setSnapPreview(null);
   }
 
-  // The browser can cancel a pointer mid-drag (touch turning into a scroll,
-  // the pointer leaving the window, a system gesture taking over) and it
-  // fires *instead of* pointerup. Without this the drag state stays armed
-  // and, if the cancel lands near a screen edge, the snap-zone highlight is
-  // left painted on the desktop with no way to dismiss it. Aborts rather
-  // than snapping — a cancelled gesture shouldn't commit a snap.
+  // pointercancel fires *instead of* pointerup when the browser takes the
+  // gesture over; without this the drag stays armed and a cancel near an edge
+  // strands the snap highlight. Aborts rather than committing the snap.
   function onTitlePointerCancel(e: ReactPointerEvent<HTMLDivElement>) {
     if (!dragStateRef.current)
       return;

@@ -17,10 +17,8 @@ const AUTOSAVE_MS = 600;
 function NoteEditor({ doc }: { doc: FsNode }) {
   const updateFileContent = useFsStore(s => s.updateFileContent);
   const nodes = useFsStore(s => s.nodes);
-  // A text file over the inline threshold lives in the blob store, and Notes
-  // has no reader for those yet. Showing it as an empty editable buffer
-  // would invite a keystroke that replaces the whole file, so present it
-  // read-only instead of pretending it's a blank note.
+  // Blob-backed text has no reader here yet; an empty editable buffer would
+  // invite a keystroke that replaces the whole file, so show it read-only.
   const external = doc.contentRef !== undefined;
   const [draft, setDraft] = useState(doc.content ?? "");
   const saved = draft === (doc.content ?? "");

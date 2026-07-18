@@ -6,9 +6,8 @@ import { blobStore } from "./blobStore";
 import { indexNodes, useFsStore } from "./fsStore";
 import { ROOT_ID, TRASH_ID } from "./types";
 
-// Regression suite for the `content` / `contentRef` invariant documented on
-// `FsNode`: "A node has at most one of `content` / `contentRef`", and for the
-// blob GC's interaction with in-flight blob writes.
+// Pins `FsNode`'s "at most one of `content` / `contentRef`" invariant, plus
+// the blob GC's interaction with in-flight blob writes.
 
 const api = () => useFsStore.getState();
 
@@ -39,9 +38,7 @@ describe("updateFileContent on a blob-backed file", () => {
 
     const updated = api().nodes[node.id];
     expect(updated.content).toBe("edited in Notes");
-    // Without this, resolveFileBytes()/useBlobUrl() still prefer contentRef
-    // and hand back the pre-edit bytes — the edit is silently invisible to
-    // download, the Viewer, and `cat`.
+    // Else readers still prefer contentRef and serve pre-edit bytes.
     expect(updated.contentRef).toBeUndefined();
   });
 
@@ -62,13 +59,10 @@ describe("updateFileContent on a blob-backed file", () => {
 
 describe("blob GC vs. an in-flight blob write", () => {
   it("does not collect a blob whose node commit hasn't landed yet", async () => {
-    // `createBlobFile` writes blob-before-node, so between the two there is a
-    // window in which bytes are stored that nothing references — a sweep
-    // landing there can't tell an in-flight upload from a true orphan.
-    // What keeps this safe today is ordering, not a lock: the node `commit`
-    // is synchronous off the blob write's microtask, while a sweep needs two
-    // full IndexedDB transactions to get to its delete. That's load-bearing
-    // and easy to break by making the commit path async, so it's pinned here.
+    // Blob-before-node leaves a window where stored bytes have no referrer.
+    // Safe today by ordering, not locking: `commit` is synchronous off the
+    // write's microtask while a sweep needs two IDB transactions. Load-bearing
+    // and easy to break by making the commit path async, so pinned here.
     const pending = api().createBlobFile(
       ROOT_ID,
       "photo.png",
@@ -84,8 +78,7 @@ describe("blob GC vs. an in-flight blob write", () => {
 
     const node = await pending;
 
-    // A committed node whose bytes the sweep collected is a dangling
-    // reference — the file is in the tree but can never be read again.
+    // A node whose bytes were collected is in the tree but unreadable.
     expect(node.contentRef!.hash).toBe(hash);
     expect(await blobStore.has(hash)).toBe(true);
   });

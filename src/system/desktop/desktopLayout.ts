@@ -20,12 +20,10 @@ export function autoPosition(index: number, viewportHeight: number): { x: number
 }
 
 /**
- * Keep an icon's whole cell on screen, below the menu bar. Applied both when
- * dragging and when reading a stored position back — positions persist to
- * localStorage, so without the read-side clamp an icon dragged to the corner
- * of a large display would sit permanently off-screen (and thus unclickable)
- * on a smaller one. Lower bounds win on a viewport too small to satisfy
- * both, so the result is never an inverted range.
+ * Keep an icon's whole cell on screen, below the menu bar. Applied on drag and
+ * on read-back: positions persist, so a corner drop on a large display would
+ * otherwise be permanently off-screen on a smaller one. Lower bounds win on a
+ * viewport too small for both, so the range never inverts.
  */
 export function clampIconPosition(
   point: { x: number; y: number },

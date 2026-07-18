@@ -307,7 +307,7 @@ describe("trash lifecycle", () => {
 });
 
 describe("subtree collection at depth", () => {
-  /** A single chain root → n0 → n1 → … under Documents. */
+  /** A single chain n0 → n1 → … under Documents. */
   function chain(depth: number): FsNode[] {
     const list: FsNode[] = [];
     for (let i = 0; i < depth; i++) {
@@ -337,8 +337,7 @@ describe("subtree collection at depth", () => {
 
   it("terminates on a corrupt parent cycle instead of hanging", () => {
     seed();
-    // "reports" and "child" pointing at each other: unreachable via normal
-    // actions, but a walk that trusts the tree shape would loop forever.
+    // Unreachable normally, but a walk trusting the tree shape would hang.
     useFsStore.setState({
       nodes: {
         ...useFsStore.getState().nodes,

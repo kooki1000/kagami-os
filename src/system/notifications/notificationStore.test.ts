@@ -9,7 +9,7 @@ beforeEach(() => {
 
 describe("notification history limit", () => {
   it("never leaves a toast id pointing at an evicted item", () => {
-    // History is capped at 50; a long session pushes well past it.
+    // History caps at 50; a long session pushes well past it.
     for (let i = 0; i < 120; i++)
       api().notify({ title: `event ${i}` });
 
