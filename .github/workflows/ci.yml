@@ -49,12 +49,7 @@ jobs:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
     strategy:
-      # One job per engine instead of one job looping through all three —
-      # playwright.config.ts pins `workers: 1` in CI (avoids cross-window/
-      # IndexedDB flakiness from parallel test contexts sharing a runner),
-      # so without this split all three engines ran fully serially in a
-      # single job. Splitting keeps that same in-engine serialization but
-      # runs the three engines concurrently across runners instead.
+      # One job per engine so the three run concurrently instead of serially.
       fail-fast: false
       matrix:
         project: [chromium, firefox, webkit]
@@ -73,10 +68,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Browser binaries only (~150-200MB per engine) — the runner VM
-      # itself is fresh every run, so this can't cache the OS-level apt
-      # packages `--with-deps` also installs; those still run below on
-      # every job regardless of cache hit.
       - name: Cache Playwright browser binaries
         id: playwright-cache
         uses: actions/cache@v4
