@@ -19,7 +19,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
-import { appIdForFile, openFile } from "@/system/apps/openFile";
+import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@/system/apps/openFile";
+import { getApp } from "@/system/apps/registry";
 import { blobStore } from "@/system/fs/blobStore";
 import {
   childrenOf,
@@ -591,8 +592,19 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     }
     const system = targets.some(t => isSystemNode(t.id));
     const openable = !multi && (node.type === "folder" || appIdForFile(node) !== null);
+    const openWithCandidates = multi || node.type === "folder" ? [] : candidateAppsForFile(node);
+    const currentAppId = openWithCandidates.length ? appIdForFile(node) : null;
     return [
       ...(openable ? [{ label: "Open", run: () => openNode(node) }] : []),
+      ...(openWithCandidates.length
+        ? [{
+            label: "Open With",
+            children: openWithCandidates.map(appId => ({
+              label: `${appId === currentAppId ? "✓  " : "  "}${getApp(appId)?.name ?? appId}`,
+              run: () => openFileWithApp(node, appId),
+            })),
+          }]
+        : []),
       { label: multi ? `Copy ${targets.length} Items` : "Copy", run: copySelection },
       { label: multi ? `Cut ${targets.length} Items` : "Cut", run: cutSelection, disabled: system, dividerAfter: true },
       {

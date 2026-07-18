@@ -153,11 +153,25 @@ menus (shared `components/ui/ContextMenu`), and a two-step Empty Trash.
 
 Windows carry an optional `payload` (window store) delivered to the app
 component as `AppWindowProps.payload`. `system/apps/openFile.ts` owns the
-MVP type→app association table (`text/*` → Notes, `image/*` → Viewer) and
-opens a file by launching its app with a `{ fileId }` payload — reusing an
-existing window when one already shows that file. Single-instance apps
-(Notes) adopt a fresh payload into their selection via a render-time state
-adjustment; multi-instance apps (Viewer) get one window per file.
+built-in mime-family → app table (`text/*` → Notes, `image/*` → Viewer,
+`audio|video/*` → Player) and opens a file by launching its app with a
+`{ fileId }` payload — reusing an existing window when one already shows
+that file. Single-instance apps (Notes) adopt a fresh payload into their
+selection via a render-time state adjustment; multi-instance apps (Viewer,
+Player) get one window per file.
+
+Files' "Open With ▸" context-menu submenu (B11) generalizes that table: a
+user's choice persists as a per-exact-mime-type override in
+`settingsStore.fileAssociations` (localStorage), which `appIdForFile` checks
+before falling back to the built-in family default. `candidateAppsForFile`
+lists the app(s) capable of opening a given file — today every family still
+has exactly one candidate, but the list shape is what lets a future second
+app for the same type show up as a real choice instead of a no-op menu.
+`ContextMenu` grew nested-submenu support (`ContextMenuEntry.children`) for
+this; the flyout renders through a `createPortal` to `<body>` rather than
+inline, because the top-level menu's `translateY(-100%)` (used when it opens
+upward) makes it a `position: fixed` containing block for anything nested
+inside it, which would otherwise push the submenu off-screen.
 
 App-defined menu items use `appCommand` (vs the shell's `command`): the menu
 bar routes them through `system/appCommands.ts`, a tiny per-window pub/sub
