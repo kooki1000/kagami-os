@@ -1,17 +1,20 @@
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { NodeMap } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
 import { useRef, useState } from "react";
 import { RenameInput } from "@/components/ui/RenameInput";
-import { formatModified } from "@/lib/format";
+import { formatBytes, formatModified } from "@/lib/format";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { draggedNodeIds, hasExternalFiles, hasNodeDrag, startNodeDrag } from "./dnd";
-import { isImageNode, nodeKind } from "./fileMeta";
+import { isImageNode, nodeKind, nodeSize } from "./fileMeta";
 import { NodeGlyph } from "./NodeGlyph";
 
 export type SelectMode = "replace" | "toggle" | "range";
 
 export interface FilesViewProps {
   items: FsNode[];
+  /** Full tree, for the list view's Size column (B8) — folder sizes are a recursive rollup, so they need more than just the visible `items`. */
+  nodes: NodeMap;
   view: "grid" | "list";
   selectedIds: Set<string>;
   /** Items staged as a Finder-style Cut (B5) — rendered dimmed until pasted or replaced. */
@@ -77,6 +80,7 @@ function rectsOverlap(a: MarqueeRect, b: DOMRect): boolean {
 export function FilesView(props: FilesViewProps) {
   const {
     items,
+    nodes,
     view,
     selectedIds,
     cutIds,
@@ -329,7 +333,8 @@ export function FilesView(props: FilesViewProps) {
             <tr className="text-left text-[11px] text-ink-2">
               <th className="px-4 py-1.5 font-medium hairline-b">Name</th>
               <th className="w-28 px-2 py-1.5 font-medium hairline-b">Modified</th>
-              <th className="w-28 px-2 py-1.5 font-medium hairline-b">Kind</th>
+              <th className="w-24 px-2 py-1.5 font-medium hairline-b">Kind</th>
+              <th className="w-20 px-2 py-1.5 text-right font-medium hairline-b">Size</th>
             </tr>
           </thead>
           <tbody>
@@ -370,6 +375,7 @@ export function FilesView(props: FilesViewProps) {
                   </td>
                   <td className="px-2 py-1.5 text-ink-2">{formatModified(node.modifiedAt)}</td>
                   <td className="px-2 py-1.5 text-ink-2">{nodeKind(node)}</td>
+                  <td className="px-2 py-1.5 text-right text-ink-2">{formatBytes(nodeSize(nodes, node))}</td>
                 </tr>
               );
             })}
