@@ -39,8 +39,10 @@ import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsSto
 import { useWindowStore } from "@/system/windows/windowStore";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
+import { nodeSize } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
+import { NodeInfoPanel } from "./NodeInfoPanel";
 import { entriesFromDataTransfer, entriesFromFileList, uploadEntries } from "./upload";
 
 type ViewMode = "grid" | "list";
@@ -92,6 +94,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
+  const [infoNode, setInfoNode] = useState<FsNode | null>(null);
   const [confirmEmpty, setConfirmEmpty] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -376,6 +379,12 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       case "files.paste":
         pasteClipboard();
         break;
+      case "files.getInfo": {
+        const target = primaryTarget();
+        if (target)
+          setInfoNode(target);
+        break;
+      }
     }
   });
 
@@ -595,7 +604,10 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       },
       ...(multi
         ? []
-        : [{ label: "Rename", run: () => setRenamingId(node.id), disabled: system, dividerAfter: true }]),
+        : [
+            { label: "Get Info", run: () => setInfoNode(node) },
+            { label: "Rename", run: () => setRenamingId(node.id), disabled: system, dividerAfter: true },
+          ]),
       {
         label: multi ? `Move ${targets.length} Items to Trash` : "Move to Trash",
         run: () => trashManyWithUndo(targets.map(t => t.id)),
@@ -650,6 +662,16 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           header="Sort By"
           entries={sortEntries()}
           onClose={() => setSortMenu(null)}
+        />
+      )}
+      {infoNode && (
+        <NodeInfoPanel
+          node={infoNode}
+          size={nodeSize(nodes, infoNode)}
+          location={infoNode.parentId
+            ? pathOf(nodes, infoNode.parentId).slice(1).map(n => n.name).join(" / ")
+            : ""}
+          onClose={() => setInfoNode(null)}
         />
       )}
       <FilesSidebar
@@ -791,6 +813,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
 
         <FilesView
           items={visible}
+          nodes={nodes}
           view={view}
           selectedIds={selectedIds}
           cutIds={cutIds}

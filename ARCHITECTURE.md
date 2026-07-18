@@ -242,6 +242,29 @@ unavailable (private mode, SSR, tests), and `fsStore.init` falls back to the
 in-memory seed on any load error — so the OS always boots instead of hanging
 on the spinner.
 
+**E2E (`pnpm test:e2e`, Playwright)**: specs in `e2e/`, run against a
+production preview build across Chromium, Firefox, and WebKit. Shared
+helpers (`boot`, `openApp`, `createFolder`, …) live in `e2e/helpers.ts`;
+fixtures (kept tiny) in `e2e/fixtures/`. Conventions the suite relies on to
+stay lean and stable:
+
+- One user-visible seam per spec file, named `<area>.spec.ts`; each test
+  gets its own browser context so IndexedDB/localStorage start clean —
+  never rely on order between tests.
+- Assert on behavior (item presence/counts, values, download events), not
+  Tailwind classes — class assertions are the flakiest and least meaningful.
+- Target roles/labels/text, never CSS class chains; where a stable hook is
+  genuinely absent, add a `data-*` attribute (`data-dock-app`,
+  `data-window-control`, `data-node-id`, …) rather than reaching through
+  the DOM.
+- Cross-platform chords via the `ControlOrMeta` modifier —
+  `shortcuts.ts` resolves both ⌘ and Ctrl to the same menu chord string.
+- Tag genuinely flaky interactions (native HTML5 drag-and-drop) to run
+  Chromium-only rather than dropping the scenario or letting CI's
+  `retries: 2` paper over a real race.
+- New shell/app interaction seams land with an E2E scenario in the same PR,
+  mirroring the unit-test rule below.
+
 ## Phase status
 
 1. ✅ Shell skeleton (tokens, wallpaper, menu bar, dock, light/dark)

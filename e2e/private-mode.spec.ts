@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { boot, collectErrors, createFolder, openApp } from "./helpers";
 
-// Scenario #14 from the H5 catalog. Per docs/e2e-test-plan.md §5.1 option
-// (B): no dismissible "your session won't be saved" banner exists yet
-// (building one is a separate feature decision), so this is scoped to what
-// is real today — idbAdapter.ts's `typeof indexedDB === "undefined"` guard
+// Scenario #14 from the H5 catalog. No dismissible "your session won't be
+// saved" banner exists yet (building one is a separate feature decision),
+// so this is scoped to what is real today — idbAdapter.ts's
+// `typeof indexedDB === "undefined"` guard
 // falls back to an in-memory no-op StorageAdapter, so the OS boots and is
 // fully usable without IndexedDB, it just doesn't persist across a reload.
 // The banner is intentionally not asserted here.
