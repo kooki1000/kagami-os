@@ -48,6 +48,16 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
+    strategy:
+      # One job per engine instead of one job looping through all three —
+      # playwright.config.ts pins `workers: 1` in CI (avoids cross-window/
+      # IndexedDB flakiness from parallel test contexts sharing a runner),
+      # so without this split all three engines ran fully serially in a
+      # single job. Splitting keeps that same in-engine serialization but
+      # runs the three engines concurrently across runners instead.
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v7
 
@@ -63,17 +73,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Pin the browser download to the installed Playwright version.
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps
+      # Browser binaries only (~150-200MB per engine) — the runner VM
+      # itself is fresh every run, so this can't cache the OS-level apt
+      # packages `--with-deps` also installs; those still run below on
+      # every job regardless of cache hit.
+      - name: Cache Playwright browser binaries
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright browser + OS deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps ${{ matrix.project }}
+
+      - name: Install Playwright OS deps only (browser cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps ${{ matrix.project }}
 
       - name: Run E2E tests
-        run: pnpm test:e2e
+        run: pnpm exec playwright test --project=${{ matrix.project }}
 
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}
           path: playwright-report/
           retention-days: 7
