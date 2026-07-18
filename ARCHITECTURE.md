@@ -56,7 +56,12 @@ Pure state + actions, no React imports, so it is unit-testable headlessly
   consumed on restore. Dragging a non-normal window "peels" it back to its
   restore size under the cursor (`restoreToRect`).
 - The store owns a `viewport` (updated by `App` on resize) so geometry math
-  (cascade placement, maximize bounds, 50% snap, clamping) stays pure.
+  (cascade placement, maximize bounds, 50% snap, clamping) stays pure. A
+  single `rectForMode` helper derives the rect for each mode, and
+  `setViewport` replays it across every window — maximized/snapped windows
+  re-fill the new viewport, normal ones are re-clamped so a shrinking
+  viewport can't strand a title bar out of reach. Windows whose geometry
+  doesn't change keep their object identity, so `Window`'s memo holds.
 - `snapPreview` is transient UI state for the drag-to-edge highlight.
 
 ### `system/theme/themeStore.ts`
@@ -259,6 +264,10 @@ high-risk logic is framework-agnostic). Suites live next to their code:
   (trash → restore → fallback → empty → delete-forever).
 - `apps/terminal/shell.test.ts` — `resolvePath` (relative/`..`/`~`/absolute)
   and every command, driven against a seeded fs store.
+- `system/fs/blobIntegrity.test.ts` — the `content` xor `contentRef`
+  invariant: editing a blob-backed file inline releases its ref (and its
+  bytes), `touchFile` bumps the timestamp without disturbing them, and the
+  GC never collects a blob whose node commit is still in flight.
 
 Stores expose small test seams: `__resetFsStoreForTest` / `indexNodes`, and
 both stores accept `setState` seeding. **Persistence hardening**: the

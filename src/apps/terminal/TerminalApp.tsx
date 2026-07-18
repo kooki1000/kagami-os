@@ -76,6 +76,7 @@ export default function TerminalApp({ focused }: AppWindowProps) {
       createFolder: state.createFolder,
       createFile: state.createFile,
       updateFileContent: state.updateFileContent,
+      touchFile: state.touchFile,
       moveToTrash: state.moveToTrash,
       user: USER,
     };

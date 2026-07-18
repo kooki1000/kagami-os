@@ -179,6 +179,12 @@ export interface FsStore {
    */
   createBlobFile: (parentId: string, name: string, blob: Blob, mimeType?: string) => Promise<FsNode>;
   updateFileContent: (id: string, content: string) => void;
+  /**
+   * Bump a node's `modifiedAt` without touching its bytes — Terminal `touch`
+   * on an existing file. Deliberately not `updateFileContent(id, content)`,
+   * which would clear a blob-backed file's `contentRef` and drop its bytes.
+   */
+  touchFile: (id: string) => void;
   rename: (id: string, name: string) => void;
   /** Returns false when the move is invalid (into itself, a descendant, or a non-folder). */
   move: (id: string, newParentId: string) => boolean;
@@ -332,7 +338,22 @@ export const useFsStore = create<FsStore>()((set, get) => {
       const node = get().nodes[id];
       if (!node || node.type !== "file")
         return;
-      commit([{ ...node, content, modifiedAt: Date.now() }]);
+      // `content` and `contentRef` are mutually exclusive (see FsNode). A
+      // blob-backed file edited inline — a >64 KB text upload opened in
+      // Notes — must drop its ref, or every reader that prefers the ref
+      // (download, Viewer, Terminal `cat`) keeps serving the pre-edit bytes
+      // and the edit is silently invisible.
+      const releasedRef = node.contentRef !== undefined;
+      commit([{ ...node, content, contentRef: undefined, modifiedAt: Date.now() }]);
+      if (releasedRef)
+        sweepUnreferencedBlobs(get().nodes, blobStore).catch(logPersistError);
+    },
+
+    touchFile(id) {
+      const node = get().nodes[id];
+      if (!node || node.type !== "file")
+        return;
+      commit([{ ...node, modifiedAt: Date.now() }]);
     },
 
     rename(id, name) {

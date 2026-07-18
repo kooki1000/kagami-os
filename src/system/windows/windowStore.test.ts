@@ -210,3 +210,50 @@ describe("move + resize", () => {
     expect(win(id).mode).toBe("normal");
   });
 });
+
+describe("setViewport re-layout", () => {
+  it("re-fills a maximized window to the new viewport", () => {
+    const id = open();
+    api().maximizeWindow(id);
+    api().setViewport({ width: 600, height: 500 });
+
+    expect(win(id).rect).toEqual({
+      x: 0,
+      y: MENU_BAR_HEIGHT,
+      width: 600,
+      height: 500 - MENU_BAR_HEIGHT,
+    });
+  });
+
+  it("re-fills a snapped window to its half of the new viewport", () => {
+    const id = open();
+    api().snapWindow(id, "right");
+    api().setViewport({ width: 800, height: 600 });
+
+    expect(win(id).rect).toEqual({
+      x: 400,
+      y: MENU_BAR_HEIGHT,
+      width: 400,
+      height: 600 - MENU_BAR_HEIGHT,
+    });
+  });
+
+  it("keeps a normal window's title bar reachable when the viewport shrinks", () => {
+    const id = open();
+    api().moveWindow(id, 900, 700);
+    api().setViewport({ width: 500, height: 400 });
+
+    // Still grabbable: at least 80px of width on screen, title bar above the
+    // bottom edge — otherwise the window can never be dragged back.
+    expect(win(id).rect.x).toBeLessThanOrEqual(500 - 80);
+    expect(win(id).rect.y).toBeLessThanOrEqual(400 - 40);
+  });
+
+  it("leaves untouched windows referentially identical (no needless re-renders)", () => {
+    const id = open();
+    const before = win(id);
+    api().setViewport({ ...VIEWPORT });
+
+    expect(win(id)).toBe(before);
+  });
+});
