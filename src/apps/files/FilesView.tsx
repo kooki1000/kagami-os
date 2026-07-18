@@ -31,6 +31,8 @@ export interface FilesViewProps {
   onUploadInto: (folderId: string, dataTransfer: DataTransfer) => void;
   /** The folder `onUploadInto` targets when a drop lands on the background. */
   cwdId: string;
+  /** Exposes the scroll container so the parent's keyboard nav (B6) can read the live grid column count and scroll the cursor item into view. */
+  registerContainer?: (el: HTMLDivElement | null) => void;
 }
 
 /** Grid-view image preview: an uploaded/blob-backed image, or inline data URL. */
@@ -91,6 +93,7 @@ export function FilesView(props: FilesViewProps) {
     onDropInto,
     onUploadInto,
     cwdId,
+    registerContainer,
   } = props;
 
   const [dropFolderId, setDropFolderId] = useState<string | null>(null);
@@ -179,6 +182,8 @@ export function FilesView(props: FilesViewProps) {
       // folder named "Documents"), so give the item itself a stable,
       // unambiguous hook rather than relying on text content.
       "data-node-name": node.name,
+      // Stable hook for the keyboard cursor (B6) to scroll itself into view.
+      "data-node-id": node.id,
       "draggable": renamingId !== node.id,
       "onMouseDown": (e: ReactMouseEvent) => e.stopPropagation(),
       "onDragStart": (e: DragEvent) => {
@@ -252,6 +257,7 @@ export function FilesView(props: FilesViewProps) {
     return (
       <>
         <div
+          ref={registerContainer}
           className={`grid flex-1 place-items-center text-[13px] text-ink-2 ${backgroundDropRing}`}
           {...backgroundProps}
         >
@@ -266,6 +272,7 @@ export function FilesView(props: FilesViewProps) {
     return (
       <>
         <div
+          ref={registerContainer}
           className={`grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-3 overflow-auto p-3.5 ${backgroundDropRing}`}
           {...backgroundProps}
         >
@@ -316,7 +323,7 @@ export function FilesView(props: FilesViewProps) {
 
   return (
     <>
-      <div className={`flex-1 overflow-auto ${backgroundDropRing}`} {...backgroundProps}>
+      <div ref={registerContainer} className={`flex-1 overflow-auto ${backgroundDropRing}`} {...backgroundProps}>
         <table className="w-full border-collapse text-[12.5px]">
           <thead>
             <tr className="text-left text-[11px] text-ink-2">

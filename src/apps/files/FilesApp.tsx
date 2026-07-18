@@ -85,6 +85,10 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [anchorId, setAnchorId] = useState<string | null>(null);
+  // The roving keyboard-nav cursor (B6): always tracks the last item touched
+  // by click or arrow key, distinct from `anchorId` — which ⇧-range
+  // selection deliberately leaves pinned at the start of the range.
+  const [cursorId, setCursorId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
@@ -92,6 +96,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const typeAheadRef = useRef({ text: "", at: 0 });
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
   useEffect(() => {
     folderInputRef.current?.setAttribute("webkitdirectory", "");
@@ -123,6 +129,8 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       setSelectedIds(new Set());
     if (anchorId !== null)
       setAnchorId(null);
+    if (cursorId !== null)
+      setCursorId(null);
   }
 
   function navigate(id: string): void {
@@ -134,6 +142,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     setQuery("");
     setSelectedIds(new Set());
     setAnchorId(null);
+    setCursorId(null);
     setRenamingId(null);
     setConfirmEmpty(false);
   }
@@ -155,6 +164,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     const node = createFolder(target);
     setSelectedIds(new Set([node.id]));
     setAnchorId(node.id);
+    setCursorId(node.id);
     setRenamingId(node.id);
   }
 
@@ -230,6 +240,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     if (landed.length > 0) {
       setSelectedIds(new Set(landed));
       setAnchorId(landed[landed.length - 1]);
+      setCursorId(landed[landed.length - 1]);
     }
   }
 
@@ -354,6 +365,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
       case "files.selectAll":
         setSelectedIds(new Set(visible.map(n => n.id)));
         setAnchorId(null);
+        setCursorId(null);
         break;
       case "files.copy":
         copySelection();
@@ -367,8 +379,12 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     }
   });
 
-  /** Click-selection for one item (B4): plain click replaces, ⌘/⌃ toggles, ⇧ extends from the anchor. */
+  // Click-selection for one item (B4): plain click replaces, ⌘/⌃ toggles, ⇧
+  // extends from the anchor. Also the entry point for keyboard nav (B6) —
+  // see `moveCursor` — which is why every branch updates `cursorId` even
+  // though only "replace"/"toggle" also move the anchor.
   function handleSelectNode(node: FsNode, mode: SelectMode): void {
+    setCursorId(node.id);
     if (mode === "toggle") {
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -398,23 +414,129 @@ export default function FilesApp({ windowId }: AppWindowProps) {
     setAnchorId(node.id);
   }
 
-  // Minimal keyboard affordances for the multi-selection (full roving-focus
-  // keyboard nav is B6): Escape clears it, Delete/Backspace trashes it. Scoped
-  // to this window being focused, and skipped while typing (filter, rename).
-  // Mirrors useAppCommand's ref-indirection so the listener itself never
-  // needs to be re-subscribed as selection/nodes change.
+  // Live grid column count (B6), read from the actual laid-out CSS grid
+  // rather than guessed from viewport width, so it tracks window resizes and
+  // the `auto-fill` track count exactly. 1 in list view (a single column).
+  function columnCount(): number {
+    if (view !== "grid" || !containerRef.current)
+      return 1;
+    const tracks = getComputedStyle(containerRef.current).gridTemplateColumns.split(" ").filter(Boolean);
+    return tracks.length || 1;
+  }
+
+  function scrollNodeIntoView(id: string): void {
+    containerRef.current
+      ?.querySelector(`[data-node-id="${id}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  // Arrow-key roving focus (B6): move the cursor `delta` positions through
+  // `visible` (±1 for left/right, ±columnCount() for up/down); ⇧ extends the
+  // selection from the fixed anchor via the same "range" path clicks use.
+  function moveCursor(delta: number, extend: boolean): void {
+    if (visible.length === 0)
+      return;
+    const currentIdx = cursorId ? visible.findIndex(n => n.id === cursorId) : -1;
+    const nextIdx = currentIdx === -1
+      ? (delta > 0 ? 0 : visible.length - 1)
+      : Math.min(Math.max(currentIdx + delta, 0), visible.length - 1);
+    const node = visible[nextIdx];
+    if (!node)
+      return;
+    handleSelectNode(node, extend ? "range" : "replace");
+    scrollNodeIntoView(node.id);
+  }
+
+  // Type-ahead (B6): letters typed within 800ms of each other accumulate
+  // into a search string; jumps to the first visible item whose name starts
+  // with it (case-insensitive).
+  function typeAhead(char: string): void {
+    const state = typeAheadRef.current;
+    const now = Date.now();
+    state.text = now - state.at < 800 ? state.text + char.toLowerCase() : char.toLowerCase();
+    state.at = now;
+    const match = visible.find(n => n.name.toLowerCase().startsWith(state.text));
+    if (match) {
+      setSelectedIds(new Set([match.id]));
+      setAnchorId(match.id);
+      setCursorId(match.id);
+      scrollNodeIntoView(match.id);
+    }
+  }
+
+  // The item Enter/F2 act on: the cursor when it's part of the selection,
+  // else the sole selected item — never ambiguous across a multi-selection.
+  function primaryTarget(): FsNode | null {
+    if (cursorId && selectedIds.has(cursorId))
+      return nodes[cursorId] ?? null;
+    if (selectedIds.size === 1) {
+      const [id] = selectedIds;
+      return nodes[id] ?? null;
+    }
+    return null;
+  }
+
+  // Full roving-focus keyboard nav (B6): arrow keys move/extend the
+  // selection, Enter opens the cursor item, F2 renames it, printable
+  // characters do type-ahead search, Escape clears the selection, and
+  // Delete/Backspace trashes it. Scoped to this window being focused, and
+  // skipped while typing (filter, rename) — the outer listener below filters
+  // those by event target. Mirrors useAppCommand's ref-indirection so the
+  // listener itself never needs to be re-subscribed as selection/nodes change.
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useLayoutEffect(() => {
     keyHandlerRef.current = (e: KeyboardEvent) => {
-      if (selectedIds.size === 0)
-        return;
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setSelectedIds(new Set());
-      }
-      else if ((e.key === "Delete" || e.key === "Backspace") && !inTrash) {
-        e.preventDefault();
-        trashManyWithUndo([...selectedIds]);
+      switch (e.key) {
+        case "Escape":
+          if (selectedIds.size > 0) {
+            e.preventDefault();
+            setSelectedIds(new Set());
+          }
+          return;
+        case "Delete":
+        case "Backspace":
+          if (selectedIds.size > 0 && !inTrash) {
+            e.preventDefault();
+            trashManyWithUndo([...selectedIds]);
+          }
+          return;
+        case "Enter": {
+          const target = primaryTarget();
+          if (target) {
+            e.preventDefault();
+            openNode(target);
+          }
+          return;
+        }
+        case "F2": {
+          const target = primaryTarget();
+          if (target && !isSystemNode(target.id)) {
+            e.preventDefault();
+            setRenamingId(target.id);
+          }
+          return;
+        }
+        case "ArrowLeft":
+          e.preventDefault();
+          moveCursor(-1, e.shiftKey);
+          return;
+        case "ArrowRight":
+          e.preventDefault();
+          moveCursor(1, e.shiftKey);
+          return;
+        case "ArrowUp":
+          e.preventDefault();
+          moveCursor(-columnCount(), e.shiftKey);
+          return;
+        case "ArrowDown":
+          e.preventDefault();
+          moveCursor(columnCount(), e.shiftKey);
+          return;
+        default:
+          if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            typeAhead(e.key);
+          }
       }
     };
   });
@@ -702,6 +824,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
           onDropInto={handleDrop}
           onUploadInto={onUploadInto}
           cwdId={cwd}
+          registerContainer={el => (containerRef.current = el)}
         />
 
         <div className="flex h-6 flex-none items-center px-3 text-[11px] text-ink-2 select-none hairline-t">
