@@ -63,11 +63,16 @@ export const useNotificationStore = create<NotificationStore>()((set, get) => ({
       read: get().centerOpen,
       action: input.action,
     };
-    set(state => ({
-      items: [notification, ...state.items].slice(0, HISTORY_LIMIT),
+    set((state) => {
+      const items = [notification, ...state.items].slice(0, HISTORY_LIMIT);
       // Don't pile up toasts when the center is open.
-      toastIds: state.centerOpen ? state.toastIds : [...state.toastIds, id],
-    }));
+      const toastIds = state.centerOpen ? state.toastIds : [...state.toastIds, id];
+      // Trimming to HISTORY_LIMIT can evict an item a toast id still points
+      // at; those ids render nothing and would otherwise accumulate for the
+      // life of the session.
+      const live = new Set(items.map(n => n.id));
+      return { items, toastIds: toastIds.filter(t => live.has(t)) };
+    });
     return id;
   },
 

@@ -226,6 +226,8 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     return id;
   },
 
+  // Both closers drop `snapPreview`: it belongs to a drag on a window that
+  // no longer exists, and left set it paints an undismissable highlight.
   closeWindow: (id) => {
     const { windows, focusedId } = get();
     const remaining = windows.filter(w => w.id !== id);
@@ -233,6 +235,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
       windows: remaining,
       focusedId:
         focusedId === id ? (topWindow(remaining)?.id ?? null) : focusedId,
+      snapPreview: null,
     });
   },
 
@@ -243,6 +246,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     set({
       windows: remaining,
       focusedId: focusGone ? (topWindow(remaining)?.id ?? null) : focusedId,
+      snapPreview: null,
     });
   },
 
@@ -323,6 +327,9 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
           ...w,
           restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
           mode: "maximized",
+          // Maximizing implies showing it: leaving `minimized` set would
+          // resize a window that stays invisible.
+          minimized: false,
           rect: rectForMode("maximized", w.rect, viewport),
         };
       }),
@@ -354,6 +361,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
           ...w,
           restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
           mode,
+          minimized: false,
           rect: rectForMode(mode, w.rect, viewport),
         };
       }),

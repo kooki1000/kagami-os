@@ -257,3 +257,39 @@ describe("setViewport re-layout", () => {
     expect(win(id)).toBe(before);
   });
 });
+
+describe("visibility + transient state on mode changes", () => {
+  it("maximizing a minimized window makes it visible again", () => {
+    const id = open();
+    api().minimizeWindow(id);
+    api().maximizeWindow(id);
+
+    expect(win(id).minimized).toBe(false);
+    expect(win(id).mode).toBe("maximized");
+  });
+
+  it("snapping a minimized window makes it visible again", () => {
+    const id = open();
+    api().minimizeWindow(id);
+    api().snapWindow(id, "left");
+
+    expect(win(id).minimized).toBe(false);
+    expect(win(id).mode).toBe("snapped-left");
+  });
+
+  it("closing a window clears a snap preview left over from its drag", () => {
+    const id = open();
+    api().setSnapPreview("left");
+    api().closeWindow(id);
+
+    expect(api().snapPreview).toBeNull();
+  });
+
+  it("quitting an app clears a snap preview too", () => {
+    open();
+    api().setSnapPreview("right");
+    api().closeApp("files");
+
+    expect(api().snapPreview).toBeNull();
+  });
+});

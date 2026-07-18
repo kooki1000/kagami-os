@@ -166,6 +166,20 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     setSnapPreview(null);
   }
 
+  // The browser can cancel a pointer mid-drag (touch turning into a scroll,
+  // the pointer leaving the window, a system gesture taking over) and it
+  // fires *instead of* pointerup. Without this the drag state stays armed
+  // and, if the cancel lands near a screen edge, the snap-zone highlight is
+  // left painted on the desktop with no way to dismiss it. Aborts rather
+  // than snapping — a cancelled gesture shouldn't commit a snap.
+  function onTitlePointerCancel(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragStateRef.current)
+      return;
+    dragStateRef.current = null;
+    releasePointer(e.currentTarget, e.pointerId);
+    setSnapPreview(null);
+  }
+
   /* ---- edge/corner resize ---- */
 
   function onResizePointerDown(edge: Edge) {
@@ -274,6 +288,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         onPointerDown={onTitlePointerDown}
         onPointerMove={onTitlePointerMove}
         onPointerUp={onTitlePointerUp}
+        onPointerCancel={onTitlePointerCancel}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).closest("[data-window-control]"))
             return;
@@ -327,6 +342,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
             onPointerDown={onResizePointerDown(h.edge)}
             onPointerMove={onResizePointerMove}
             onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerUp}
           />
         ))}
     </div>
