@@ -33,6 +33,7 @@ function ctx(cwd = HOME_ID): ShellContext {
     createFolder: s.createFolder,
     createFile: s.createFile,
     updateFileContent: s.updateFileContent,
+    touchFile: s.touchFile,
     moveToTrash: s.moveToTrash,
     user: "kagami",
   };

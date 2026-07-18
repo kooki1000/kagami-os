@@ -10,8 +10,10 @@ import { defineConfig } from "vite";
  * client-side and self-hosted, so everything is `'self'` except:
  *  - `img-src`/`font-src data:` for the inline SVG favicon and seed artwork
  *    (and, later, uploaded images held as data URLs);
- *  - `img-src`/`worker-src blob:` reserved for the Phase 10 blob store and
- *    the zip-download worker (B1/B3);
+ *  - `img-src`/`media-src`/`worker-src blob:` for the blob store and the
+ *    zip-download worker (B1/B3). `media-src` must be spelled out — it falls
+ *    back to `default-src`, not `img-src`, so omitting it blocks every
+ *    `<audio>`/`<video>` blob URL in a production build;
  *  - `style-src 'unsafe-inline'` for React inline styles and the live
  *    accent/wallpaper custom properties written onto `<html>`.
  *
@@ -25,6 +27,7 @@ const CSP = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
+  "media-src 'self' data: blob:",
   "font-src 'self' data:",
   "connect-src 'self'",
   "worker-src 'self' blob:",

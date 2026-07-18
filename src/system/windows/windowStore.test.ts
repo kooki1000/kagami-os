@@ -210,3 +210,85 @@ describe("move + resize", () => {
     expect(win(id).mode).toBe("normal");
   });
 });
+
+describe("setViewport re-layout", () => {
+  it("re-fills a maximized window to the new viewport", () => {
+    const id = open();
+    api().maximizeWindow(id);
+    api().setViewport({ width: 600, height: 500 });
+
+    expect(win(id).rect).toEqual({
+      x: 0,
+      y: MENU_BAR_HEIGHT,
+      width: 600,
+      height: 500 - MENU_BAR_HEIGHT,
+    });
+  });
+
+  it("re-fills a snapped window to its half of the new viewport", () => {
+    const id = open();
+    api().snapWindow(id, "right");
+    api().setViewport({ width: 800, height: 600 });
+
+    expect(win(id).rect).toEqual({
+      x: 400,
+      y: MENU_BAR_HEIGHT,
+      width: 400,
+      height: 600 - MENU_BAR_HEIGHT,
+    });
+  });
+
+  it("keeps a normal window's title bar reachable when the viewport shrinks", () => {
+    const id = open();
+    api().moveWindow(id, 900, 700);
+    api().setViewport({ width: 500, height: 400 });
+
+    // Still grabbable, or it can never be dragged back.
+    expect(win(id).rect.x).toBeLessThanOrEqual(500 - 80);
+    expect(win(id).rect.y).toBeLessThanOrEqual(400 - 40);
+  });
+
+  it("leaves untouched windows referentially identical (no needless re-renders)", () => {
+    const id = open();
+    const before = win(id);
+    api().setViewport({ ...VIEWPORT });
+
+    expect(win(id)).toBe(before);
+  });
+});
+
+describe("visibility + transient state on mode changes", () => {
+  it("maximizing a minimized window makes it visible again", () => {
+    const id = open();
+    api().minimizeWindow(id);
+    api().maximizeWindow(id);
+
+    expect(win(id).minimized).toBe(false);
+    expect(win(id).mode).toBe("maximized");
+  });
+
+  it("snapping a minimized window makes it visible again", () => {
+    const id = open();
+    api().minimizeWindow(id);
+    api().snapWindow(id, "left");
+
+    expect(win(id).minimized).toBe(false);
+    expect(win(id).mode).toBe("snapped-left");
+  });
+
+  it("closing a window clears a snap preview left over from its drag", () => {
+    const id = open();
+    api().setSnapPreview("left");
+    api().closeWindow(id);
+
+    expect(api().snapPreview).toBeNull();
+  });
+
+  it("quitting an app clears a snap preview too", () => {
+    open();
+    api().setSnapPreview("right");
+    api().closeApp("files");
+
+    expect(api().snapPreview).toBeNull();
+  });
+});

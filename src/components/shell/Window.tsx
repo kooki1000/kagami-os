@@ -91,10 +91,18 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
 
   const [entered, setEntered] = useState(false);
   const [minimizeStyle, setMinimizeStyle] = useState<CSSProperties | null>(null);
+  const minimizeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Else closing mid-minimize leaves the fly-to-dock timer to fire against an
+  // unmounted component and a window id the store no longer has.
+  useEffect(() => () => {
+    if (minimizeTimerRef.current !== null)
+      window.clearTimeout(minimizeTimerRef.current);
   }, []);
 
   if (!app)
@@ -157,6 +165,17 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     setSnapPreview(null);
   }
 
+  // pointercancel fires *instead of* pointerup when the browser takes the
+  // gesture over; without this the drag stays armed and a cancel near an edge
+  // strands the snap highlight. Aborts rather than committing the snap.
+  function onTitlePointerCancel(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragStateRef.current)
+      return;
+    dragStateRef.current = null;
+    releasePointer(e.currentTarget, e.pointerId);
+    setSnapPreview(null);
+  }
+
   /* ---- edge/corner resize ---- */
 
   function onResizePointerDown(edge: Edge) {
@@ -212,6 +231,9 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     }
     else {
       // Fly toward the dock tile, then actually minimize in the store.
+      // Ignore a second click while one flight is already in progress.
+      if (minimizeTimerRef.current !== null)
+        return;
       const rect = rectRef.current;
       const target = dockTarget(win.appId);
       setMinimizeStyle({
@@ -220,7 +242,8 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         }px) scale(0.08)`,
         opacity: 0,
       });
-      window.setTimeout(() => {
+      minimizeTimerRef.current = window.setTimeout(() => {
+        minimizeTimerRef.current = null;
         setMinimizeStyle(null);
         minimizeWindow(win.id);
       }, MINIMIZE_MS);
@@ -261,6 +284,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         onPointerDown={onTitlePointerDown}
         onPointerMove={onTitlePointerMove}
         onPointerUp={onTitlePointerUp}
+        onPointerCancel={onTitlePointerCancel}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).closest("[data-window-control]"))
             return;
@@ -314,6 +338,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
             onPointerDown={onResizePointerDown(h.edge)}
             onPointerMove={onResizePointerMove}
             onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerUp}
           />
         ))}
     </div>

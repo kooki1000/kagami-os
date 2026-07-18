@@ -12,7 +12,7 @@ import { RenameInput } from "@/components/ui/RenameInput";
 import { launchApp } from "@/system/apps/launch";
 import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@/system/apps/openFile";
 import { getApp } from "@/system/apps/registry";
-import { autoPosition, DESKTOP_CELL_W } from "@/system/desktop/desktopLayout";
+import { autoPosition, clampIconPosition, DESKTOP_CELL_W } from "@/system/desktop/desktopLayout";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { blobStore } from "@/system/fs/blobStore";
 import { childrenOf, isSystemNode, isValidNodeName, pathOf, useFsStore } from "@/system/fs/fsStore";
@@ -79,7 +79,10 @@ export function Desktop() {
   );
 
   function positionFor(node: FsNode, index: number) {
-    return positions[node.id] ?? autoPosition(index, viewport.height);
+    const stored = positions[node.id];
+    return stored
+      ? clampIconPosition(stored, viewport)
+      : autoPosition(index, viewport.height);
   }
 
   function openNode(node: FsNode): void {
@@ -223,9 +226,14 @@ export function Desktop() {
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX)
       return;
     drag.moved = true;
-    setPosition(drag.id, { x: drag.originX + dx, y: drag.originY + dy });
+    setPosition(
+      drag.id,
+      clampIconPosition({ x: drag.originX + dx, y: drag.originY + dy }, viewport),
+    );
   }
 
+  // Also wired to pointercancel, which fires *instead of* pointerup when the
+  // browser takes over — otherwise the next pointermove teleports the icon.
   function onIconPointerUp(e: ReactPointerEvent<HTMLDivElement>): void {
     if (dragRef.current?.pointerId === e.pointerId)
       dragRef.current = null;
@@ -257,6 +265,7 @@ export function Desktop() {
             onPointerDown={e => onIconPointerDown(e, node, pos)}
             onPointerMove={onIconPointerMove}
             onPointerUp={onIconPointerUp}
+            onPointerCancel={onIconPointerUp}
             onDoubleClick={() => openNode(node)}
             onContextMenu={(e: ReactMouseEvent) => {
               e.preventDefault();

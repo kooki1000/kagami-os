@@ -17,6 +17,9 @@ const AUTOSAVE_MS = 600;
 function NoteEditor({ doc }: { doc: FsNode }) {
   const updateFileContent = useFsStore(s => s.updateFileContent);
   const nodes = useFsStore(s => s.nodes);
+  // Blob-backed text has no reader here yet; an empty editable buffer would
+  // invite a keystroke that replaces the whole file, so show it read-only.
+  const external = doc.contentRef !== undefined;
   const [draft, setDraft] = useState(doc.content ?? "");
   const saved = draft === (doc.content ?? "");
 
@@ -29,17 +32,17 @@ function NoteEditor({ doc }: { doc: FsNode }) {
   });
 
   useEffect(() => {
-    if (saved)
+    if (saved || external)
       return;
     const timer = window.setTimeout(updateFileContent, AUTOSAVE_MS, doc.id, draft);
     return () => window.clearTimeout(timer);
-  }, [saved, draft, doc.id, updateFileContent]);
+  }, [saved, external, draft, doc.id, updateFileContent]);
 
   // Flush pending edits when switching notes / closing the window.
   useEffect(() => () => {
-    if (!flushRef.current.saved)
+    if (!flushRef.current.saved && !external)
       updateFileContent(doc.id, flushRef.current.draft);
-  }, [doc.id, updateFileContent]);
+  }, [doc.id, external, updateFileContent]);
 
   const folderName = doc.parentId ? nodes[doc.parentId]?.name : undefined;
 
@@ -48,16 +51,28 @@ function NoteEditor({ doc }: { doc: FsNode }) {
       <div className="flex h-[34px] flex-none items-center gap-2 px-4 text-[12px] select-none hairline-b">
         <span className="truncate font-semibold text-ink">{nameStem(doc.name)}</span>
         {folderName && <span className="truncate text-ink-2">{folderName}</span>}
-        <span className={`ml-auto flex-none text-[11px] ${saved ? "text-ink-2" : "text-accent"}`}>
-          {saved ? "Saved" : "Editing…"}
+        <span className={`ml-auto flex-none text-[11px] ${saved || external ? "text-ink-2" : "text-accent"}`}>
+          {external ? "Read-only" : saved ? "Saved" : "Editing…"}
         </span>
       </div>
-      <textarea
-        value={draft}
-        placeholder="Start writing…"
-        className="min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-2"
-        onChange={e => setDraft(e.target.value)}
-      />
+      {external
+        ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-ink-2 select-none">
+              <NotebookPen className="size-7" strokeWidth={1.4} />
+              <span className="text-[13px]">This file is too large to edit in Notes</span>
+              <span className="text-[11.5px] opacity-70">
+                Download it from Files to read the full contents.
+              </span>
+            </div>
+          )
+        : (
+            <textarea
+              value={draft}
+              placeholder="Start writing…"
+              className="min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-2"
+              onChange={e => setDraft(e.target.value)}
+            />
+          )}
     </div>
   );
 }

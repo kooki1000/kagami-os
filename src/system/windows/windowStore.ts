@@ -105,6 +105,30 @@ function clampToViewport(rect: WindowRect, viewport: Viewport): WindowRect {
   return { ...rect, x, y };
 }
 
+/**
+ * The rect a window occupies in `mode`. Maximized/snapped rects derive purely
+ * from the viewport, so this serves both initial placement and re-layout on
+ * resize; a normal window keeps its rect, clamped back into reach.
+ */
+function rectForMode(
+  mode: WindowMode,
+  rect: WindowRect,
+  viewport: Viewport,
+): WindowRect {
+  const half = Math.round(viewport.width / 2);
+  const filled = { y: MENU_BAR_HEIGHT, height: viewport.height - MENU_BAR_HEIGHT };
+  switch (mode) {
+    case "maximized":
+      return { x: 0, width: viewport.width, ...filled };
+    case "snapped-left":
+      return { x: 0, width: half, ...filled };
+    case "snapped-right":
+      return { x: half, width: viewport.width - half, ...filled };
+    case "normal":
+      return clampToViewport(rect, viewport);
+  }
+}
+
 function cascadeRect(
   size: { width: number; height: number },
   viewport: Viewport,
@@ -128,7 +152,25 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   viewport: { width: 1440, height: 900 },
   snapPreview: null,
 
-  setViewport: viewport => set({ viewport }),
+  // Re-lays out every window: maximized/snapped ones re-fill the new viewport,
+  // normal ones are clamped so a shrink can't strand a title bar out of reach.
+  setViewport: (viewport) => {
+    const { windows, viewport: previous } = get();
+    if (previous.width === viewport.width && previous.height === viewport.height)
+      return;
+    set({
+      viewport,
+      windows: windows.map((w) => {
+        const rect = rectForMode(w.mode, w.rect, viewport);
+        return rect.x === w.rect.x
+          && rect.y === w.rect.y
+          && rect.width === w.rect.width
+          && rect.height === w.rect.height
+          ? w
+          : { ...w, rect };
+      }),
+    });
+  },
 
   setWindowTitle: (id, title) => {
     const { windows } = get();
@@ -181,6 +223,8 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     return id;
   },
 
+  // Both closers drop `snapPreview` — it belongs to a drag on a window that no
+  // longer exists, and left set it paints an undismissable highlight.
   closeWindow: (id) => {
     const { windows, focusedId } = get();
     const remaining = windows.filter(w => w.id !== id);
@@ -188,6 +232,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
       windows: remaining,
       focusedId:
         focusedId === id ? (topWindow(remaining)?.id ?? null) : focusedId,
+      snapPreview: null,
     });
   },
 
@@ -198,6 +243,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     set({
       windows: remaining,
       focusedId: focusGone ? (topWindow(remaining)?.id ?? null) : focusedId,
+      snapPreview: null,
     });
   },
 
@@ -278,12 +324,9 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
           ...w,
           restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
           mode: "maximized",
-          rect: {
-            x: 0,
-            y: MENU_BAR_HEIGHT,
-            width: viewport.width,
-            height: viewport.height - MENU_BAR_HEIGHT,
-          },
+          // Else we'd resize a window that stays invisible.
+          minimized: false,
+          rect: rectForMode("maximized", w.rect, viewport),
         };
       }),
     });
@@ -304,7 +347,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
 
   snapWindow: (id, side) => {
     const { windows, viewport } = get();
-    const half = Math.round(viewport.width / 2);
+    const mode: WindowMode = side === "left" ? "snapped-left" : "snapped-right";
     set({
       snapPreview: null,
       windows: windows.map((w) => {
@@ -313,13 +356,9 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
         return {
           ...w,
           restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
-          mode: side === "left" ? "snapped-left" : "snapped-right",
-          rect: {
-            x: side === "left" ? 0 : half,
-            y: MENU_BAR_HEIGHT,
-            width: side === "left" ? half : viewport.width - half,
-            height: viewport.height - MENU_BAR_HEIGHT,
-          },
+          mode,
+          minimized: false,
+          rect: rectForMode(mode, w.rect, viewport),
         };
       }),
     });
