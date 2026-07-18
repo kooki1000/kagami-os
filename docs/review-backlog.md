@@ -20,14 +20,14 @@ hits.
 
 The only vertical logic is a hardcoded guess:
 
-```ts
+```text
 const openUpward = y > window.innerHeight - 200;
 ```
 
 200px is smaller than the real menu. A Files item menu measures **229.5px**
 (`Open | Copy | Cut | Download as Zip | Get Info | Rename | Move to Trash`),
 and ~255px with `Open With ▸`. So for any click in roughly
-`(innerHeight - 230, innerHeight - 200]` the menu opens *downward* and runs off
+`(innerHeight - 230, innerHeight - 200]` the menu opens _downward_ and runs off
 the screen. Measured: right-click at y≈595 → menu box `top=597, bottom=826.5`;
 "Move to Trash" lands at y 794–821.5, clipped and unclickable.
 
@@ -39,7 +39,7 @@ correction. The same 200px constant drives the submenu flip at
 point, then in a layout effect read `ref.current.getBoundingClientRect()` and
 clamp:
 
-```ts
+```text
 const [pos, setPos] = useState({ x, y });
 useLayoutEffect(() => {
   const el = ref.current;
@@ -64,7 +64,7 @@ where the menu genuinely can't fit.
 
 **MEDIUM · verified · `src/components/shell/Dock.tsx:208`**
 
-```tsx
+```text
 style={{ left: menu.x, top: menu.y - 8, transform: "translateY(-100%)" }}
 ```
 
@@ -90,17 +90,17 @@ measure-then-clamp on both axes.
 
 **MEDIUM · verified · `src/components/shell/ToastStack.tsx:66-68` (`MAX_VISIBLE = 4`)**
 
-```ts
+```text
 const visible = items.filter(/* in toastIds */).slice(0, MAX_VISIBLE);
 ```
 
 Toasts past the 4th are simply not rendered, so their `Toast` never mounts, its
 5s timer never starts, and their ids sit in `toastIds` indefinitely. When the
-visible four expire, the next batch mounts *fresh* and runs a full 5s.
+visible four expire, the next batch mounts _fresh_ and runs a full 5s.
 
 Repro: Files → New folder → type `a/b` → press Enter 8 times (the rename field
 stays open — see §4 — so each Enter fires a "Can't rename" notification).
-Observed: 4 toasts; at +5.9s still 4 (the *older* four, previously invisible);
+Observed: 4 toasts; at +5.9s still 4 (the _older_ four, previously invisible);
 they clear only at +11.5s. Notifications from ~12 seconds ago pop up as if new,
 and the stack drains newest-first, so the oldest message is shown last.
 
@@ -122,12 +122,12 @@ stack drains in arrival order.
 
 **MEDIUM · verified · `src/components/ui/RenameInput.tsx:38`**
 
-```tsx
+```text
 onBlur={e => onCommit(e.target.value)}
 ```
 
 Every caller — `FilesApp.tsx:859-870`, `NotesApp.tsx:189-201`, and the
-equivalent in `Desktop.tsx` — returns early on an invalid name *without*
+equivalent in `Desktop.tsx` — returns early on an invalid name _without_
 clearing `renamingId`, so the input stays mounted. Blur then re-runs the same
 rejected commit.
 
@@ -142,11 +142,11 @@ re-fires the toast.
 Make `onCommit` return a boolean and have `RenameInput` treat `false` as
 "stay open and refocus":
 
-```ts
+```text
 onCommit: (name: string) => boolean;   // false = rejected, keep editing
 ```
 
-```tsx
+```text
 onBlur={(e) => {
   if (!onCommit(e.target.value)) e.target.focus();
 }}
@@ -162,7 +162,7 @@ currently exists in all three.
 
 **MEDIUM · measured · `src/apps/files/fileMeta.ts:68-77`**
 
-```ts
+```text
 export function nodeSize(nodes: NodeMap, node: FsNode): number {
   // …Object.values(nodes).filter(...) then recurse per child folder
 }
@@ -182,7 +182,7 @@ visible input lag and a stuttering marquee.
 `fsStore.ts` (see `ARCHITECTURE.md`): build one `parentId → children[]` index
 and walk iteratively.
 
-```ts
+```text
 export function folderSizes(nodes: NodeMap): Map<string, number> // one pass
 ```
 
@@ -234,7 +234,7 @@ the node disappears.
 
 **MEDIUM · by reading · `src/apps/player/PlayerApp.tsx:18` + `src/system/apps/openFile.ts:76-87`**
 
-```ts
+```text
 const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
 ```
 
@@ -252,7 +252,7 @@ opens, and no new window is created either.
 same render-phase payload adoption, comparing payload identity rather than
 `fileId` so re-opening the same file after skipping still re-selects it:
 
-```ts
+```text
 const [lastPayload, setLastPayload] = useState(payload);
 if (payload !== lastPayload) {
   setLastPayload(payload);
@@ -334,7 +334,7 @@ ever set); it breaks the size contract.
 **This one is a design question, not a mechanical fix** — which is why it was
 deferred rather than patched:
 
-- Routing oversized writes to `createBlobFile` is easy on the *create* path,
+- Routing oversized writes to `createBlobFile` is easy on the _create_ path,
   but overwriting an existing node needs a store action that replaces inline
   content with a blob ref (the mirror of what `updateFileContent` now does).
   That action doesn't exist yet.
@@ -352,7 +352,7 @@ large document. Then `writeFile` picks a path on `content.length`.
 **LOW (latent) · `settingsStore.ts:47`, `viewPrefsStore.ts:26`, `themeStore.ts:43`**
 
 None declares a `version`, so there is no migration hook when a shape changes.
-All three are safe *today* only because every consumer validates —
+All three are safe _today_ only because every consumer validates —
 `accentById`/`wallpaperById` fall back to `ACCENTS[0]`, `sortForFolder` falls
 back to `DEFAULT_SORT`, `appIdForFile` guards with `getApp(override)`. None
 would survive an actual shape change.
@@ -391,27 +391,28 @@ forgets real preferences.
 `onChange` always calls `setFlagOverride(flag.id, value)`, so toggling a
 default-off flag on and then back off writes `"off"` rather than removing the
 key. Repro: Settings › About → toggle "Online mode" on, then off. The row shows
-`(overridden)` permanently and the flag is pinned off *per device* — a future
+`(overridden)` permanently and the flag is pinned off _per device_ — a future
 change to the registered default, or a `VITE_FLAG_ONLINE` build value, is
 silently ignored, with no UI to clear it short of `localStorage.removeItem`.
 
 **Fix.** The store API already supports this — `setFlagOverride(id, value)`
 takes `boolean | null` and clears the key on `null` (`flags.ts:78-88`). Only
-the UI never passes it. Clear when the toggle returns to the effective
-default:
+the UI never passes it. Clear when the toggle returns to the underlying value:
 
-```ts
+```text
 onChange={(value) => {
-  setFlagOverride(flag.id, value === FLAG_BY_ID[flag.id].default ? null : value);
+  setFlagOverride(flag.id, value === effectiveDefault(flag.id) ? null : value);
   setTick(n => n + 1);
 }}
 ```
 
-Comparing against the registered `default` rather than the env value is the
-simple version; comparing against `envValue(id) ?? default` would also drop the
-override when it merely restates a build-time flag. Either way, add a "Reset to
-default" affordance on rows where `hasFlagOverride` is true, since a user who
-has pinned a value matching the default still can't tell it's pinned.
+`flags.ts` needs to expose that comparison — `FLAG_BY_ID` is module-private and
+`isFlagEnabled` already folds the override in, so neither works from the UI as-is.
+Add a small `effectiveDefault(id)` export returning `envValue(id) ?? FLAG_BY_ID[id].default`,
+so the override is dropped when it merely restates a build-time flag rather than
+only when it matches the registered default. Also add a "Reset to default"
+affordance on rows where `hasFlagOverride` is true — a user who has pinned a
+value that matches the default currently can't tell it's pinned.
 
 ---
 
@@ -419,7 +420,7 @@ has pinned a value matching the default still can't tell it's pinned.
 
 **LOW · verified · `src/apps/settings/SettingsApp.tsx:282-283`**
 
-```ts
+```text
 ["Version", "0.6.0 — “Lagoon”"],
 ["Build", "Phase 6 · Settings"],
 ```
@@ -441,12 +442,12 @@ It is a trap primed for the first schema bump: a second open tab holding a v1
 connection makes the new tab's `open()` fire `onblocked`, and **neither
 `onsuccess` nor `onerror` ever fires**, so the promise never settles.
 `fsStore.init` awaits `loadAll()` inside a `try` that only catches
-*rejections*, so `ready` stays `false` and the boot spinner hangs forever —
+_rejections_, so `ready` stays `false` and the boot spinner hangs forever —
 precisely the failure the persistence-hardening work was meant to eliminate.
 
 **Fix.** Now, while it's free:
 
-```ts
+```text
 request.onblocked = () => reject(new Error("IndexedDB upgrade blocked by another tab"));
 // and on the resolved connection:
 db.onversionchange = () => db.close();
@@ -478,21 +479,21 @@ before large uploads would be a further improvement.
 
 Noticed during review, each small and independent:
 
-| Where | Issue |
-| --- | --- |
-| `FilesView.tsx:107,143,217` | `suppressClickRef` is only cleared inside the container's `onClick`. End a marquee drag outside the container (over the sidebar, another window, off-browser) and no click reaches it, so the flag stays `true` and the *next* background click is silently swallowed. Clear it in `onUp` instead. |
-| `FilesView.tsx:135` + `FilesApp.tsx:855` | `onMarqueeSelect` is wired straight to `setSelectedIds`, so unlike `handleSelectNode` it never updates `anchorId`/`cursorId`. Click item 1, marquee items 5–8, press ArrowRight → selection collapses to item **2**. Route marquee selection through the same anchor/cursor update. |
-| `FilesView.tsx:152-153` | Marquee `mousemove`/`mouseup` listeners are added to `document` from an event handler with no `useEffect` cleanup. If `FilesView` unmounts mid-drag (⌘W with the button held) they survive until the next `mouseup` anywhere. Bounded, but the drag is also not abortable by Escape or blur. |
-| `FilesView.tsx:193-209` | `onContextMenu` selects an unselected item first; `onDragStart` doesn't. Select A/B/C, drag D onto a folder → only D moves but A/B/C stay highlighted. Align the two. |
-| `FilesApp.tsx` (`confirmEmpty`) | `window.setTimeout(setConfirmEmpty, 3000, false)` is never cleared on unmount. |
-| `FilesApp.tsx:142-151` | Render-phase `setState` when `nodes[cwd]` is missing converges only because `HOME_ID` always exists. If `HOME_ID` were ever absent it's an infinite render loop. Worth an explicit guard. |
-| `ViewerApp.tsx:129` | `hasSource` is true whenever `contentRef` is set, so a node whose blob is missing from the store shows the loading spinner **forever** rather than "no longer available". Needs a resolved-but-empty state from `useBlobUrl`. |
-| `MenuBar.tsx` | `fromSections` keys menus `app-${section.title}` and `DropMenu` keys items by `item.label` — duplicate titles/labels collide. |
-| `openFile.ts:111-115` | `openFileWithApp` persists the association even when the launch subsequently fails. |
-| `shell.ts` (`ls`, `cd`) | `nodes[targetId].type` is unguarded. Unreachable today because `TerminalApp` falls back to `ROOT_ID` when `cwd` vanishes, but the engine shouldn't rely on its caller for that. |
-| `windowStore.ts` (`resizeWindow`) | Sets `mode: "normal"` without clearing `restoreRect`. Harmless today; stale state. |
-| `Window.tsx` (`onTitlePointerMove`) | Reads `window.innerWidth` for the snap-zone test while everything else uses the store's `viewport`. |
-| `NotesApp.tsx:111` | `n.parentId !== TRASH_ID` is redundant — `isDescendantOf(nodes, n.id, TRASH_ID)` on the next line already covers direct children. |
+| Where                                    | Issue                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FilesView.tsx:107,143,217`              | `suppressClickRef` is only cleared inside the container's `onClick`. End a marquee drag outside the container (over the sidebar, another window, off-browser) and no click reaches it, so the flag stays `true` and the _next_ background click is silently swallowed. Clear it in `onUp` instead. |
+| `FilesView.tsx:135` + `FilesApp.tsx:855` | `onMarqueeSelect` is wired straight to `setSelectedIds`, so unlike `handleSelectNode` it never updates `anchorId`/`cursorId`. Click item 1, marquee items 5–8, press ArrowRight → selection collapses to item **2**. Route marquee selection through the same anchor/cursor update.                |
+| `FilesView.tsx:152-153`                  | Marquee `mousemove`/`mouseup` listeners are added to `document` from an event handler with no `useEffect` cleanup. If `FilesView` unmounts mid-drag (⌘W with the button held) they survive until the next `mouseup` anywhere. Bounded, but the drag is also not abortable by Escape or blur.       |
+| `FilesView.tsx:193-209`                  | `onContextMenu` selects an unselected item first; `onDragStart` doesn't. Select A/B/C, drag D onto a folder → only D moves but A/B/C stay highlighted. Align the two.                                                                                                                              |
+| `FilesApp.tsx` (`confirmEmpty`)          | `window.setTimeout(setConfirmEmpty, 3000, false)` is never cleared on unmount.                                                                                                                                                                                                                     |
+| `FilesApp.tsx:142-151`                   | Render-phase `setState` when `nodes[cwd]` is missing converges only because `HOME_ID` always exists. If `HOME_ID` were ever absent it's an infinite render loop. Worth an explicit guard.                                                                                                          |
+| `ViewerApp.tsx:129`                      | `hasSource` is true whenever `contentRef` is set, so a node whose blob is missing from the store shows the loading spinner **forever** rather than "no longer available". Needs a resolved-but-empty state from `useBlobUrl`.                                                                      |
+| `MenuBar.tsx`                            | `fromSections` keys menus `app-${section.title}` and `DropMenu` keys items by `item.label` — duplicate titles/labels collide.                                                                                                                                                                      |
+| `openFile.ts:111-115`                    | `openFileWithApp` persists the association even when the launch subsequently fails.                                                                                                                                                                                                                |
+| `shell.ts` (`ls`, `cd`)                  | `nodes[targetId].type` is unguarded. Unreachable today because `TerminalApp` falls back to `ROOT_ID` when `cwd` vanishes, but the engine shouldn't rely on its caller for that.                                                                                                                    |
+| `windowStore.ts` (`resizeWindow`)        | Sets `mode: "normal"` without clearing `restoreRect`. Harmless today; stale state.                                                                                                                                                                                                                 |
+| `Window.tsx` (`onTitlePointerMove`)      | Reads `window.innerWidth` for the snap-zone test while everything else uses the store's `viewport`.                                                                                                                                                                                                |
+| `NotesApp.tsx:111`                       | `n.parentId !== TRASH_ID` is redundant — `isDescendantOf(nodes, n.id, TRASH_ID)` on the next line already covers direct children.                                                                                                                                                                  |
 
 ---
 
@@ -502,7 +503,7 @@ Checked during the review and found correct — recorded so nobody re-derives it
 
 - **CSP, apart from the missing `media-src`** (fixed in `164eca2`):
   `script-src 'self'` with no `unsafe-inline`/`unsafe-eval`, `object-src
-  'none'`, `base-uri`/`form-action` locked. `style-src 'unsafe-inline'` is
+'none'`, `base-uri`/`form-action` locked. `style-src 'unsafe-inline'` is
   genuinely required by React inline styles plus the runtime accent/wallpaper
   custom properties on `<html>`.
 - **`pnpm audit --audit-level=high`** — no known vulnerabilities.
