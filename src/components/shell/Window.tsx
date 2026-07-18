@@ -282,6 +282,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
           ))}
         </div>
         <div
+          data-window-title
           className={`pointer-events-none absolute inset-x-0 text-center text-[13px] font-semibold ${
             focused ? "text-ink" : "text-ink-2"
           }`}

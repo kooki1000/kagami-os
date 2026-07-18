@@ -30,6 +30,8 @@ export function appIdForFile(node: FsNode): string | null {
     return "notes";
   if (mime.startsWith("image/"))
     return "viewer";
+  if (mime.startsWith("audio/") || mime.startsWith("video/"))
+    return "player";
   return null;
 }
 
