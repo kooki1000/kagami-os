@@ -112,7 +112,7 @@ onboarding window. (`ComingSoon` remains as a scaffold for future apps.)
   With, Copy/Cut/Paste via the same `clipboardStore`, Download, Get Info,
   Rename, Move to Trash). Deliberately a lighter sibling of Files rather
   than a `FilesView` reuse — no marquee/multi-select, and dragging one icon
-  onto another doesn't move it *into* that folder, unlike Files' HTML5 DnD.
+  onto another doesn't move it _into_ that folder, unlike Files' HTML5 DnD.
 - `WindowLayer` — isolated stacking context; renders non-minimized windows
   and the snap-preview overlay. `pointer-events: none` on the layer so the
   desktop stays clickable.
