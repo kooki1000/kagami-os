@@ -60,7 +60,20 @@ interface MenuState {
   node: FsNode | null;
 }
 
-export default function FilesApp({ windowId }: AppWindowProps) {
+/** Launch payload for opening Files scoped to a specific folder (B7: Desktop icons open into their folder rather than always landing on Home). */
+function payloadFolderId(payload: unknown): string | null {
+  if (
+    payload
+    && typeof payload === "object"
+    && "folderId" in payload
+    && typeof (payload as { folderId: unknown }).folderId === "string"
+  ) {
+    return (payload as { folderId: string }).folderId;
+  }
+  return null;
+}
+
+export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const nodes = useFsStore(s => s.nodes);
   const ready = useFsStore(s => s.ready);
   const createFolder = useFsStore(s => s.createFolder);
@@ -82,7 +95,7 @@ export default function FilesApp({ windowId }: AppWindowProps) {
   const setClipboard = useClipboardStore(s => s.setClipboard);
   const clearClipboard = useClipboardStore(s => s.clear);
 
-  const [history, setHistory] = useState<string[]>([HOME_ID]);
+  const [history, setHistory] = useState<string[]>(() => [payloadFolderId(payload) ?? HOME_ID]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [view, setView] = useState<ViewMode>("grid");
   const [query, setQuery] = useState("");
