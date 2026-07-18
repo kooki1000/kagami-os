@@ -20,7 +20,7 @@ hits.
 
 The only vertical logic is a hardcoded guess:
 
-```text
+```ts
 const openUpward = y > window.innerHeight - 200;
 ```
 
@@ -39,11 +39,12 @@ correction. The same 200px constant drives the submenu flip at
 point, then in a layout effect read `ref.current.getBoundingClientRect()` and
 clamp:
 
-```text
+```ts
 const [pos, setPos] = useState({ x, y });
 useLayoutEffect(() => {
   const el = ref.current;
-  if (!el) return;
+  if (!el)
+    return;
   const { width, height } = el.getBoundingClientRect();
   setPos({
     x: Math.min(x, window.innerWidth - width - 8),
@@ -64,8 +65,8 @@ where the menu genuinely can't fit.
 
 **MEDIUM · verified · `src/components/shell/Dock.tsx:208`**
 
-```text
-style={{ left: menu.x, top: menu.y - 8, transform: "translateY(-100%)" }}
+```tsx
+<div style={{ left: menu.x, top: menu.y - 8, transform: "translateY(-100%)" }} />
 ```
 
 Unlike `ContextMenu`, there is no horizontal bound and the upward flip is
@@ -90,7 +91,7 @@ measure-then-clamp on both axes.
 
 **MEDIUM · verified · `src/components/shell/ToastStack.tsx:66-68` (`MAX_VISIBLE = 4`)**
 
-```text
+```ts
 const visible = items.filter(/* in toastIds */).slice(0, MAX_VISIBLE);
 ```
 
@@ -122,8 +123,8 @@ stack drains in arrival order.
 
 **MEDIUM · verified · `src/components/ui/RenameInput.tsx:38`**
 
-```text
-onBlur={e => onCommit(e.target.value)}
+```tsx
+<input onBlur={e => onCommit(e.target.value)} />
 ```
 
 Every caller — `FilesApp.tsx:859-870`, `NotesApp.tsx:189-201`, and the
@@ -142,14 +143,20 @@ re-fires the toast.
 Make `onCommit` return a boolean and have `RenameInput` treat `false` as
 "stay open and refocus":
 
-```text
-onCommit: (name: string) => boolean;   // false = rejected, keep editing
+```ts
+interface RenameInputProps {
+  /** Return `false` to reject the name and keep editing. */
+  onCommit: (name: string) => boolean;
+}
 ```
 
-```text
-onBlur={(e) => {
-  if (!onCommit(e.target.value)) e.target.focus();
-}}
+```tsx
+<input
+  onBlur={(e) => {
+    if (!onCommit(e.target.value))
+      e.target.focus();
+  }}
+/>
 ```
 
 Then the three callers return `false` on an invalid name instead of bare
@@ -162,7 +169,7 @@ currently exists in all three.
 
 **MEDIUM · measured · `src/apps/files/fileMeta.ts:68-77`**
 
-```text
+```ts
 export function nodeSize(nodes: NodeMap, node: FsNode): number {
   // …Object.values(nodes).filter(...) then recurse per child folder
 }
@@ -182,8 +189,10 @@ visible input lag and a stuttering marquee.
 `fsStore.ts` (see `ARCHITECTURE.md`): build one `parentId → children[]` index
 and walk iteratively.
 
-```text
-export function folderSizes(nodes: NodeMap): Map<string, number> // one pass
+```ts
+export function folderSizes(nodes: NodeMap): Map<string, number> {
+  // one pass over the whole map, reused by every row
+}
 ```
 
 Memoize per `nodes` identity (`useMemo` in `FilesApp`, passed down), so a whole
@@ -234,7 +243,7 @@ the node disappears.
 
 **MEDIUM · by reading · `src/apps/player/PlayerApp.tsx:18` + `src/system/apps/openFile.ts:76-87`**
 
-```text
+```ts
 const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
 ```
 
@@ -252,12 +261,13 @@ opens, and no new window is created either.
 same render-phase payload adoption, comparing payload identity rather than
 `fileId` so re-opening the same file after skipping still re-selects it:
 
-```text
+```ts
 const [lastPayload, setLastPayload] = useState(payload);
 if (payload !== lastPayload) {
   setLastPayload(payload);
   const id = payloadFileId(payload);
-  if (id) setActiveId(id);
+  if (id)
+    setActiveId(id);
 }
 ```
 
@@ -399,11 +409,13 @@ silently ignored, with no UI to clear it short of `localStorage.removeItem`.
 takes `boolean | null` and clears the key on `null` (`flags.ts:78-88`). Only
 the UI never passes it. Clear when the toggle returns to the underlying value:
 
-```text
-onChange={(value) => {
-  setFlagOverride(flag.id, value === effectiveDefault(flag.id) ? null : value);
-  setTick(n => n + 1);
-}}
+```tsx
+<Toggle
+  onChange={(value) => {
+    setFlagOverride(flag.id, value === effectiveDefault(flag.id) ? null : value);
+    setTick(n => n + 1);
+  }}
+/>
 ```
 
 `flags.ts` needs to expose that comparison — `FLAG_BY_ID` is module-private and
@@ -420,9 +432,11 @@ value that matches the default currently can't tell it's pinned.
 
 **LOW · verified · `src/apps/settings/SettingsApp.tsx:282-283`**
 
-```text
-["Version", "0.6.0 — “Lagoon”"],
-["Build", "Phase 6 · Settings"],
+```ts
+const rows = [
+  ["Version", "0.6.0 — “Lagoon”"],
+  ["Build", "Phase 6 · Settings"],
+];
 ```
 
 `package.json` says `0.1.0`, and the project is well past Phase 6 (Player,
@@ -447,7 +461,7 @@ precisely the failure the persistence-hardening work was meant to eliminate.
 
 **Fix.** Now, while it's free:
 
-```text
+```ts
 request.onblocked = () => reject(new Error("IndexedDB upgrade blocked by another tab"));
 // and on the resolved connection:
 db.onversionchange = () => db.close();

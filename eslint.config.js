@@ -18,6 +18,19 @@ export default antfu(
     ...reactHooks.configs.flat.recommended,
   },
   {
+    // Doc fences are illustrative fragments, not modules — kept `ts`/`tsx` so
+    // they still highlight.
+    files: ["**/*.md/**"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+      "react/rules-of-hooks": "off",
+      "react/set-state-in-effect": "off",
+      "style/semi": "off",
+      "ts/no-empty-function": "off",
+      "unused-imports/no-unused-vars": "off",
+    },
+  },
+  {
     files: ["**/*.{jsx,tsx}"],
     plugins: {
       "better-tailwindcss": eslintPluginBetterTailwindcss,
