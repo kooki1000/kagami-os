@@ -18,3 +18,23 @@ export function autoPosition(index: number, viewportHeight: number): { x: number
   const row = index % rows;
   return { x: DESKTOP_MARGIN_X + col * DESKTOP_CELL_W, y: DESKTOP_MARGIN_TOP + row * DESKTOP_CELL_H };
 }
+
+/**
+ * Keep an icon's whole cell on screen, below the menu bar. Applied both when
+ * dragging and when reading a stored position back — positions persist to
+ * localStorage, so without the read-side clamp an icon dragged to the corner
+ * of a large display would sit permanently off-screen (and thus unclickable)
+ * on a smaller one. Lower bounds win on a viewport too small to satisfy
+ * both, so the result is never an inverted range.
+ */
+export function clampIconPosition(
+  point: { x: number; y: number },
+  viewport: { width: number; height: number },
+): { x: number; y: number } {
+  const maxX = Math.max(DESKTOP_MARGIN_X, viewport.width - DESKTOP_CELL_W - DESKTOP_MARGIN_X);
+  const maxY = Math.max(DESKTOP_MARGIN_TOP, viewport.height - DESKTOP_CELL_H);
+  return {
+    x: Math.min(Math.max(point.x, DESKTOP_MARGIN_X), maxX),
+    y: Math.min(Math.max(point.y, DESKTOP_MARGIN_TOP), maxY),
+  };
+}

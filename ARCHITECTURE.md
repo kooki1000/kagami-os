@@ -111,7 +111,10 @@ onboarding window. (`ComingSoon` remains as a scaffold for future apps.)
   `system/desktop/desktopLayoutStore.ts`, localStorage — an icon with no
   stored position falls back to a deterministic grid slot computed by
   `system/desktop/desktopLayout.ts`'s `autoPosition` from its rank among
-  the folder's children), double-click to open (a file goes through
+  the folder's children; `clampIconPosition` keeps a cell fully on screen
+  both while dragging and when reading a stored position back, so a
+  persisted corner position can't strand an icon out of reach on a smaller
+  viewport), double-click to open (a file goes through
   `openFile.ts`; a folder launches a new Files window scoped to it via
   `{ payload: { folderId } }`), and a context menu mirroring Files' (Open
   With, Copy/Cut/Paste via the same `clipboardStore`, Download, Get Info,
@@ -260,8 +263,11 @@ high-risk logic is framework-agnostic). Suites live next to their code:
   clamping, min-size enforcement, single-instance + payload delivery.
 - `system/fs/fsStore.test.ts` — tree helpers (sort, path, descendant,
   unique-name), create/rename dedupe, move validity (descendant/system/
-  non-folder guards, Trash routing), and the full trash lifecycle
-  (trash → restore → fallback → empty → delete-forever).
+  non-folder guards, Trash routing), the full trash lifecycle
+  (trash → restore → fallback → empty → delete-forever), and subtree
+  collection at depth (`collectSubtrees` indexes children once and walks
+  iteratively, so deleting a deep subtree stays linear and a corrupt parent
+  cycle terminates instead of overflowing the stack).
 - `apps/terminal/shell.test.ts` — `resolvePath` (relative/`..`/`~`/absolute)
   and every command, driven against a seeded fs store.
 - `system/fs/blobIntegrity.test.ts` — the `content` xor `contentRef`

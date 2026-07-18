@@ -305,3 +305,49 @@ describe("trash lifecycle", () => {
     expect(get("fresh")).toBeDefined();
   });
 });
+
+describe("subtree collection at depth", () => {
+  /** A single chain root → n0 → n1 → … under Documents. */
+  function chain(depth: number): FsNode[] {
+    const list: FsNode[] = [];
+    for (let i = 0; i < depth; i++) {
+      list.push(node({
+        id: `chain-${i}`,
+        parentId: i === 0 ? DOCUMENTS_ID : `chain-${i - 1}`,
+        name: `level-${i}`,
+        type: "folder",
+      }));
+    }
+    return list;
+  }
+
+  it("deletes a deep subtree without exhausting the stack or going quadratic", () => {
+    seed();
+    const depth = 8000;
+    useFsStore.setState({
+      nodes: { ...useFsStore.getState().nodes, ...indexNodes(chain(depth)) },
+    });
+
+    api().deleteForever("chain-0");
+
+    const remaining = Object.keys(api().nodes).filter(id => id.startsWith("chain-"));
+    expect(remaining).toEqual([]);
+    expect(api().nodes[DOCUMENTS_ID]).toBeDefined();
+  });
+
+  it("terminates on a corrupt parent cycle instead of hanging", () => {
+    seed();
+    // "reports" and "child" pointing at each other: unreachable via normal
+    // actions, but a walk that trusts the tree shape would loop forever.
+    useFsStore.setState({
+      nodes: {
+        ...useFsStore.getState().nodes,
+        reports: { ...useFsStore.getState().nodes.reports, parentId: "child" },
+      },
+    });
+
+    expect(() => api().deleteForever("reports")).not.toThrow();
+    expect(api().nodes.reports).toBeUndefined();
+    expect(api().nodes.child).toBeUndefined();
+  });
+});

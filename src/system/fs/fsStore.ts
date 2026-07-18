@@ -96,12 +96,44 @@ export function isDescendantOf(nodes: NodeMap, id: string, ancestorId: string): 
   return false;
 }
 
-/** The node and everything beneath it. */
-function subtreeIds(nodes: NodeMap, id: string): string[] {
-  const ids = [id];
-  for (const child of Object.values(nodes)) {
-    if (child.parentId === id)
-      ids.push(...subtreeIds(nodes, child.id));
+/** parentId → child ids, built in one pass over the map. */
+function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  for (const node of Object.values(nodes)) {
+    if (node.parentId === null)
+      continue;
+    const siblings = index.get(node.parentId);
+    if (siblings)
+      siblings.push(node.id);
+    else index.set(node.parentId, [node.id]);
+  }
+  return index;
+}
+
+/**
+ * `rootIds` and everything beneath them, de-duplicated. Indexing children
+ * once up front (rather than rescanning every node per level, as a naive
+ * recursive walk does) keeps this linear in the tree instead of quadratic —
+ * it's what `emptyTrash` / `deleteForever` / `purgeExpiredTrash` run over a
+ * whole subtree. Iterative, so depth is bounded by memory, not stack; the
+ * `seen` set also means a corrupt parent cycle terminates rather than
+ * hanging. Callers only ever use the result as a removal set, so the
+ * parent-before-child order is incidental, not contractual.
+ */
+function collectSubtrees(nodes: NodeMap, rootIds: string[]): string[] {
+  const index = childIdsByParent(nodes);
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const stack = [...rootIds];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (seen.has(id))
+      continue;
+    seen.add(id);
+    ids.push(id);
+    const children = index.get(id);
+    if (children)
+      stack.push(...children);
   }
   return ids;
 }
@@ -158,9 +190,8 @@ export function expiredTrashIds(
   now: number = Date.now(),
 ): string[] {
   const cutoff = now - maxAgeMs;
-  return childrenOf(nodes, TRASH_ID)
-    .filter(n => n.modifiedAt <= cutoff)
-    .flatMap(n => subtreeIds(nodes, n.id));
+  const expired = childrenOf(nodes, TRASH_ID).filter(n => n.modifiedAt <= cutoff);
+  return collectSubtrees(nodes, expired.map(n => n.id));
 }
 
 /* ---------- store ---------- */
@@ -463,7 +494,7 @@ export const useFsStore = create<FsStore>()((set, get) => {
 
     emptyTrash() {
       const { nodes } = get();
-      const ids = childrenOf(nodes, TRASH_ID).flatMap(n => subtreeIds(nodes, n.id));
+      const ids = collectSubtrees(nodes, childrenOf(nodes, TRASH_ID).map(n => n.id));
       removeIds(ids);
     },
 
@@ -471,7 +502,7 @@ export const useFsStore = create<FsStore>()((set, get) => {
       const { nodes } = get();
       if (!nodes[id] || isSystemNode(id))
         return;
-      removeIds(subtreeIds(nodes, id));
+      removeIds(collectSubtrees(nodes, [id]));
     },
 
     purgeExpiredTrash(maxAgeMs = TRASH_MAX_AGE_MS) {

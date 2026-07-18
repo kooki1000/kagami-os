@@ -92,6 +92,48 @@ test.describe("Desktop icons (B7)", () => {
     expect(Math.abs(reloaded.y - after.y)).toBeLessThan(2);
   });
 
+  test("an icon dragged at the edge stays on screen when the viewport shrinks", async ({ page }) => {
+    // Icon positions persist to localStorage, so one dragged to the corner
+    // of a large display used to sit permanently off-screen — and therefore
+    // be permanently unclickable — on a smaller one.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openFiles(page);
+    const filesWindow = page.locator("[data-window-id]");
+    await page.getByRole("button", { name: "Desktop" }).click();
+    await page.locator("input[type=\"file\"]").first().setInputFiles({
+      name: "corner.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("clamp fixture"),
+    });
+    await expect(filesWindow.getByText("corner.txt", { exact: true })).toBeVisible();
+    await page.locator("[data-window-control] button[aria-label=\"close window\"]").click();
+    await expect(page.locator("[data-window-id]")).toHaveCount(0);
+
+    const icon = desktopIcon(page, "corner.txt");
+    const before = await icon.boundingBox();
+    if (!before)
+      throw new Error("icon has no bounding box");
+
+    // Drag hard toward the bottom-right corner of the large viewport.
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(1260, 880, { steps: 8 });
+    await page.mouse.up();
+
+    await page.setViewportSize({ width: 640, height: 480 });
+
+    const after = await icon.boundingBox();
+    if (!after)
+      throw new Error("icon has no bounding box after resize");
+    expect(after.x).toBeGreaterThanOrEqual(0);
+    expect(after.y).toBeGreaterThanOrEqual(0);
+    expect(after.x + after.width).toBeLessThanOrEqual(640);
+    expect(after.y + after.height).toBeLessThanOrEqual(480);
+    // And it's still a live target, not just visually in-bounds.
+    await icon.click({ button: "right" });
+    await expect(page.getByRole("button", { name: "Get Info", exact: true })).toBeVisible();
+  });
+
   test("context menu: rename and Move to Trash on a Desktop icon", async ({ page }) => {
     await openFiles(page);
     const filesWindow = page.locator("[data-window-id]");

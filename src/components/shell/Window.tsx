@@ -91,10 +91,19 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
 
   const [entered, setEntered] = useState(false);
   const [minimizeStyle, setMinimizeStyle] = useState<CSSProperties | null>(null);
+  const minimizeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Closing a window mid-minimize would otherwise leave the fly-to-dock
+  // timer to fire against an unmounted component and a window id the store
+  // no longer has.
+  useEffect(() => () => {
+    if (minimizeTimerRef.current !== null)
+      window.clearTimeout(minimizeTimerRef.current);
   }, []);
 
   if (!app)
@@ -212,6 +221,9 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     }
     else {
       // Fly toward the dock tile, then actually minimize in the store.
+      // Ignore a second click while one flight is already in progress.
+      if (minimizeTimerRef.current !== null)
+        return;
       const rect = rectRef.current;
       const target = dockTarget(win.appId);
       setMinimizeStyle({
@@ -220,7 +232,8 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         }px) scale(0.08)`,
         opacity: 0,
       });
-      window.setTimeout(() => {
+      minimizeTimerRef.current = window.setTimeout(() => {
+        minimizeTimerRef.current = null;
         setMinimizeStyle(null);
         minimizeWindow(win.id);
       }, MINIMIZE_MS);
