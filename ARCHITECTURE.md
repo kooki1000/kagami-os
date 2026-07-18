@@ -101,7 +101,18 @@ onboarding window. (`ComingSoon` remains as a scaffold for future apps.)
 ## Shell components (`src/components/shell/`)
 
 - `Desktop` — wallpaper layer (pure CSS artwork from tokens); clicking it
-  blurs all windows. Desktop icons arrive with the VFS.
+  blurs all windows. Also renders the Desktop folder's children as icons
+  (B7): single selection, freeform pointer-drag repositioning (persisted in
+  `system/desktop/desktopLayoutStore.ts`, localStorage — an icon with no
+  stored position falls back to a deterministic grid slot computed by
+  `system/desktop/desktopLayout.ts`'s `autoPosition` from its rank among
+  the folder's children), double-click to open (a file goes through
+  `openFile.ts`; a folder launches a new Files window scoped to it via
+  `{ payload: { folderId } }`), and a context menu mirroring Files' (Open
+  With, Copy/Cut/Paste via the same `clipboardStore`, Download, Get Info,
+  Rename, Move to Trash). Deliberately a lighter sibling of Files rather
+  than a `FilesView` reuse — no marquee/multi-select, and dragging one icon
+  onto another doesn't move it *into* that folder, unlike Files' HTML5 DnD.
 - `WindowLayer` — isolated stacking context; renders non-minimized windows
   and the snap-preview overlay. `pointer-events: none` on the layer so the
   desktop stays clickable.
