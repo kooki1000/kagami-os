@@ -43,3 +43,44 @@ export function formatRelativeTime(timestamp: number, now = Date.now()): string 
     return `${hours}h`;
   return formatModified(timestamp);
 }
+
+function readPlatformString(): string | undefined {
+  if (typeof navigator === "undefined")
+    return undefined;
+  return (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform
+    ?? navigator.platform
+    ?? navigator.userAgent;
+}
+
+/**
+ * True if `platform` looks like macOS; true (safe default) when no platform
+ * string is available at all. A plain required parameter, not a default —
+ * a default of `readPlatformString()` can't be tested deterministically,
+ * since JS fires a parameter default on an explicit `undefined` argument
+ * exactly the same as on an omitted one.
+ */
+export function matchesMacPlatform(platform: string | undefined): boolean {
+  if (platform === undefined)
+    return true;
+  return /mac/i.test(platform);
+}
+
+/** True on macOS — a live read of the real platform. */
+export function isMacPlatform(): boolean {
+  return matchesMacPlatform(readPlatformString());
+}
+
+/**
+ * Display form of a menu-item shortcut string ("⌘W", "⇧⌘N"). Unchanged on
+ * Mac; on other platforms, ⌘/⇧ become "Ctrl+"/"Shift+" in that order,
+ * matching the Windows/Linux convention. `mac` defaults to the real
+ * platform check but can be passed explicitly (tests must, since this
+ * suite's Node environment has no `navigator`).
+ */
+export function formatShortcut(shortcut: string, mac: boolean = isMacPlatform()): string {
+  if (mac)
+    return shortcut;
+  const hasShift = shortcut.includes("⇧");
+  const key = shortcut.replace("⇧", "").replace("⌘", "");
+  return hasShift ? `Ctrl+Shift+${key}` : `Ctrl+${key}`;
+}
