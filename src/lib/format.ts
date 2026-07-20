@@ -44,13 +44,24 @@ export function formatRelativeTime(timestamp: number, now = Date.now()): string 
   return formatModified(timestamp);
 }
 
-/** True on macOS, and as a safe default when `navigator` is unavailable (e.g. this test suite). */
-export function isMacPlatform(): boolean {
+function readPlatformString(): string | undefined {
   if (typeof navigator === "undefined")
-    return true;
-  const platform = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform
+    return undefined;
+  return (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform
     ?? navigator.platform
     ?? navigator.userAgent;
+}
+
+/**
+ * True on macOS. `platform` defaults to a live read of `navigator` — Node
+ * itself defines a global `navigator` (unlike browserless test runners of
+ * old), so tests must pass an explicit platform string rather than relying
+ * on `navigator` being absent; `undefined` is still the safe default when
+ * no platform string is available at all.
+ */
+export function isMacPlatform(platform: string | undefined = readPlatformString()): boolean {
+  if (platform === undefined)
+    return true;
   return /mac/i.test(platform);
 }
 

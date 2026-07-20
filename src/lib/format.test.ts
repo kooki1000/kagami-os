@@ -21,7 +21,17 @@ describe("formatShortcut", () => {
 });
 
 describe("isMacPlatform", () => {
-  it("defaults to true when navigator is unavailable, as in this test environment", () => {
-    expect(isMacPlatform()).toBe(true);
+  it("matches a Mac-flavored platform string", () => {
+    expect(isMacPlatform("MacIntel")).toBe(true);
+    expect(isMacPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe(true);
+  });
+
+  it("doesn't match a non-Mac platform string", () => {
+    expect(isMacPlatform("Linux x86_64")).toBe(false);
+    expect(isMacPlatform("Win32")).toBe(false);
+  });
+
+  it("defaults to true when no platform string is available", () => {
+    expect(isMacPlatform(undefined)).toBe(true);
   });
 });
