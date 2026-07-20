@@ -2,6 +2,7 @@ import type { MenuItem, MenuSection } from "@/system/apps/types";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Bell, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { formatShortcut } from "@/lib/format";
 import { emitAppCommand } from "@/system/appCommands";
 import { getApp } from "@/system/apps/registry";
 import { executeCommand } from "@/system/commands";
@@ -9,6 +10,7 @@ import {
   selectUnreadCount,
   useNotificationStore,
 } from "@/system/notifications/notificationStore";
+import { useSearchStore } from "@/system/search/searchStore";
 import { useThemeStore } from "@/system/theme/themeStore";
 import { MENU_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 
@@ -97,6 +99,7 @@ export function MenuBar() {
   const centerOpen = useNotificationStore(s => s.centerOpen);
   const openCenter = useNotificationStore(s => s.openCenter);
   const closeCenter = useNotificationStore(s => s.closeCenter);
+  const openSearch = useSearchStore(s => s.openSearch);
 
   const [openKey, setOpenKey] = useState<string | null>(null);
 
@@ -199,7 +202,14 @@ export function MenuBar() {
         </div>
 
         <div className="ml-auto flex items-center gap-3.5 text-[12.5px] opacity-80">
-          <Search className="size-3.25" aria-hidden />
+          <button
+            type="button"
+            aria-label="Search"
+            className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
+            onClick={openSearch}
+          >
+            <Search className="size-3.25" />
+          </button>
           <button
             type="button"
             aria-label="Toggle appearance"
@@ -266,7 +276,7 @@ function DropMenu({ items, onClose }: { items: BarMenuItem[]; onClose: () => voi
               {item.label}
             </span>
             {item.shortcut && (
-              <span className="text-[11.5px] opacity-55">{item.shortcut}</span>
+              <span className="text-[11.5px] opacity-55">{formatShortcut(item.shortcut)}</span>
             )}
           </button>
           {item.dividerAfter && <div className="mx-2 my-1 hairline-b" />}

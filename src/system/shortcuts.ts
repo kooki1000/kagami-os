@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { emitAppCommand } from "./appCommands";
 import { getApp } from "./apps/registry";
 import { executeCommand } from "./commands";
+import { useSearchStore } from "./search/searchStore";
 import { useWindowStore } from "./windows/windowStore";
 
 /**
@@ -49,6 +50,15 @@ export function useGlobalShortcuts(): void {
         return;
       if (NATIVE_EDITING_LETTERS.has(chord.slice(-1)) && isEditableTarget(e.target))
         return;
+
+      // Global search works from anywhere, including an empty desktop —
+      // checked ahead of the focused-window lookup below rather than
+      // folded into SHELL_CHORDS, which requires a focused window.
+      if (chord === "⌘K") {
+        e.preventDefault();
+        useSearchStore.getState().openSearch();
+        return;
+      }
 
       const { focusedId, windows } = useWindowStore.getState();
       const win = windows.find(w => w.id === focusedId && !w.minimized);

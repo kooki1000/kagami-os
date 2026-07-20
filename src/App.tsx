@@ -3,6 +3,7 @@ import { Desktop } from "./components/shell/Desktop";
 import { Dock } from "./components/shell/Dock";
 import { MenuBar } from "./components/shell/MenuBar";
 import { NotificationCenter } from "./components/shell/NotificationCenter";
+import { SearchOverlay } from "./components/shell/SearchOverlay";
 import { ToastStack } from "./components/shell/ToastStack";
 import { WindowLayer } from "./components/shell/WindowLayer";
 import { launchApp } from "./system/apps/launch";
@@ -105,6 +106,7 @@ export default function App() {
       <MenuBar />
       <ToastStack />
       <NotificationCenter />
+      <SearchOverlay />
     </div>
   );
 }

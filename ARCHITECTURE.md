@@ -180,6 +180,13 @@ reload, localStorage-backed:
   right-click context menu (New Window / Pin / Quit).
 - `ToastStack` / `NotificationCenter` — transient corner toasts and the
   persistent history flyout (see Notifications below).
+- `SearchOverlay` — `⌘K` global name search over the whole VFS (B9); a
+  centered command-palette-style flyout (unlike the corner-anchored toast/
+  notification flyouts). Matches by case-insensitive substring over
+  `fsStore.nodes` (`system/search/searchNodes.ts`), excluding Trash.
+  Selecting a folder launches a new Files window scoped to it (the same
+  `{ payload: { folderId } }` pattern Desktop icons use); a file goes
+  through `openFile.ts`.
 
 ## Virtual file system (`src/system/fs/`)
 
@@ -296,6 +303,10 @@ IndexedDB fs adapter, since these are small UI prefs, not documents.
   chord string apps already display on menu items ("⌘W", "⇧⌘N") and runs the
   matching item on the focused app (command or appCommand). Shell fallbacks
   (⌘W/⌘M/⌘Q) apply when a window is focused; symbol chords stay menu-only.
+  `⌘K` (global search, B9) is the one chord that isn't gated on a focused
+  window — it opens `SearchOverlay` from anywhere, including an empty
+  desktop. Menu-item shortcut labels render through `formatShortcut`
+  (`lib/format.ts`), showing `Ctrl+…` off Mac.
 
 ## Testing + persistence hardening
 
