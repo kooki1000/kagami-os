@@ -43,3 +43,28 @@ export function formatRelativeTime(timestamp: number, now = Date.now()): string 
     return `${hours}h`;
   return formatModified(timestamp);
 }
+
+/** True on macOS, and as a safe default when `navigator` is unavailable (e.g. this test suite). */
+export function isMacPlatform(): boolean {
+  if (typeof navigator === "undefined")
+    return true;
+  const platform = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform
+    ?? navigator.platform
+    ?? navigator.userAgent;
+  return /mac/i.test(platform);
+}
+
+/**
+ * Display form of a menu-item shortcut string ("⌘W", "⇧⌘N"). Unchanged on
+ * Mac; on other platforms, ⌘/⇧ become "Ctrl+"/"Shift+" in that order,
+ * matching the Windows/Linux convention. `mac` defaults to the real
+ * platform check but can be passed explicitly (tests must, since this
+ * suite's Node environment has no `navigator`).
+ */
+export function formatShortcut(shortcut: string, mac: boolean = isMacPlatform()): string {
+  if (mac)
+    return shortcut;
+  const hasShift = shortcut.includes("⇧");
+  const key = shortcut.replace("⇧", "").replace("⌘", "");
+  return hasShift ? `Ctrl+Shift+${key}` : `Ctrl+${key}`;
+}
