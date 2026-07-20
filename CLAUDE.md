@@ -162,3 +162,12 @@ reading `node.content` directly once a node has a `contentRef`.
 - Feature flags: `src/system/flags.ts`, build-time `VITE_FLAG_*` env vars,
   overridable per device in Settings › About or via `localStorage
 kagami:flag:<id>`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+  `type(scope): summary` (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`,
+  `ci`, `perf`; scope is optional, e.g. a feature ID like `c1` or an area like
+  `windows`). Body explains why, not what — the diff already shows what
+  changed.
+- Branch names are `<type>/<slug>`, kebab-case, `<type>` matching the
+  commit type the branch is mostly made of (`feat`, `fix`, `chore`, `docs`,
+  `perf`, `test`, `review`); `<slug>` is a short description, e.g.
+  `feat/session-restore` or `fix/player-payload-staleness`.
