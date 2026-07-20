@@ -53,16 +53,21 @@ function readPlatformString(): string | undefined {
 }
 
 /**
- * True on macOS. `platform` defaults to a live read of `navigator` — Node
- * itself defines a global `navigator` (unlike browserless test runners of
- * old), so tests must pass an explicit platform string rather than relying
- * on `navigator` being absent; `undefined` is still the safe default when
- * no platform string is available at all.
+ * True if `platform` looks like macOS; true (safe default) when no platform
+ * string is available at all. A plain required parameter, not a default —
+ * a default of `readPlatformString()` can't be tested deterministically,
+ * since JS fires a parameter default on an explicit `undefined` argument
+ * exactly the same as on an omitted one.
  */
-export function isMacPlatform(platform: string | undefined = readPlatformString()): boolean {
+export function matchesMacPlatform(platform: string | undefined): boolean {
   if (platform === undefined)
     return true;
   return /mac/i.test(platform);
+}
+
+/** True on macOS — a live read of the real platform. */
+export function isMacPlatform(): boolean {
+  return matchesMacPlatform(readPlatformString());
 }
 
 /**

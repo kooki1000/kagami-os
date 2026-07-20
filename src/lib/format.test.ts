@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatShortcut, isMacPlatform } from "./format";
+import { formatShortcut, matchesMacPlatform } from "./format";
 
 describe("formatShortcut", () => {
   it("passes shortcuts through unchanged on Mac", () => {
@@ -20,18 +20,18 @@ describe("formatShortcut", () => {
   });
 });
 
-describe("isMacPlatform", () => {
+describe("matchesMacPlatform", () => {
   it("matches a Mac-flavored platform string", () => {
-    expect(isMacPlatform("MacIntel")).toBe(true);
-    expect(isMacPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe(true);
+    expect(matchesMacPlatform("MacIntel")).toBe(true);
+    expect(matchesMacPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe(true);
   });
 
   it("doesn't match a non-Mac platform string", () => {
-    expect(isMacPlatform("Linux x86_64")).toBe(false);
-    expect(isMacPlatform("Win32")).toBe(false);
+    expect(matchesMacPlatform("Linux x86_64")).toBe(false);
+    expect(matchesMacPlatform("Win32")).toBe(false);
   });
 
   it("defaults to true when no platform string is available", () => {
-    expect(isMacPlatform(undefined)).toBe(true);
+    expect(matchesMacPlatform(undefined)).toBe(true);
   });
 });
