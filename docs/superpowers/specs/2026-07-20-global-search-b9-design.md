@@ -56,7 +56,7 @@ export function searchNodes(nodes: NodeMap, query: string, limit = 20): SearchRe
 - **Match:** `node.name.toLowerCase().includes(query.trim().toLowerCase())`.
   Empty/whitespace query → `[]`.
 - **Exclude trashed:** skip any node where `node.parentId === TRASH_ID ||
-  isDescendantOf(nodes, node.id, TRASH_ID)` (reuses the existing
+isDescendantOf(nodes, node.id, TRASH_ID)` (reuses the existing
   `isDescendantOf` from `fsStore.ts`), so contents of a trashed folder are
   excluded too, not just direct Trash children.
 - **Ranking:** name-prefix matches sort above interior substring matches;
@@ -77,7 +77,7 @@ rest of the shell's overlay chrome.
 - Autofocused text input bound to `searchStore.query`. Dimmed `⌘K` hint
   (via `formatShortcut`) shown only while the query is empty.
 - Results computed with `useMemo(() => searchNodes(nodes, query), [nodes,
-  query])`, `nodes` from `useFsStore`.
+query])`, `nodes` from `useFsStore`.
 - Roving-highlight list: ↑/↓ moves the highlighted row, Enter opens it,
   mouse hover updates the highlight, click opens. Each row shows the node's
   name plus its dimmed path.
@@ -105,7 +105,7 @@ Either path calls `closeSearch()` afterward.
 - `⌘K` global shortcut. `chordFromEvent` in `shortcuts.ts` already accepts
   either `metaKey` or `ctrlKey` as the modifier and always normalizes to a
   `"⌘"`-prefixed chord string, so `Ctrl+K` on non-Mac works for free — no
-  change needed there. What *does* need to change: today's `SHELL_CHORDS`
+  change needed there. What _does_ need to change: today's `SHELL_CHORDS`
   only fire `if (shell && win)`, i.e. only with a window focused. `⌘K` must
   work from an empty desktop too, so it's wired as an always-available
   chord checked ahead of that focused-window fallback, not folded into

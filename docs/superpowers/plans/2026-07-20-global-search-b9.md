@@ -14,7 +14,7 @@
 - Unit tests run in a **plain Node environment, no jsdom/RTL** — nothing that touches `navigator` or renders a component can be asserted in a `.test.ts` file. React components in this codebase have zero unit-test coverage (confirmed: no `*.test.tsx` files exist anywhere); component/integration behavior is covered by Playwright specs in `e2e/` instead.
 - Path alias `@/*` → `src/*` (use it in all new/edited files under `src/`, matching existing imports).
 - ESLint: `@antfu/eslint-config` base — 2-space indent, semicolons, double quotes, import ordering. Run `pnpm lint:fix` if unsure.
-- Design guardrails (from `CLAUDE.md`): no macOS-only assumptions in *new* UI — this plan's `⌘K` label already resolves to `Ctrl+K` off Mac via `formatShortcut` (Task 1), and the underlying key handler already accepts `ctrlKey` (unchanged, pre-existing).
+- Design guardrails (from `CLAUDE.md`): no macOS-only assumptions in _new_ UI — this plan's `⌘K` label already resolves to `Ctrl+K` off Mac via `formatShortcut` (Task 1), and the underlying key handler already accepts `ctrlKey` (unchanged, pre-existing).
 - Spec: `docs/superpowers/specs/2026-07-20-global-search-b9-design.md`. Branch `phase-11/global-search-b9` is already checked out with the spec committed.
 
 ---
@@ -22,10 +22,12 @@
 ### Task 1: Platform-aware shortcut label formatter
 
 **Files:**
+
 - Modify: `src/lib/format.ts`
 - Test: `src/lib/format.test.ts` (new file)
 
 **Interfaces:**
+
 - Produces: `isMacPlatform(): boolean`, `formatShortcut(shortcut: string, mac?: boolean): string` — both exported from `src/lib/format.ts`. `mac` defaults to `isMacPlatform()` but can be passed explicitly (required for testing, since the unit-test environment has no `navigator`).
 
 - [ ] **Step 1: Write the failing test**
@@ -115,10 +117,12 @@ git commit -m "feat(b9): add platform-aware shortcut label formatter"
 ### Task 2: Pure search over the fs tree
 
 **Files:**
+
 - Create: `src/system/search/searchNodes.ts`
 - Test: `src/system/search/searchNodes.test.ts`
 
 **Interfaces:**
+
 - Consumes: `NodeMap`, `isDescendantOf`, `pathOf` from `@/system/fs/fsStore`; `TRASH_ID` from `@/system/fs/types`; `FsNode` type from `@/system/fs/types`.
 - Produces: `interface SearchResult { node: FsNode; path: string }`, `function searchNodes(nodes: NodeMap, query: string, limit?: number): SearchResult[]` — both exported from `src/system/search/searchNodes.ts`.
 
@@ -267,10 +271,12 @@ git commit -m "feat(b9): add pure global search over the fs tree"
 ### Task 3: Search overlay state store
 
 **Files:**
+
 - Create: `src/system/search/searchStore.ts`
 - Test: `src/system/search/searchStore.test.ts`
 
 **Interfaces:**
+
 - Produces: `useSearchStore` (Zustand hook) with state `{ open: boolean; query: string }` and actions `openSearch(): void`, `closeSearch(): void`, `setQuery(q: string): void` — exported from `src/system/search/searchStore.ts`.
 
 - [ ] **Step 1: Write the failing test**
@@ -361,9 +367,11 @@ git commit -m "feat(b9): add search overlay open/query store"
 ### Task 4: Search overlay component
 
 **Files:**
+
 - Create: `src/components/shell/SearchOverlay.tsx`
 
 **Interfaces:**
+
 - Consumes: `useSearchStore` (Task 3: `.open`, `.query`, `.setQuery`, `.closeSearch`), `searchNodes`/`SearchResult` (Task 2), `formatShortcut` (Task 1), `useFsStore` (`@/system/fs/fsStore`, `.nodes`), `launchApp` (`@/system/apps/launch`), `openFile` (`@/system/apps/openFile`), `MENU_BAR_HEIGHT` (`@/system/windows/windowStore`).
 - Produces: `SearchOverlay` component, mounted by Task 5.
 
@@ -376,7 +384,7 @@ Create `src/components/shell/SearchOverlay.tsx`:
 ```tsx
 import type { KeyboardEvent } from "react";
 import { File, Folder, Search as SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatShortcut } from "@/lib/format";
 import { launchApp } from "@/system/apps/launch";
 import { openFile } from "@/system/apps/openFile";
@@ -396,9 +404,13 @@ export function SearchOverlay() {
   const results = useMemo(() => (open ? searchNodes(nodes, query) : []), [open, nodes, query]);
   const [highlighted, setHighlighted] = useState(0);
 
-  useEffect(() => {
+  // Reset the highlight whenever the query changes — state adjustment during
+  // render (matching MenuBar's lastFocusedId pattern), not a useEffect.
+  const [lastQuery, setLastQuery] = useState(query);
+  if (lastQuery !== query) {
+    setLastQuery(query);
     setHighlighted(0);
-  }, [query]);
+  }
 
   if (!open)
     return null;
@@ -521,12 +533,14 @@ git commit -m "feat(b9): add the search overlay component"
 ### Task 5: Wire up the triggers and mount the overlay
 
 **Files:**
+
 - Modify: `src/system/shortcuts.ts`
 - Modify: `src/components/shell/MenuBar.tsx`
 - Modify: `src/App.tsx`
 - Modify: `ARCHITECTURE.md`
 
 **Interfaces:**
+
 - Consumes: `useSearchStore` (Task 3), `SearchOverlay` (Task 4), `formatShortcut` (Task 1).
 
 - [ ] **Step 1: Add the always-available `⌘K` chord to `shortcuts.ts`**
@@ -545,19 +559,19 @@ import { useWindowStore } from "./windows/windowStore";
 Then, inside `onKeyDown`, right after the `NATIVE_EDITING_LETTERS` early-return and before the `focusedId`/`win` lookup, add the `⌘K` check — it must run before that lookup so it works with zero windows open:
 
 ```ts
-      if (NATIVE_EDITING_LETTERS.has(chord.slice(-1)) && isEditableTarget(e.target))
-        return;
+if (NATIVE_EDITING_LETTERS.has(chord.slice(-1)) && isEditableTarget(e.target))
+  return;
 
-      // Global search works from anywhere, including an empty desktop —
-      // checked ahead of the focused-window lookup below rather than
-      // folded into SHELL_CHORDS, which requires a focused window.
-      if (chord === "⌘K") {
-        e.preventDefault();
-        useSearchStore.getState().openSearch();
-        return;
-      }
+// Global search works from anywhere, including an empty desktop —
+// checked ahead of the focused-window lookup below rather than
+// folded into SHELL_CHORDS, which requires a focused window.
+if (chord === "⌘K") {
+  e.preventDefault();
+  useSearchStore.getState().openSearch();
+  return;
+}
 
-      const { focusedId, windows } = useWindowStore.getState();
+const { focusedId, windows } = useWindowStore.getState();
 ```
 
 - [ ] **Step 2: Wire the menu-bar search icon and apply `formatShortcut`**
@@ -585,29 +599,29 @@ import { MENU_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 Add the store hook alongside the other `MenuBar` hooks (after `const closeCenter = useNotificationStore(s => s.closeCenter);`):
 
 ```tsx
-  const closeCenter = useNotificationStore(s => s.closeCenter);
-  const openSearch = useSearchStore(s => s.openSearch);
+const closeCenter = useNotificationStore(s => s.closeCenter);
+const openSearch = useSearchStore(s => s.openSearch);
 ```
 
 Replace the decorative icon (`<Search className="size-3.25" aria-hidden />`) with a button:
 
 ```tsx
-          <button
-            type="button"
-            aria-label="Search"
-            className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
-            onClick={openSearch}
-          >
-            <Search className="size-3.25" />
-          </button>
+<button
+  type="button"
+  aria-label="Search"
+  className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
+  onClick={openSearch}
+>
+  <Search className="size-3.25" />
+</button>
 ```
 
 In `DropMenu`, apply the formatter to the rendered shortcut label:
 
 ```tsx
-            {item.shortcut && (
-              <span className="text-[11.5px] opacity-55">{formatShortcut(item.shortcut)}</span>
-            )}
+{ item.shortcut && (
+  <span className="text-[11.5px] opacity-55">{formatShortcut(item.shortcut)}</span>
+) }
 ```
 
 - [ ] **Step 3: Mount the overlay in `App.tsx`**
@@ -622,7 +636,7 @@ import { ToastStack } from "./components/shell/ToastStack";
 
 Add it to the render tree, after `<NotificationCenter />`:
 
-```tsx
+```
       <ToastStack />
       <NotificationCenter />
       <SearchOverlay />
@@ -688,9 +702,11 @@ git commit -m "feat(b9): wire up ⌘K global search and menu-bar trigger"
 ### Task 6: E2E coverage
 
 **Files:**
+
 - Create: `e2e/search.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `boot` from `./helpers`.
 
 - [ ] **Step 1: Write the e2e spec**
