@@ -1,6 +1,6 @@
 import type { KeyboardEvent } from "react";
 import { File, Folder, Search as SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatShortcut } from "@/lib/format";
 import { launchApp } from "@/system/apps/launch";
 import { openFile } from "@/system/apps/openFile";
@@ -20,9 +20,13 @@ export function SearchOverlay() {
   const results = useMemo(() => (open ? searchNodes(nodes, query) : []), [open, nodes, query]);
   const [highlighted, setHighlighted] = useState(0);
 
-  useEffect(() => {
+  // Reset the highlight whenever the query changes — state adjustment during
+  // render (matching MenuBar's lastFocusedId pattern), not a useEffect.
+  const [lastQuery, setLastQuery] = useState(query);
+  if (lastQuery !== query) {
+    setLastQuery(query);
     setHighlighted(0);
-  }, [query]);
+  }
 
   if (!open)
     return null;
