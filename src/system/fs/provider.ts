@@ -1,5 +1,5 @@
 import type { FileSystemProvider } from "./types";
-import { childrenOf, useFsStore } from "./fsStore";
+import { childrenOf, isDescendantOf, useFsStore } from "./fsStore";
 import { TRASH_ID } from "./types";
 
 async function ready() {
@@ -27,9 +27,21 @@ export const fileSystem: FileSystemProvider = {
     return node;
   },
 
+  /**
+   * Replaces a same-named file rather than forking one: `createFile` runs the
+   * name through `uniqueChildName`, so delegating straight to it would turn
+   * every save of "note.txt" into "note 2.txt", "note 3.txt", …
+   */
   async writeFile(parentId, name, content, mimeType) {
     const state = await ready();
-    return state.createFile(parentId, name, content, mimeType);
+    const existing = childrenOf(state.nodes, parentId).find(
+      n => n.type === "file" && n.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (!existing)
+      return state.createFile(parentId, name, content, mimeType);
+    state.updateFileContent(existing.id, content);
+    // Re-read: `updateFileContent` commits a new node object.
+    return useFsStore.getState().nodes[existing.id];
   },
 
   async mkdir(parentId, name) {
@@ -48,9 +60,14 @@ export const fileSystem: FileSystemProvider = {
     state.rename(id, newName);
   },
 
+  /**
+   * Trash the node, or delete it permanently if already trashed. Tests the
+   * whole subtree, not just direct children of Trash: nested items would
+   * otherwise be re-trashed, relocating them and losing `trashedFrom`.
+   */
   async delete(id) {
     const state = await ready();
-    if (state.nodes[id]?.parentId === TRASH_ID)
+    if (isDescendantOf(state.nodes, id, TRASH_ID))
       state.deleteForever(id);
     else state.moveToTrash(id);
   },

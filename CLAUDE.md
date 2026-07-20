@@ -47,7 +47,10 @@ CI (`.github/workflows/ci.yml`) runs two jobs on every push/PR to `main`:
 
 `ARCHITECTURE.md` is the living design doc — read it before any
 non-trivial change; update it when a change alters one of the seams below.
-`ROADMAP.md` tracks the phased feature backlog. The summary here is a map,
+`ROADMAP.md` tracks the phased feature backlog, and
+`docs/review-backlog.md` holds known open bugs from the last review pass
+(with repros and proposed fixes) — check it before touching the shell's
+menus, the Files view, or the persisted stores. The summary here is a map,
 not a substitute for those.
 
 ### The two seams new features hook into

@@ -35,6 +35,7 @@ export interface ShellContext {
   createFolder: (parentId: string, name: string) => FsNode;
   createFile: (parentId: string, name: string, content: string, mimeType?: string) => FsNode;
   updateFileContent: (id: string, content: string) => void;
+  touchFile: (id: string) => void;
   moveToTrash: (id: string) => void;
   user: string;
 }
@@ -256,8 +257,10 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
       const existing = childByName(nodes, cwd, args[0]);
       if (existing) {
         // Refresh the timestamp instead of creating a "name 2" duplicate.
+        // Timestamp only — rewriting the content would drop a blob-backed
+        // file's bytes.
         if (existing.type === "file")
-          ctx.updateFileContent(existing.id, existing.content ?? "");
+          ctx.touchFile(existing.id);
         return { lines: [] };
       }
       ctx.createFile(cwd, args[0], "", "text/plain");

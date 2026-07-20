@@ -89,3 +89,35 @@ test.describe("Media Player (D5)", () => {
     await expect(title).toHaveText("01.mp3");
   });
 });
+
+// The CSP is build-only, and these specs run against a real preview build, so
+// a missing directive surfaces here and nowhere else. The assertions above
+// only check `src` is a blob: URL — which the browser sets even when the
+// policy then blocks the load.
+test.describe("Media Player CSP", () => {
+  test("blob: media URLs are not blocked by the Content-Security-Policy", async ({ page }) => {
+    const violations: string[] = [];
+    await page.addInitScript(() => {
+      (window as unknown as { __csp: string[] }).__csp = [];
+      document.addEventListener("securitypolicyviolation", (e) => {
+        (window as unknown as { __csp: string[] }).__csp.push(
+          `${e.violatedDirective} blocked ${e.blockedURI}`,
+        );
+      });
+    });
+
+    await openFiles(page);
+    await page.locator("input[type=\"file\"]").first().setInputFiles({
+      name: "song.mp3",
+      mimeType: "audio/mpeg",
+      buffer: Buffer.from("stand-in bytes — only the declared mimeType routes this to Player"),
+    });
+    await page.getByText("song.mp3", { exact: true }).dblclick();
+    await expect(focusedWindow(page).locator("audio")).toHaveAttribute("src", /^blob:/);
+
+    // On the violation event, not `error.code`: these are stand-in bytes, so
+    // the decode fails either way.
+    violations.push(...await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp));
+    expect(violations.filter(v => v.includes("media-src") || v.includes("default-src"))).toEqual([]);
+  });
+});
