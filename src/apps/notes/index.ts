@@ -1,6 +1,7 @@
 import type { AppManifest } from "@/system/apps/types";
 import { NotebookPen } from "lucide-react";
 import { lazy } from "react";
+import { restoreFilePayload, serializeFilePayload } from "@/system/apps/filePayload";
 
 export const notesApp: AppManifest = {
   id: "notes",
@@ -12,6 +13,8 @@ export const notesApp: AppManifest = {
   component: lazy(() => import("./NotesApp")),
   singleInstance: true,
   pinned: true,
+  serializePayload: serializeFilePayload,
+  restorePayload: restoreFilePayload,
   menus: [
     {
       title: "File",

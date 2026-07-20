@@ -1,26 +1,14 @@
 import type { FsNode } from "../fs/types";
+import type { FilePayload } from "./filePayload";
 import { notify } from "../notifications/notificationStore";
 import { useSettingsStore } from "../settings/settingsStore";
 import { useWindowStore } from "../windows/windowStore";
+import { payloadFileId } from "./filePayload";
 import { launchApp } from "./launch";
 import { getApp } from "./registry";
 
-/** Launch payload used when an app is asked to open a specific file. */
-export interface FilePayload {
-  fileId: string;
-}
-
-export function payloadFileId(payload: unknown): string | null {
-  if (
-    payload
-    && typeof payload === "object"
-    && "fileId" in payload
-    && typeof (payload as FilePayload).fileId === "string"
-  ) {
-    return (payload as FilePayload).fileId;
-  }
-  return null;
-}
+export type { FilePayload } from "./filePayload";
+export { payloadFileId } from "./filePayload";
 
 // Built-in mime-family → app defaults (B11's baseline, before any
 // user override from settingsStore.fileAssociations). Ordered by

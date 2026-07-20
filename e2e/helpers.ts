@@ -7,9 +7,15 @@ import { expect } from "@playwright/test";
  * it here gives every spec built on `boot()` a clean, single-window slate
  * instead of having to account for a stray extra window in every
  * window-count assertion.
+ *
+ * Uses the `?fresh` bypass (C1) rather than plain `/`: several specs call
+ * `boot()` again after a `page.reload()` mid-test to get back to this same
+ * clean slate, and by then a window may well have been open when session
+ * restore's debounced save last fired — without the bypass, that restore
+ * would win over the "always Welcome" contract this helper promises.
  */
 export async function boot(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/?fresh");
   await expect(page.getByText("A desktop that lives in your browser")).toBeVisible();
   await page.locator("[data-window-control] button[aria-label=\"close window\"]").click();
   await expect(page.locator("[data-window-id]")).toHaveCount(0);

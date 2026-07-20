@@ -46,7 +46,7 @@ jobs:
         run: pnpm test
 
   e2e:
-    name: E2E (Playwright)
+    name: E2E (Playwright) (${{ matrix.project }})
     runs-on: ubuntu-latest
     strategy:
       # One job per engine so the three run concurrently instead of serially.
@@ -93,3 +93,20 @@ jobs:
           name: playwright-report-${{ matrix.project }}
           path: playwright-report/
           retention-days: 7
+
+  # Branch protection requires a status check named "E2E (Playwright)", but
+  # the job above matrixes into per-engine contexts ("E2E (Playwright)
+  # (chromium)" etc.) that never post under the plain name. This job posts
+  # under the exact required name once, aggregating the matrix's outcome.
+  e2e-required:
+    name: E2E (Playwright)
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every E2E matrix job to have succeeded
+        run: |
+          if [ "${{ needs.e2e.result }}" != "success" ]; then
+            echo "E2E matrix result: ${{ needs.e2e.result }}"
+            exit 1
+          fi

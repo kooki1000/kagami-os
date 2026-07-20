@@ -3,7 +3,7 @@ import { create } from "zustand";
 export const MENU_BAR_HEIGHT = 30;
 export const TITLE_BAR_HEIGHT = 40;
 
-const DEFAULT_MIN_SIZE = { width: 320, height: 200 };
+export const DEFAULT_MIN_SIZE = { width: 320, height: 200 };
 const CASCADE_STEP = 28;
 
 export interface WindowRect {
@@ -44,6 +44,23 @@ export interface OpenWindowOptions {
   payload?: unknown;
 }
 
+/**
+ * A window as resolved for restore (C1) — appId already validated against
+ * the current registry, payload already round-tripped through the app's
+ * `restorePayload` hook. Ordered back-to-front; `hydrateSession` assigns
+ * z-index from array order.
+ */
+export interface WindowSnapshot {
+  appId: string;
+  title: string;
+  rect: WindowRect;
+  restoreRect: WindowRect | null;
+  mode: WindowMode;
+  minimized: boolean;
+  minSize: { width: number; height: number };
+  payload?: unknown;
+}
+
 interface Viewport {
   width: number;
   height: number;
@@ -61,6 +78,13 @@ export interface WindowStore {
   openWindow: (appId: string, opts: OpenWindowOptions) => string;
   /** Update a window's title bar text (e.g. when its open file is renamed). */
   setWindowTitle: (id: string, title: string) => void;
+  /**
+   * Update a window's launch payload in place — e.g. Notes syncing "which
+   * note is showing" back onto its (singleInstance) window so session
+   * restore (C1) reopens the note the user actually had open, not just
+   * whatever it was launched with.
+   */
+  setWindowPayload: (id: string, payload: unknown) => void;
   closeWindow: (id: string) => void;
   closeApp: (appId: string) => void;
   focusWindow: (id: string) => void;
@@ -78,6 +102,11 @@ export interface WindowStore {
    */
   restoreToRect: (id: string, rect: WindowRect) => void;
   setSnapPreview: (side: SnapSide | null) => void;
+  /**
+   * Replace the whole window list from a restored session (C1). Only ever
+   * called once, at boot, before anything else has opened a window.
+   */
+  hydrateSession: (windows: WindowSnapshot[], focusedIndex: number | null) => void;
 }
 
 let windowCounter = 0;
@@ -107,8 +136,10 @@ function clampToViewport(rect: WindowRect, viewport: Viewport): WindowRect {
 
 /**
  * The rect a window occupies in `mode`. Maximized/snapped rects derive purely
- * from the viewport, so this serves both initial placement and re-layout on
- * resize; a normal window keeps its rect, clamped back into reach.
+ * from the viewport, so this serves both initial placement, re-layout on
+ * resize, and restoring a window straight into whatever mode it was saved in
+ * (C1) rather than transitioning into it from "normal"; a normal window
+ * keeps its rect, clamped back into reach.
  */
 function rectForMode(
   mode: WindowMode,
@@ -178,6 +209,13 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
       return;
     set({
       windows: windows.map(w => (w.id === id ? { ...w, title } : w)),
+    });
+  },
+
+  setWindowPayload: (id, payload) => {
+    const { windows } = get();
+    set({
+      windows: windows.map(w => (w.id === id ? { ...w, payload } : w)),
     });
   },
 
@@ -383,5 +421,27 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   setSnapPreview: (side) => {
     if (get().snapPreview !== side)
       set({ snapPreview: side });
+  },
+
+  hydrateSession: (snapshots, focusedIndex) => {
+    const { viewport } = get();
+    const windows: OsWindow[] = snapshots.map((snap, i) => ({
+      id: `win-${++windowCounter}`,
+      appId: snap.appId,
+      title: snap.title,
+      screenId: "main",
+      rect: rectForMode(snap.mode, snap.rect, viewport),
+      restoreRect: snap.restoreRect,
+      mode: snap.mode,
+      minimized: snap.minimized,
+      zIndex: i + 1,
+      minSize: snap.minSize,
+      payload: snap.payload,
+    }));
+    set({
+      windows,
+      focusedId: focusedIndex !== null ? (windows[focusedIndex]?.id ?? null) : null,
+      nextZ: windows.length + 1,
+    });
   },
 }));
