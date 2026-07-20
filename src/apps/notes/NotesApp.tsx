@@ -11,6 +11,7 @@ import { payloadFileId } from "@/system/apps/openFile";
 import { isDescendantOf, isValidNodeName, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, TRASH_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
+import { useWindowStore } from "@/system/windows/windowStore";
 
 const AUTOSAVE_MS = 600;
 
@@ -84,6 +85,17 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
     if (payloadId)
       setSelectedId(payloadId);
   }
+
+  // Keep the window's payload in sync with whichever note is actually
+  // showing (selecting a note in the sidebar is internal state, not a
+  // re-launch) — otherwise session restore (C1) would only ever reopen
+  // whichever note Notes happened to be launched with.
+  useEffect(() => {
+    const store = useWindowStore.getState();
+    const current = store.windows.find(w => w.id === windowId);
+    if (current && payloadFileId(current.payload) !== selectedId)
+      store.setWindowPayload(windowId, selectedId ? { fileId: selectedId } : undefined);
+  }, [windowId, selectedId]);
 
   // Every text document on the drive (not in the Trash), newest first.
   const docs = useMemo(

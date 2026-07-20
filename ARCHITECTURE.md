@@ -58,6 +58,10 @@ Pure state + actions, no React imports, so it is unit-testable headlessly
 - The store owns a `viewport` (updated by `App` on resize) so geometry math
   (cascade placement, maximize bounds, 50% snap, clamping) stays pure.
 - `snapPreview` is transient UI state for the drag-to-edge highlight.
+- `hydrateSession` (C1) replaces the whole `windows` array from a restored
+  session snapshot, assigning fresh ids/z-index from array order — see
+  Session restore below. `setWindowPayload` updates a window's payload in
+  place (Notes uses it to keep "which note is showing" in sync; see below).
 
 ### `system/theme/themeStore.ts`
 
@@ -93,10 +97,50 @@ bar:
 'system'` places an app after the dock separator.
 - `launchApp(appId)` (`system/apps/launch.ts`) is the only bridge from
   manifest to window store.
+- `serializePayload`/`restorePayload` (C1, optional): an app whose windows
+  carry launch data worth reopening implements both, turning its `payload`
+  into JSON-safe data at save time and back at boot. Notes/Viewer/Player all
+  use the same `{ fileId }` shape (`system/apps/filePayload.ts`'s
+  `serializeFilePayload`/`restoreFilePayload` — `restoreFilePayload` drops
+  the restore if the file no longer exists). An app with neither hook still
+  gets its window position/mode restored; it just reopens bare.
 
 Apps live in `src/apps/<app-id>/` with an `index.ts` exporting the manifest.
 Files, Notes, Viewer, Terminal, and Settings are all real; Welcome is the
 onboarding window. (`ComingSoon` remains as a scaffold for future apps.)
+
+## Session restore (`system/windows/sessionStore.ts`)
+
+Window layout (app, rect, mode, minimized, z-order, focus) survives a
+reload, localStorage-backed:
+
+- `buildSessionSnapshot`/`resolveSessionSnapshot` are pure functions (unit
+  tested) — save direction walks `windows` back-to-front, drops any window
+  whose `appId` is no longer registered, and calls the app's
+  `serializePayload` hook if it has one; restore direction is the inverse,
+  resolving `title`/`minSize` from the _current_ registry (not what was
+  saved) and calling `restorePayload`.
+- `watchSessionForSave()` subscribes to `useWindowStore` and debounces
+  (400ms) writes to `localStorage["kagami:session"]`; `restoreSession()`
+  reads it once at boot and calls `windowStore.hydrateSession`.
+- `App.tsx` wires it in after `fsStore.init()` resolves (payload restoration
+  needs the fs tree up first): a `?fresh` query param bypasses restore as a
+  recovery hatch, self-clearing via `history.replaceState` after one use so
+  it doesn't also swallow every later plain reload. A session that restores
+  to zero windows (the user closed everything on purpose) is distinguished
+  from a genuine first-ever boot (no session key at all) — only the latter
+  still launches Welcome.
+- Notes syncs its window's `payload` on every selection change (an effect
+  calling `setWindowPayload`), not just at launch — otherwise picking a note
+  from its own sidebar (as opposed to opening one from Files) would never
+  update what gets restored. Viewer has no in-app "switch file" action, so
+  it doesn't need the same treatment. Player's Next/Previous also changes
+  its current file without updating `payload` — a known, pre-existing gap
+  independent of this feature — so a restored Player window can reopen
+  whichever track it was last launched or explicitly reopened with, not
+  necessarily whatever was mid-playback.
+- Restored windows get fresh ids — nothing across a reload depends on id
+  stability.
 
 ## Shell components (`src/components/shell/`)
 

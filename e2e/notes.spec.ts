@@ -19,10 +19,12 @@ test.describe("Notes persistence", () => {
     await page.waitForTimeout(500);
 
     await page.reload();
-    await expect(page.getByText("A desktop that lives in your browser")).toBeVisible();
 
-    // Reopen Notes — the just-edited note is newest, so it's reselected.
-    await openApp(page, "notes");
+    // Session restore (C1) reopens the Notes window with the same note
+    // already selected — no dock click, no Welcome, needed. (Falling back
+    // to "just-edited note is newest" would pass either way, so this checks
+    // the window came back at all first.)
+    await expect(page.locator("[data-window-id]")).toHaveCount(1);
     await expect(page.getByRole("textbox")).toHaveValue(marker);
   });
 });

@@ -12,6 +12,7 @@ import { accentById, themeVariables, wallpaperById } from "./system/settings/pal
 import { useSettingsStore } from "./system/settings/settingsStore";
 import { useGlobalShortcuts } from "./system/shortcuts";
 import { useThemeStore } from "./system/theme/themeStore";
+import { restoreSession, watchSessionForSave } from "./system/windows/sessionStore";
 import { useWindowStore } from "./system/windows/windowStore";
 
 export default function App() {
@@ -46,21 +47,54 @@ export default function App() {
   }, [setViewport]);
 
   useEffect(() => {
+    // Guards the restore-session/launch-welcome tail below against React
+    // StrictMode's double-invoked effects: the first invocation's cleanup
+    // runs (in dev) before this promise settles, so bail rather than
+    // hydrate/launch twice from two overlapping boots.
+    let cancelled = false;
+    let unwatch: (() => void) | null = null;
+
     // Bring the virtual file system up as part of boot (idempotent). Once
-    // it's ready, honor the "auto-empty Trash after 30 days" preference.
+    // it's ready, honor the "auto-empty Trash after 30 days" preference,
+    // then restore the previous session's windows (C1) — a `?fresh` query
+    // param bypasses restore as a recovery hatch if a bad session ever
+    // wedges boot.
     void useFsStore.getState().init().then(() => {
+      if (cancelled)
+        return;
       if (useSettingsStore.getState().autoEmptyTrash)
         useFsStore.getState().purgeExpiredTrash();
+
+      const url = new URL(window.location.href);
+      const fresh = url.searchParams.has("fresh");
+      if (fresh) {
+        // One-shot: strip it from the address bar so a later plain reload
+        // (no one typed `?fresh` again) goes back to restoring normally,
+        // rather than every reload from here on silently skipping it.
+        url.searchParams.delete("fresh");
+        window.history.replaceState(null, "", url);
+      }
+      const hadSession = fresh ? false : restoreSession();
+
+      // First-ever boot (no session was ever saved, even an empty one):
+      // greet with the Welcome window. A session that restored to zero
+      // windows means the user closed everything on purpose — don't
+      // resurrect Welcome every time they do that.
+      if (useWindowStore.getState().windows.length === 0 && !hadSession) {
+        launchApp("welcome");
+        notify({
+          title: "Welcome to Kagami OS",
+          body: "Open apps from the dock. Try ⌘W to close a window.",
+        });
+      }
+
+      unwatch = watchSessionForSave();
     });
-    // Boot experience: greet with the Welcome window. Guarded so React
-    // StrictMode's double-invoked effects don't open it twice.
-    if (useWindowStore.getState().windows.length === 0) {
-      launchApp("welcome");
-      notify({
-        title: "Welcome to Kagami OS",
-        body: "Open apps from the dock. Try ⌘W to close a window.",
-      });
-    }
+
+    return () => {
+      cancelled = true;
+      unwatch?.();
+    };
   }, []);
 
   return (

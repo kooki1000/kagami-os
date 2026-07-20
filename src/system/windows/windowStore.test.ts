@@ -210,3 +210,48 @@ describe("move + resize", () => {
     expect(win(id).mode).toBe("normal");
   });
 });
+
+describe("hydrateSession (C1)", () => {
+  it("replaces the window list, assigning z-index from array order", () => {
+    api().hydrateSession(
+      [
+        { appId: "files", title: "Files", rect: { x: 0, y: 30, width: 400, height: 300 }, restoreRect: null, mode: "normal", minimized: false, minSize: { width: 320, height: 200 } },
+        { appId: "notes", title: "Notes", rect: { x: 50, y: 60, width: 400, height: 300 }, restoreRect: null, mode: "normal", minimized: false, minSize: { width: 480, height: 320 } },
+      ],
+      1,
+    );
+    const windows = api().windows;
+    expect(windows).toHaveLength(2);
+    expect(windows[1].zIndex).toBeGreaterThan(windows[0].zIndex);
+    expect(api().focusedId).toBe(windows[1].id);
+  });
+
+  it("re-derives a maximized/snapped rect from the current viewport", () => {
+    api().hydrateSession(
+      [{ appId: "files", title: "Files", rect: { x: 0, y: 30, width: 999, height: 999 }, restoreRect: { x: 10, y: 40, width: 400, height: 300 }, mode: "maximized", minimized: false, minSize: { width: 320, height: 200 } }],
+      null,
+    );
+    const w = api().windows[0];
+    expect(w.rect).toEqual({ x: 0, y: MENU_BAR_HEIGHT, width: VIEWPORT.width, height: VIEWPORT.height - MENU_BAR_HEIGHT });
+    expect(w.restoreRect).toEqual({ x: 10, y: 40, width: 400, height: 300 });
+  });
+
+  it("leaves focusedId null when no index is given", () => {
+    api().hydrateSession(
+      [{ appId: "files", title: "Files", rect: { x: 0, y: 30, width: 400, height: 300 }, restoreRect: null, mode: "normal", minimized: false, minSize: { width: 320, height: 200 } }],
+      null,
+    );
+    expect(api().focusedId).toBeNull();
+  });
+
+  it("subsequent openWindow calls don't collide with hydrated ids/z-index", () => {
+    api().hydrateSession(
+      [{ appId: "files", title: "Files", rect: { x: 0, y: 30, width: 400, height: 300 }, restoreRect: null, mode: "normal", minimized: false, minSize: { width: 320, height: 200 } }],
+      0,
+    );
+    const restoredId = api().windows[0].id;
+    const newId = open("notes");
+    expect(newId).not.toBe(restoredId);
+    expect(win(newId).zIndex).toBeGreaterThan(win(restoredId).zIndex);
+  });
+});

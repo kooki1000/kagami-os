@@ -1,6 +1,7 @@
 import type { AppManifest } from "@/system/apps/types";
 import { Image } from "lucide-react";
 import { lazy } from "react";
+import { restoreFilePayload, serializeFilePayload } from "@/system/apps/filePayload";
 
 export const viewerApp: AppManifest = {
   id: "viewer",
@@ -11,6 +12,8 @@ export const viewerApp: AppManifest = {
   minSize: { width: 380, height: 300 },
   component: lazy(() => import("./ViewerApp")),
   pinned: true,
+  serializePayload: serializeFilePayload,
+  restorePayload: restoreFilePayload,
   menus: [
     {
       title: "File",

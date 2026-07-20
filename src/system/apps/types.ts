@@ -50,4 +50,14 @@ export interface AppManifest {
   pinned?: boolean;
   /** 'system' apps (e.g. Settings) sit after the dock separator. */
   dockZone?: "apps" | "system";
+  /**
+   * Session restore (C1) opt-in. An app whose windows carry launch data
+   * worth reopening (e.g. "which file") implements both: `serializePayload`
+   * turns the live payload into JSON-safe data at save time, `restorePayload`
+   * turns it back at boot (returning `undefined` drops the restore, e.g. if
+   * the referenced file no longer exists). An app that implements neither
+   * still gets its window position/mode restored — it just reopens bare.
+   */
+  serializePayload?: (payload: unknown) => unknown;
+  restorePayload?: (json: unknown) => unknown;
 }

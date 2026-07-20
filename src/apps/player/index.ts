@@ -1,6 +1,7 @@
 import type { AppManifest } from "@/system/apps/types";
 import { PlayCircle } from "lucide-react";
 import { lazy } from "react";
+import { restoreFilePayload, serializeFilePayload } from "@/system/apps/filePayload";
 
 export const playerApp: AppManifest = {
   id: "player",
@@ -11,6 +12,8 @@ export const playerApp: AppManifest = {
   minSize: { width: 380, height: 280 },
   component: lazy(() => import("./PlayerApp")),
   pinned: true,
+  serializePayload: serializeFilePayload,
+  restorePayload: restoreFilePayload,
   menus: [
     {
       title: "File",
