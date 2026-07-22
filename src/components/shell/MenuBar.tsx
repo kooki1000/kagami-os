@@ -1,4 +1,4 @@
-import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { MenuItem, MenuSection } from "@/system/apps/types";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Bell, Moon, Search, Sun } from "lucide-react";
@@ -126,7 +126,6 @@ export function MenuBar() {
 
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState(-1);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const triggerButtonsRef = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Something modal-ish (a dropdown) is open — global shortcuts back off
@@ -149,15 +148,6 @@ export function MenuBar() {
     setLastOpenKey(openKey);
     setHighlighted(-1);
   }
-
-  // Move real DOM focus into the menu whenever it opens, so arrow keys are
-  // capturable — matches the accessible-menu pattern used elsewhere in this
-  // a11y pass (see useFocusTrap). This is a genuine external-system sync
-  // (imperative DOM focus), not a setState, so it stays in an effect.
-  useEffect(() => {
-    if (openKey !== null)
-      menuRef.current?.focus();
-  }, [openKey]);
 
   const app = focusedAppId ? getApp(focusedAppId) : undefined;
 
@@ -255,11 +245,21 @@ export function MenuBar() {
                 type="button"
                 aria-haspopup="true"
                 aria-expanded={openKey === menu.key}
+                aria-activedescendant={
+                  openKey === menu.key && highlighted >= 0
+                    ? `menuitem-${menu.items[highlighted]?.id}`
+                    : undefined
+                }
                 className={`flex items-center gap-1.75 rounded-btn px-2 py-0.5 ${
                   menu.bold ? "font-semibold" : "opacity-80"
                 } ${openKey === menu.key ? "bg-ph-2" : "hover:bg-ph"}`}
                 onPointerDown={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
+                  // WebKit doesn't focus a <button> on click at all (unlike
+                  // Chromium/Firefox), so the trigger's own onKeyDown below
+                  // would never fire there without this explicit call.
+                  e.currentTarget.focus();
                   setOpenKey(openKey === menu.key ? null : menu.key);
                 }}
                 onPointerEnter={() => {
@@ -267,9 +267,48 @@ export function MenuBar() {
                     setOpenKey(menu.key);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setOpenKey(openKey === menu.key ? null : menu.key);
+                  // Real focus stays on the trigger button throughout — moving
+                  // it into the popup races Chromium's own "focus follows
+                  // click" behavior (applied asynchronously, after this
+                  // component's effects run) and reliably loses. Highlighting
+                  // an item is communicated via `aria-activedescendant`
+                  // instead, per the WAI-ARIA menu-button pattern.
+                  if (openKey !== menu.key) {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setOpenKey(menu.key);
+                    }
+                    return;
+                  }
+                  switch (e.key) {
+                    case "ArrowDown":
+                      e.preventDefault();
+                      setHighlighted(idx => stepHighlight(menu.items, idx, 1));
+                      return;
+                    case "ArrowUp":
+                      e.preventDefault();
+                      setHighlighted(idx => stepHighlight(menu.items, idx, -1));
+                      return;
+                    case "Enter": {
+                      e.preventDefault();
+                      const item = menu.items[highlighted];
+                      if (item && !item.disabled) {
+                        item.action?.();
+                        closeMenu();
+                      }
+                      return;
+                    }
+                    case "Escape":
+                      e.preventDefault();
+                      closeMenuAndRefocus(menu.key);
+                      return;
+                    case "ArrowLeft":
+                      e.preventDefault();
+                      navigateMenu(-1);
+                      return;
+                    case "ArrowRight":
+                      e.preventDefault();
+                      navigateMenu(1);
                   }
                 }}
               >
@@ -284,9 +323,6 @@ export function MenuBar() {
                   highlighted={highlighted}
                   setHighlighted={setHighlighted}
                   onClose={closeMenu}
-                  onEscape={() => closeMenuAndRefocus(menu.key)}
-                  onNavigate={navigateMenu}
-                  menuRef={menuRef}
                 />
               )}
             </div>
@@ -341,64 +377,23 @@ function DropMenu({
   highlighted,
   setHighlighted,
   onClose,
-  onEscape,
-  onNavigate,
-  menuRef,
 }: {
   items: BarMenuItem[];
   highlighted: number;
   setHighlighted: Dispatch<SetStateAction<number>>;
   onClose: () => void;
-  onEscape: () => void;
-  onNavigate: (direction: 1 | -1) => void;
-  menuRef: RefObject<HTMLDivElement | null>;
 }) {
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setHighlighted(i => stepHighlight(items, i, 1));
-        return;
-      case "ArrowUp":
-        e.preventDefault();
-        setHighlighted(i => stepHighlight(items, i, -1));
-        return;
-      case "Enter": {
-        e.preventDefault();
-        const item = items[highlighted];
-        if (item && !item.disabled) {
-          item.action?.();
-          onClose();
-        }
-        return;
-      }
-      case "Escape":
-        e.preventDefault();
-        onEscape();
-        return;
-      case "ArrowLeft":
-        e.preventDefault();
-        onNavigate(-1);
-        return;
-      case "ArrowRight":
-        e.preventDefault();
-        onNavigate(1);
-    }
-  }
-
   return (
     <div
-      ref={menuRef}
       role="menu"
-      tabIndex={-1}
-      className="absolute top-full left-0 z-50 mt-1 min-w-52 rounded-[10px] p-1 shadow-(--shadow-deep) chrome outline-none hairline"
+      className="absolute top-full left-0 z-50 mt-1 min-w-52 rounded-[10px] p-1 shadow-(--shadow-deep) chrome hairline"
       onPointerDown={e => e.stopPropagation()}
-      onKeyDown={onKeyDown}
     >
       {items.map((item, i) => (
         <div key={item.id}>
           <button
             type="button"
+            id={`menuitem-${item.id}`}
             role="menuitem"
             tabIndex={-1}
             disabled={item.disabled}
