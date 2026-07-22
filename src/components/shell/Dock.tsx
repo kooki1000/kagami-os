@@ -7,7 +7,7 @@ import { ContextMenu } from "@/components/ui/ContextMenu";
 import { launchApp } from "@/system/apps/launch";
 import { getApp } from "@/system/apps/registry";
 import { DOCK_TILE_PX, useDockStore } from "@/system/dock/dockStore";
-import { topWindow, useWindowStore } from "@/system/windows/windowStore";
+import { revealApp, useWindowStore } from "@/system/windows/windowStore";
 
 interface ContextMenuState {
   appId: string;
@@ -56,8 +56,6 @@ export function Dock() {
   // "app is running" dot, not window geometry, so it must not re-render
   // on every drag/resize frame of an unrelated window.
   const runningIds = useWindowStore(useShallow(s => [...new Set(s.windows.map(w => w.appId))]));
-  const focusWindow = useWindowStore(s => s.focusWindow);
-  const restoreWindow = useWindowStore(s => s.restoreWindow);
   const closeApp = useWindowStore(s => s.closeApp);
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -97,18 +95,11 @@ export function Dock() {
   }
 
   function onTileClick(appId: string) {
-    const appWindows = useWindowStore.getState().windows.filter(w => w.appId === appId);
-    if (appWindows.length === 0) {
+    if (useWindowStore.getState().windows.every(w => w.appId !== appId)) {
       launchApp(appId);
       return;
     }
-    const visible = appWindows.filter(w => !w.minimized);
-    if (visible.length > 0) {
-      focusWindow(topWindow(visible)!.id);
-    }
-    else {
-      restoreWindow(topWindow(appWindows, { includeMinimized: true })!.id);
-    }
+    revealApp(appId);
   }
 
   function renderTile(app: AppManifest) {

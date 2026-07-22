@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { boot, openApp } from "./helpers";
+import { boot, openApp, openFiles } from "./helpers";
 
 // Dock pin/unpin persistence, running indicator, and Settings-driven
 // size/position relayout (plan §4.7, catalog #11) — dockStore + Dock.tsx.
@@ -85,5 +85,55 @@ test.describe("Dock pin, running indicator, and relayout", () => {
 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
+  });
+});
+
+// Focus-follows-app polish (C6): dock-click restores every minimized window
+// of an app (not just one), and hiding an app (⌃⌥H or the menu item) pulls
+// its windows out of view without minimizing them — the dock tile brings
+// them straight back.
+test.describe("Dock focus-follows-app polish (C6)", () => {
+  test("clicking a dock tile restores every minimized window of that app", async ({ page }) => {
+    await openFiles(page);
+    await page.keyboard.press("ControlOrMeta+n");
+    await expect(page.locator("[data-window-control]")).toHaveCount(2);
+
+    const windows = page.locator("[data-window-id]");
+    await windows.nth(0).locator("button[aria-label=\"minimize window\"]").click();
+    await page.waitForTimeout(300);
+    await windows.nth(0).locator("button[aria-label=\"minimize window\"]").click();
+    await page.waitForTimeout(300);
+    await expect(page.locator("[data-window-control]")).toHaveCount(0);
+
+    await page.locator("[data-dock-app=\"files\"]").click();
+    await expect(page.locator("[data-window-control]")).toHaveCount(2);
+  });
+
+  test("hiding an app via its menu item removes its windows from view; the dock tile brings them back", async ({ page }) => {
+    await openFiles(page);
+    await expect(page.locator("[data-window-control]")).toHaveCount(1);
+
+    // "Files" also matches the dock tile's aria-label — aria-haspopup narrows
+    // this to the menu bar's app-menu trigger specifically.
+    await page.getByRole("button", { name: "Files", exact: true, includeHidden: false })
+      .and(page.locator("[aria-haspopup=\"true\"]"))
+      .click();
+    await page.getByRole("menuitem", { name: "Hide Files" }).click();
+    await expect(page.locator("[data-window-control]")).toHaveCount(0);
+
+    await page.locator("[data-dock-app=\"files\"]").click();
+    await expect(page.locator("[data-window-control]")).toHaveCount(1);
+  });
+
+  test("⌃⌥H hides the focused app's windows; the dock tile brings them back", async ({ page }) => {
+    await openFiles(page);
+    await expect(page.locator("[data-window-control]")).toHaveCount(1);
+
+    await page.locator("[data-window-id]").click({ position: { x: 300, y: 10 } });
+    await page.keyboard.press("Control+Alt+H");
+    await expect(page.locator("[data-window-control]")).toHaveCount(0);
+
+    await page.locator("[data-dock-app=\"files\"]").click();
+    await expect(page.locator("[data-window-control]")).toHaveCount(1);
   });
 });

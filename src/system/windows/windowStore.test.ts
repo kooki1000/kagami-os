@@ -1,6 +1,6 @@
 import type { OpenWindowOptions } from "./windowStore";
 import { beforeEach, describe, expect, it } from "vitest";
-import { MENU_BAR_HEIGHT, useWindowStore } from "./windowStore";
+import { MENU_BAR_HEIGHT, useWindowStore, zoneForPointer } from "./windowStore";
 
 const VIEWPORT = { width: 1000, height: 800 };
 
@@ -11,6 +11,7 @@ function reset() {
     nextZ: 1,
     snapPreview: null,
     viewport: VIEWPORT,
+    hiddenApps: new Set(),
   });
 }
 
@@ -143,6 +144,80 @@ describe("minimize + restore", () => {
   });
 });
 
+describe("hide + unhide app", () => {
+  it("hideApp marks the app hidden and hands focus to another visible window", () => {
+    const a = open("files");
+    const b = open("notes");
+    api().hideApp("notes");
+    expect(api().hiddenApps.has("notes")).toBe(true);
+    expect(api().focusedId).toBe(a);
+    // The window itself is untouched — hiding isn't minimizing.
+    expect(win(b).minimized).toBe(false);
+  });
+
+  it("hideApp is a no-op the second time (no needless re-render churn)", () => {
+    open("files");
+    api().hideApp("files");
+    const before = api().hiddenApps;
+    api().hideApp("files");
+    expect(api().hiddenApps).toBe(before);
+  });
+
+  it("hideApp clears focus entirely when it was the only app", () => {
+    open("files");
+    api().hideApp("files");
+    expect(api().focusedId).toBeNull();
+  });
+
+  it("unhideApp reveals the app again without touching minimized state", () => {
+    const id = open("files");
+    api().minimizeWindow(id);
+    api().hideApp("files");
+    api().unhideApp("files");
+    expect(api().hiddenApps.has("files")).toBe(false);
+    // A window deliberately minimized before the hide stays minimized —
+    // unhiding the app must not resurrect it.
+    expect(win(id).minimized).toBe(true);
+  });
+
+  it("unhideApp is a no-op for an app that isn't hidden", () => {
+    open("files");
+    const before = api().hiddenApps;
+    api().unhideApp("files");
+    expect(api().hiddenApps).toBe(before);
+  });
+});
+
+describe("restoreApp", () => {
+  it("restores every minimized window of an app and focuses the new topmost", () => {
+    const a = open("files");
+    const b = open("files");
+    const c = open("files");
+    api().minimizeWindow(a);
+    api().minimizeWindow(b);
+    api().minimizeWindow(c);
+    expect(api().windows.every(w => w.minimized)).toBe(true);
+
+    api().restoreApp("files");
+
+    expect(win(a).minimized).toBe(false);
+    expect(win(b).minimized).toBe(false);
+    expect(win(c).minimized).toBe(false);
+    // c was topmost (minimized last, so highest z) before minimizing —
+    // it should be the one focused after the group restore.
+    expect(api().focusedId).toBe(c);
+    expect(win(c).zIndex).toBeGreaterThan(win(a).zIndex);
+    expect(win(c).zIndex).toBeGreaterThan(win(b).zIndex);
+  });
+
+  it("is a no-op for an app with no minimized windows", () => {
+    open("files");
+    const before = api().windows;
+    api().restoreApp("files");
+    expect(api().windows).toBe(before);
+  });
+});
+
 describe("maximize + snap", () => {
   it("maximize fills the viewport below the menu bar and saves restore bounds", () => {
     const id = open("files", { size: { width: 400, height: 300 } });
@@ -185,6 +260,57 @@ describe("maximize + snap", () => {
     api().snapWindow(id, "right");
     expect(win(id).rect.x).toBe(500);
     expect(win(id).rect.width).toBe(500);
+  });
+
+  it.each([
+    ["top-left", { x: 0, y: MENU_BAR_HEIGHT, width: 500, height: 385 }],
+    ["top-right", { x: 500, y: MENU_BAR_HEIGHT, width: 500, height: 385 }],
+    ["bottom-left", { x: 0, y: 415, width: 500, height: 385 }],
+    ["bottom-right", { x: 500, y: 415, width: 500, height: 385 }],
+  ] as const)("snaps a window to the %s quarter", (zone, rect) => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    const before = { ...win(id).rect };
+    api().snapWindow(id, zone);
+    expect(win(id).mode).toBe(`snapped-${zone}`);
+    expect(win(id).rect).toEqual(rect);
+    expect(win(id).restoreRect).toEqual(before);
+    expect(win(id).minimized).toBe(false);
+    expect(api().snapPreview).toBeNull();
+  });
+
+  it("un-minimizes a window when snapping it", () => {
+    const id = open();
+    api().minimizeWindow(id);
+    api().snapWindow(id, "top-left");
+    expect(win(id).minimized).toBe(false);
+  });
+});
+
+describe("restoreToNormal", () => {
+  it("restores a maximized window to its pre-maximize bounds", () => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    const before = { ...win(id).rect };
+    api().maximizeWindow(id);
+    api().restoreToNormal(id);
+    expect(win(id).mode).toBe("normal");
+    expect(win(id).rect).toEqual(before);
+  });
+
+  it("restores a quarter-snapped window to its pre-snap bounds", () => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    const before = { ...win(id).rect };
+    api().snapWindow(id, "bottom-right");
+    api().restoreToNormal(id);
+    expect(win(id).mode).toBe("normal");
+    expect(win(id).rect).toEqual(before);
+  });
+
+  it("is a no-op for a window already in normal mode", () => {
+    const id = open();
+    const before = win(id).rect;
+    api().restoreToNormal(id);
+    expect(win(id).rect).toBe(before);
+    expect(win(id).mode).toBe("normal");
   });
 });
 
@@ -335,5 +461,28 @@ describe("visibility + transient state on mode changes", () => {
     api().closeApp("files");
 
     expect(api().snapPreview).toBeNull();
+  });
+});
+
+describe("zoneForPointer", () => {
+  it("returns null away from every edge", () => {
+    expect(zoneForPointer(500, 400, VIEWPORT)).toBeNull();
+  });
+
+  it("returns a half zone at the mid-height of an X edge", () => {
+    expect(zoneForPointer(0, 400, VIEWPORT)).toBe("left");
+    expect(zoneForPointer(999, 400, VIEWPORT)).toBe("right");
+  });
+
+  it("returns a quarter zone near a corner", () => {
+    expect(zoneForPointer(0, 0, VIEWPORT)).toBe("top-left");
+    expect(zoneForPointer(999, 0, VIEWPORT)).toBe("top-right");
+    expect(zoneForPointer(0, 799, VIEWPORT)).toBe("bottom-left");
+    expect(zoneForPointer(999, 799, VIEWPORT)).toBe("bottom-right");
+  });
+
+  it("is null at the top/bottom edge alone, without also being near an X edge", () => {
+    expect(zoneForPointer(500, 0, VIEWPORT)).toBeNull();
+    expect(zoneForPointer(500, 799, VIEWPORT)).toBeNull();
   });
 });

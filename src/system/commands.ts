@@ -22,6 +22,10 @@ export function executeCommand(command: CommandId): void {
       if (focused)
         store.closeApp(focused.appId);
       break;
+    case "app.hide":
+      if (focused)
+        store.hideApp(focused.appId);
+      break;
     case "window.close":
       if (focused)
         store.closeWindow(focused.id);
