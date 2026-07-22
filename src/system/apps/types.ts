@@ -12,6 +12,7 @@ export interface AppWindowProps {
 export type CommandId
   = | "app.newWindow"
     | "app.quit"
+    | "app.hide"
     | "window.close"
     | "window.minimize"
     | "window.zoom"
