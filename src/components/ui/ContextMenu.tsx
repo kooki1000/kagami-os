@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "@/components/ui/useFocusTrap";
 import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
@@ -27,6 +28,35 @@ function clamp(anchor: number, size: number, viewport: number, margin = 8): numb
   return Math.max(margin, Math.min(anchor, viewport - size - margin));
 }
 
+/**
+ * Measures `ref`'s real rendered size once mounted and clamps `anchor`
+ * against the viewport — shared by the top-level menu and its submenu
+ * flyout, both of which render at a raw point first, then correct once the
+ * true box size is known (replacing hardcoded width/height guesses).
+ */
+function useClampedPosition<T extends HTMLElement>(
+  ref: RefObject<T | null>,
+  anchor: { left: number; top: number } | null,
+  active: boolean,
+): { left: number; top: number } | null {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!active || !anchor)
+      return;
+    const el = ref.current;
+    if (!el)
+      return;
+    const { width, height } = el.getBoundingClientRect();
+    setPos({
+      left: clamp(anchor.left, width, window.innerWidth),
+      top: clamp(anchor.top, height, window.innerHeight),
+    });
+  }, [active, anchor, ref]);
+
+  return pos;
+}
+
 function EntryRow({ entry, onClose }: {
   entry: ContextMenuEntry;
   onClose: () => void;
@@ -36,24 +66,8 @@ function EntryRow({ entry, onClose }: {
   // clamped result below), so the correction effect has a stable,
   // non-circular dependency to key off.
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
-
-  // Measure the submenu once it has real dimensions and clamp it within the
-  // viewport — replaces the old fixed-176px-width guess and the "upward"
-  // flip guess with the actual rendered box.
-  useLayoutEffect(() => {
-    if (!open || !anchor)
-      return;
-    const el = submenuRef.current;
-    if (!el)
-      return;
-    const { width, height } = el.getBoundingClientRect();
-    setPos({
-      left: clamp(anchor.left, width, window.innerWidth),
-      top: clamp(anchor.top, height, window.innerHeight),
-    });
-  }, [open, anchor]);
+  const pos = useClampedPosition(submenuRef, anchor, open);
 
   const rowClass = `block w-full rounded-btn px-2.5 py-1 text-left text-[13px] ${
     entry.disabled
@@ -123,18 +137,8 @@ export function ContextMenu({ x, y, header, entries, onClose }: ContextMenuProps
   // measured box once mounted — replaces the old hardcoded
   // `y > innerHeight - 200` / `innerWidth - 190` guesses, which didn't match
   // the actual rendered menu.
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
-
-  useLayoutEffect(() => {
-    const el = menuRef.current;
-    if (!el)
-      return;
-    const { width, height } = el.getBoundingClientRect();
-    setPos({
-      left: clamp(x, width, window.innerWidth),
-      top: clamp(y, height, window.innerHeight),
-    });
-  }, [x, y, menuRef]);
+  const anchor = useMemo(() => ({ left: x, top: y }), [x, y]);
+  const pos = useClampedPosition(menuRef, anchor, true) ?? anchor;
 
   return (
     <>

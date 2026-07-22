@@ -127,6 +127,16 @@ export function MenuBar() {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState(-1);
   const triggerButtonsRef = useRef<Record<string, HTMLButtonElement | null>>({});
+  // A fresh inline ref callback every render would make React detach and
+  // reattach every trigger button's ref on every render (window-focus
+  // changes, notification-count updates, ...) — one stable callback per
+  // menu key instead.
+  const triggerRefCallbacksRef = useRef<Record<string, (el: HTMLButtonElement | null) => void>>({});
+  function triggerRef(key: string): (el: HTMLButtonElement | null) => void {
+    return (triggerRefCallbacksRef.current[key] ??= (el) => {
+      triggerButtonsRef.current[key] = el;
+    });
+  }
 
   // Something modal-ish (a dropdown) is open — global shortcuts back off
   // (system/shortcuts.ts) while this is true.
@@ -239,9 +249,7 @@ export function MenuBar() {
           {menus.map((menu, i) => (
             <div key={menu.key} className="relative">
               <button
-                ref={(el) => {
-                  triggerButtonsRef.current[menu.key] = el;
-                }}
+                ref={triggerRef(menu.key)}
                 type="button"
                 aria-haspopup="true"
                 aria-expanded={openKey === menu.key}

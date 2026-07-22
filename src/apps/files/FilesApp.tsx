@@ -455,12 +455,6 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     return tracks.length || 1;
   }
 
-  function scrollNodeIntoView(id: string): void {
-    container
-      ?.querySelector(`[data-node-id="${id}"]`)
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }
-
   // Roving tabIndex (review-backlog #8) means only the cursor item is ever a
   // Tab stop — real DOM focus has to follow the keyboard cursor as it moves,
   // not just the visual selection highlight, or the item that last had a
@@ -469,6 +463,13 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     container
       ?.querySelector<HTMLElement>(`[data-node-id="${id}"]`)
       ?.focus();
+  }
+
+  /** Scrolls the item into view and focuses it in one query. */
+  function focusAndScrollIntoView(id: string): void {
+    const el = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    el?.focus();
   }
 
   // Arrow-key roving focus (B6): move the cursor `delta` positions through
@@ -485,8 +486,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     if (!node)
       return;
     handleSelectNode(node, extend ? "range" : "replace");
-    scrollNodeIntoView(node.id);
-    focusNode(node.id);
+    focusAndScrollIntoView(node.id);
   }
 
   // Type-ahead (B6): letters typed within 800ms of each other accumulate
@@ -502,8 +502,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       setSelectedIds(new Set([match.id]));
       setAnchorId(match.id);
       setCursorId(match.id);
-      scrollNodeIntoView(match.id);
-      focusNode(match.id);
+      focusAndScrollIntoView(match.id);
     }
   }
 
@@ -516,7 +515,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   useEffect(() => {
     if (renamingId || !cursorId)
       return;
-    container?.querySelector<HTMLElement>(`[data-node-id="${cursorId}"]`)?.focus();
+    focusNode(cursorId);
   }, [cursorId, renamingId, container]);
 
   // The item Enter/F2 act on: the cursor when it's part of the selection,
