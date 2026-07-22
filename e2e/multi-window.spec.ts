@@ -47,7 +47,7 @@ test.describe("Multi-window (Files)", () => {
     await expect(page.locator(`[data-window-id="${other}"]`)).toHaveCount(0);
     await expect(page.locator("[data-window-control]")).toHaveCount(1);
 
-    // Dock.tsx's onTileClick only *restores* a minimized instance when every
+    // Dock.tsx's onTileClick only *restores* minimized instances when every
     // instance of the app is minimized — with one still visible, clicking
     // the tile just refocuses that visible one. Minimize the remaining
     // window too, so restore is actually the tile's only option.
@@ -55,9 +55,10 @@ test.describe("Multi-window (Files)", () => {
     await page.waitForTimeout(300);
     await expect(page.locator("[data-window-control]")).toHaveCount(0);
 
-    // Clicking the Files dock tile now restores one minimized instance.
+    // Clicking the Files dock tile restores *every* minimized instance (C6),
+    // not just one.
     await page.locator("[data-dock-app=\"files\"]").click();
-    await expect(page.locator("[data-window-control]")).toHaveCount(1);
+    await expect(page.locator("[data-window-control]")).toHaveCount(2);
 
     // ⌘Q closes every window belonging to the focused app.
     await page.keyboard.press("ControlOrMeta+q");
