@@ -32,7 +32,9 @@ export const DEFAULT_SORT: SortSpec = { key: "name", dir: "asc" };
 // spins up a fresh collator per call, which dominated `childrenOf` at scale
 // (~147 ms vs ~3.5 ms for the numeric-only date sort on 10k nodes — see
 // docs/perf-baseline.md). Reusing it keeps identical ordering, far cheaper.
-const collator = new Intl.Collator(undefined, { numeric: true });
+// Exported so other name-sorting call sites (e.g. searchNodes.ts) share it
+// too, rather than each spinning up their own.
+export const collator = new Intl.Collator(undefined, { numeric: true });
 
 function byName(a: FsNode, b: FsNode): number {
   return collator.compare(a.name, b.name);
