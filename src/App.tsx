@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AppSwitcherOverlay } from "./components/shell/AppSwitcherOverlay";
 import { Desktop } from "./components/shell/Desktop";
 import { Dock } from "./components/shell/Dock";
 import { MenuBar } from "./components/shell/MenuBar";
@@ -109,6 +110,7 @@ export default function App() {
       <ToastStack />
       <NotificationCenter />
       <SearchOverlay />
+      <AppSwitcherOverlay />
     </div>
   );
 }

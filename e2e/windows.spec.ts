@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openFiles } from "./helpers";
+import { expectApprox, openFiles } from "./helpers";
 
 // WM drag/snap/restore/close (catalog #2). Window.tsx drags the title bar via
 // raw pointer events (not HTML5 dragstart), so this drives page.mouse
@@ -10,18 +10,6 @@ import { openFiles } from "./helpers";
 // Pointer-drag timing is the flakiest part of this seam across engines, so
 // every move uses multiple steps and assertions only look at the committed
 // (post-mouse.up) rect, never the mid-drag preview.
-
-// Polls (rather than a single read) so a still-settling layout under load
-// doesn't produce a one-off flaky mismatch — retries until the geometry
-// lands within tolerance or the default expect timeout elapses.
-async function expectApprox(
-  read: () => Promise<number | undefined>,
-  expected: number,
-  tolerance: number,
-): Promise<void> {
-  await expect.poll(read).toBeGreaterThan(expected - tolerance);
-  await expect.poll(read).toBeLessThan(expected + tolerance);
-}
 
 test.describe("Window manager drag / snap / restore / close", () => {
   test("drag to the left edge snaps, dragging back restores, then close", async ({ page }) => {

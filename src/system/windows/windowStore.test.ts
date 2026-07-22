@@ -1,6 +1,6 @@
 import type { OpenWindowOptions } from "./windowStore";
 import { beforeEach, describe, expect, it } from "vitest";
-import { MENU_BAR_HEIGHT, useWindowStore } from "./windowStore";
+import { MENU_BAR_HEIGHT, useWindowStore, zoneForPointer } from "./windowStore";
 
 const VIEWPORT = { width: 1000, height: 800 };
 
@@ -261,6 +261,57 @@ describe("maximize + snap", () => {
     expect(win(id).rect.x).toBe(500);
     expect(win(id).rect.width).toBe(500);
   });
+
+  it.each([
+    ["top-left", { x: 0, y: MENU_BAR_HEIGHT, width: 500, height: 385 }],
+    ["top-right", { x: 500, y: MENU_BAR_HEIGHT, width: 500, height: 385 }],
+    ["bottom-left", { x: 0, y: 415, width: 500, height: 385 }],
+    ["bottom-right", { x: 500, y: 415, width: 500, height: 385 }],
+  ] as const)("snaps a window to the %s quarter", (zone, rect) => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    const before = { ...win(id).rect };
+    api().snapWindow(id, zone);
+    expect(win(id).mode).toBe(`snapped-${zone}`);
+    expect(win(id).rect).toEqual(rect);
+    expect(win(id).restoreRect).toEqual(before);
+    expect(win(id).minimized).toBe(false);
+    expect(api().snapPreview).toBeNull();
+  });
+
+  it("un-minimizes a window when snapping it", () => {
+    const id = open();
+    api().minimizeWindow(id);
+    api().snapWindow(id, "top-left");
+    expect(win(id).minimized).toBe(false);
+  });
+});
+
+describe("restoreToNormal", () => {
+  it("restores a maximized window to its pre-maximize bounds", () => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    const before = { ...win(id).rect };
+    api().maximizeWindow(id);
+    api().restoreToNormal(id);
+    expect(win(id).mode).toBe("normal");
+    expect(win(id).rect).toEqual(before);
+  });
+
+  it("restores a quarter-snapped window to its pre-snap bounds", () => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    const before = { ...win(id).rect };
+    api().snapWindow(id, "bottom-right");
+    api().restoreToNormal(id);
+    expect(win(id).mode).toBe("normal");
+    expect(win(id).rect).toEqual(before);
+  });
+
+  it("is a no-op for a window already in normal mode", () => {
+    const id = open();
+    const before = win(id).rect;
+    api().restoreToNormal(id);
+    expect(win(id).rect).toBe(before);
+    expect(win(id).mode).toBe("normal");
+  });
 });
 
 describe("move + resize", () => {
@@ -410,5 +461,28 @@ describe("visibility + transient state on mode changes", () => {
     api().closeApp("files");
 
     expect(api().snapPreview).toBeNull();
+  });
+});
+
+describe("zoneForPointer", () => {
+  it("returns null away from every edge", () => {
+    expect(zoneForPointer(500, 400, VIEWPORT)).toBeNull();
+  });
+
+  it("returns a half zone at the mid-height of an X edge", () => {
+    expect(zoneForPointer(0, 400, VIEWPORT)).toBe("left");
+    expect(zoneForPointer(999, 400, VIEWPORT)).toBe("right");
+  });
+
+  it("returns a quarter zone near a corner", () => {
+    expect(zoneForPointer(0, 0, VIEWPORT)).toBe("top-left");
+    expect(zoneForPointer(999, 0, VIEWPORT)).toBe("top-right");
+    expect(zoneForPointer(0, 799, VIEWPORT)).toBe("bottom-left");
+    expect(zoneForPointer(999, 799, VIEWPORT)).toBe("bottom-right");
+  });
+
+  it("is null at the top/bottom edge alone, without also being near an X edge", () => {
+    expect(zoneForPointer(500, 0, VIEWPORT)).toBeNull();
+    expect(zoneForPointer(500, 799, VIEWPORT)).toBeNull();
   });
 });

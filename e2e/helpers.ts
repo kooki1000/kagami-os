@@ -48,3 +48,19 @@ export function collectErrors(page: Page): string[] {
   page.on("pageerror", e => errors.push(e.message));
   return errors;
 }
+
+/**
+ * Polls (rather than a single read) so a still-settling layout under load
+ * doesn't produce a one-off flaky mismatch — retries until the geometry
+ * lands within tolerance or the default expect timeout elapses. Used by the
+ * window drag/snap specs, whose asserted values are pixel measurements off
+ * an animated, pointer-driven layout.
+ */
+export async function expectApprox(
+  read: () => Promise<number | undefined>,
+  expected: number,
+  tolerance: number,
+): Promise<void> {
+  await expect.poll(read).toBeGreaterThan(expected - tolerance);
+  await expect.poll(read).toBeLessThan(expected + tolerance);
+}
