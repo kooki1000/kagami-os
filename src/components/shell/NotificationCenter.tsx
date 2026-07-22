@@ -1,6 +1,8 @@
 import { BellOff, X } from "lucide-react";
+import { useFocusTrap } from "@/components/ui/useFocusTrap";
 import { formatRelativeTime } from "@/lib/format";
 import { useNotificationStore } from "@/system/notifications/notificationStore";
+import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { MENU_BAR_HEIGHT } from "@/system/windows/windowStore";
 import { NotificationGlyph } from "./NotificationGlyph";
 
@@ -12,6 +14,9 @@ export function NotificationCenter() {
   const clearAll = useNotificationStore(s => s.clearAll);
   const remove = useNotificationStore(s => s.remove);
 
+  useOverlayOpen(open);
+  const centerRef = useFocusTrap<HTMLDivElement>({ active: open, onClose: closeCenter, trapFocus: false });
+
   if (!open)
     return null;
 
@@ -19,6 +24,8 @@ export function NotificationCenter() {
     <>
       <div className="fixed inset-0 z-45" onPointerDown={closeCenter} />
       <div
+        ref={centerRef}
+        tabIndex={-1}
         className="fixed right-3 z-50 flex max-h-[70vh] w-84 animate-flyout-in flex-col overflow-hidden rounded-[15px] shadow-(--shadow-deep) chrome hairline"
         style={{ top: MENU_BAR_HEIGHT + 8 }}
       >

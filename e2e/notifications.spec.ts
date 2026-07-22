@@ -13,7 +13,7 @@ test.describe("Trash toast Undo and Notification Center", () => {
 
     // Trash it — a toast with an Undo action appears.
     await page.getByText(NAME, { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Move to Trash" }).click();
+    await page.getByRole("menuitem", { name: "Move to Trash" }).click();
     await expect(page.getByText("Moved to Trash")).toBeVisible();
     const undo = page.getByRole("button", { name: "Undo" });
     await expect(undo).toBeVisible();
@@ -24,7 +24,7 @@ test.describe("Trash toast Undo and Notification Center", () => {
 
     // Trash it again, this time leave the toast alone.
     await page.getByText(NAME, { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Move to Trash" }).click();
+    await page.getByRole("menuitem", { name: "Move to Trash" }).click();
     await expect(page.getByText("Moved to Trash")).toBeVisible();
 
     // The bell carries an unread badge (a conditionally-rendered child span —
@@ -46,5 +46,23 @@ test.describe("Trash toast Undo and Notification Center", () => {
     // target, so force it through.
     await bell.click({ force: true });
     await expect(bell.locator("span")).toHaveCount(0);
+  });
+
+  // Review-backlog #9: only an outside pointerdown dismissed the center;
+  // Escape did nothing. Now wired through the same useFocusTrap primitive as
+  // ContextMenu.
+  test("Escape closes the notification center", async ({ page }) => {
+    await openFiles(page);
+    await createFolder(page, NAME);
+    await page.getByText(NAME, { exact: true }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Move to Trash" }).click();
+    await expect(page.getByText("Moved to Trash")).toBeVisible();
+
+    const bell = page.getByRole("button", { name: "Notifications" });
+    await bell.click();
+    await expect(page.getByText("Moved to Trash").first()).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("Moved to Trash")).toHaveCount(0);
   });
 });
