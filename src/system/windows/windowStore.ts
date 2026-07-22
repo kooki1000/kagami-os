@@ -123,6 +123,15 @@ function topWindow(windows: OsWindow[], excludeId?: string): OsWindow | null {
   return top;
 }
 
+/** Replace the window with id `id` via `updater`, leaving every other window untouched. */
+function updateWindow(
+  windows: OsWindow[],
+  id: string,
+  updater: (w: OsWindow) => OsWindow,
+): OsWindow[] {
+  return windows.map(w => (w.id === id ? updater(w) : w));
+}
+
 function clampToViewport(rect: WindowRect, viewport: Viewport): WindowRect {
   // Keep the title bar reachable: never above the menu bar, never fully
   // below the bottom edge, and keep at least 80px of width on screen.
@@ -208,14 +217,14 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     if (!windows.some(w => w.id === id && w.title !== title))
       return;
     set({
-      windows: windows.map(w => (w.id === id ? { ...w, title } : w)),
+      windows: updateWindow(windows, id, w => ({ ...w, title })),
     });
   },
 
   setWindowPayload: (id, payload) => {
     const { windows } = get();
     set({
-      windows: windows.map(w => (w.id === id ? { ...w, payload } : w)),
+      windows: updateWindow(windows, id, w => ({ ...w, payload })),
     });
   },
 
@@ -228,9 +237,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
         // (e.g. "open this file"); deliver it to the existing window.
         if (opts.payload !== undefined) {
           set({
-            windows: get().windows.map(w =>
-              w.id === existing.id ? { ...w, payload: opts.payload } : w,
-            ),
+            windows: updateWindow(get().windows, existing.id, w => ({ ...w, payload: opts.payload })),
           });
         }
         if (existing.minimized)
@@ -293,7 +300,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     if (focusedId === id && topWindow(windows)?.id === id)
       return;
     set({
-      windows: windows.map(w => (w.id === id ? { ...w, zIndex: nextZ } : w)),
+      windows: updateWindow(windows, id, w => ({ ...w, zIndex: nextZ })),
       focusedId: id,
       nextZ: nextZ + 1,
     });
@@ -304,20 +311,14 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   moveWindow: (id, x, y) => {
     const { windows, viewport } = get();
     set({
-      windows: windows.map(w =>
-        w.id === id
-          ? { ...w, rect: clampToViewport({ ...w.rect, x, y }, viewport) }
-          : w,
-      ),
+      windows: updateWindow(windows, id, w => ({ ...w, rect: clampToViewport({ ...w.rect, x, y }, viewport) })),
     });
   },
 
   resizeWindow: (id, rect) => {
     const { windows } = get();
     set({
-      windows: windows.map((w) => {
-        if (w.id !== id)
-          return w;
+      windows: updateWindow(windows, id, (w) => {
         const width = Math.max(rect.width, w.minSize.width);
         const height = Math.max(rect.height, w.minSize.height);
         // When resizing from the left/top edge, don't let the opposite
@@ -335,7 +336,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   minimizeWindow: (id) => {
     const { windows, focusedId } = get();
     set({
-      windows: windows.map(w => (w.id === id ? { ...w, minimized: true } : w)),
+      windows: updateWindow(windows, id, w => ({ ...w, minimized: true })),
       focusedId:
         focusedId === id ? (topWindow(windows, id)?.id ?? null) : focusedId,
     });
@@ -344,9 +345,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   restoreWindow: (id) => {
     const { windows, nextZ } = get();
     set({
-      windows: windows.map(w =>
-        w.id === id ? { ...w, minimized: false, zIndex: nextZ } : w,
-      ),
+      windows: updateWindow(windows, id, w => ({ ...w, minimized: false, zIndex: nextZ })),
       focusedId: id,
       nextZ: nextZ + 1,
     });
@@ -355,18 +354,14 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   maximizeWindow: (id) => {
     const { windows, viewport } = get();
     set({
-      windows: windows.map((w) => {
-        if (w.id !== id)
-          return w;
-        return {
-          ...w,
-          restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
-          mode: "maximized",
-          // Else we'd resize a window that stays invisible.
-          minimized: false,
-          rect: rectForMode("maximized", w.rect, viewport),
-        };
-      }),
+      windows: updateWindow(windows, id, w => ({
+        ...w,
+        restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
+        mode: "maximized",
+        // Else we'd resize a window that stays invisible.
+        minimized: false,
+        rect: rectForMode("maximized", w.rect, viewport),
+      })),
     });
   },
 
@@ -388,33 +383,25 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     const mode: WindowMode = side === "left" ? "snapped-left" : "snapped-right";
     set({
       snapPreview: null,
-      windows: windows.map((w) => {
-        if (w.id !== id)
-          return w;
-        return {
-          ...w,
-          restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
-          mode,
-          minimized: false,
-          rect: rectForMode(mode, w.rect, viewport),
-        };
-      }),
+      windows: updateWindow(windows, id, w => ({
+        ...w,
+        restoreRect: w.mode === "normal" ? w.rect : w.restoreRect,
+        mode,
+        minimized: false,
+        rect: rectForMode(mode, w.rect, viewport),
+      })),
     });
   },
 
   restoreToRect: (id, rect) => {
     const { windows, viewport } = get();
     set({
-      windows: windows.map(w =>
-        w.id === id
-          ? {
-              ...w,
-              mode: "normal",
-              rect: clampToViewport(rect, viewport),
-              restoreRect: null,
-            }
-          : w,
-      ),
+      windows: updateWindow(windows, id, w => ({
+        ...w,
+        mode: "normal",
+        rect: clampToViewport(rect, viewport),
+        restoreRect: null,
+      })),
     });
   },
 

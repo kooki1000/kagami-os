@@ -85,12 +85,10 @@ export function resolveSessionSnapshot(
 }
 
 function isSessionSnapshot(value: unknown): value is SessionSnapshot {
-  return (
-    !!value
-    && typeof value === "object"
-    && (value as SessionSnapshot).version === SESSION_VERSION
-    && Array.isArray((value as SessionSnapshot).windows)
-  );
+  if (!value || typeof value !== "object")
+    return false;
+  const snapshot = value as SessionSnapshot;
+  return snapshot.version === SESSION_VERSION && Array.isArray(snapshot.windows);
 }
 
 function readSnapshot(): SessionSnapshot | null {
