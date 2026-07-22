@@ -37,7 +37,6 @@ import {
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
-import { useWindowStore } from "@/system/windows/windowStore";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
 import { nodeSize } from "./fileMeta";
@@ -113,7 +112,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Held as state, not a plain ref: the container element is swapped out
+  // whenever `view` toggles grid/list (FilesView renders a different DOM
+  // node for each), and the keydown listener below needs to re-attach to
+  // whichever one is current rather than the one it saw on mount.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const typeAheadRef = useRef({ text: "", at: 0 });
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
   useEffect(() => {
@@ -446,16 +449,26 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // rather than guessed from viewport width, so it tracks window resizes and
   // the `auto-fill` track count exactly. 1 in list view (a single column).
   function columnCount(): number {
-    if (view !== "grid" || !containerRef.current)
+    if (view !== "grid" || !container)
       return 1;
-    const tracks = getComputedStyle(containerRef.current).gridTemplateColumns.split(" ").filter(Boolean);
+    const tracks = getComputedStyle(container).gridTemplateColumns.split(" ").filter(Boolean);
     return tracks.length || 1;
   }
 
   function scrollNodeIntoView(id: string): void {
-    containerRef.current
+    container
       ?.querySelector(`[data-node-id="${id}"]`)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  // Roving tabIndex (review-backlog #8) means only the cursor item is ever a
+  // Tab stop — real DOM focus has to follow the keyboard cursor as it moves,
+  // not just the visual selection highlight, or the item that last had a
+  // click stays the one actually focused.
+  function focusNode(id: string): void {
+    container
+      ?.querySelector<HTMLElement>(`[data-node-id="${id}"]`)
+      ?.focus();
   }
 
   // Arrow-key roving focus (B6): move the cursor `delta` positions through
@@ -473,6 +486,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       return;
     handleSelectNode(node, extend ? "range" : "replace");
     scrollNodeIntoView(node.id);
+    focusNode(node.id);
   }
 
   // Type-ahead (B6): letters typed within 800ms of each other accumulate
@@ -489,8 +503,21 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       setAnchorId(match.id);
       setCursorId(match.id);
       scrollNodeIntoView(match.id);
+      focusNode(match.id);
     }
   }
+
+  // Keep real DOM focus following the roving cursor (review-backlog #8) even
+  // when it moves for a reason other than a direct click on the item — e.g.
+  // a new folder's rename committing, or a paste landing on new items — so
+  // the container's keydown listener always has something focused inside it
+  // to bubble from. Skipped while a rename is in progress: the RenameInput's
+  // own autofocus should win, not have this effect steal it back.
+  useEffect(() => {
+    if (renamingId || !cursorId)
+      return;
+    container?.querySelector<HTMLElement>(`[data-node-id="${cursorId}"]`)?.focus();
+  }, [cursorId, renamingId, container]);
 
   // The item Enter/F2 act on: the cursor when it's part of the selection,
   // else the sole selected item — never ambiguous across a multi-selection.
@@ -575,18 +602,23 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     };
   });
 
+  // Bound to the container itself (review-backlog #8) rather than `window`,
+  // so it fires only from real DOM focus inside this list — a second Files
+  // window, or focus anywhere else in the shell, no longer needs a
+  // `focusedId` string-comparison gate to stay silent; the browser's own
+  // focus/bubbling already scopes it correctly.
   useEffect(() => {
+    if (!container)
+      return;
     function onKeyDown(e: KeyboardEvent): void {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable))
         return;
-      if (useWindowStore.getState().focusedId !== windowId)
-        return;
       keyHandlerRef.current(e);
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [windowId]);
+    container.addEventListener("keydown", onKeyDown);
+    return () => container.removeEventListener("keydown", onKeyDown);
+  }, [container]);
 
   function menuEntries(state: MenuState): ContextMenuEntry[] {
     const node = state.node;
@@ -852,6 +884,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           nodes={nodes}
           view={view}
           selectedIds={selectedIds}
+          cursorId={cursorId}
           cutIds={cutIds}
           renamingId={renamingId}
           emptyLabel={
@@ -883,7 +916,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           onDropInto={handleDrop}
           onUploadInto={onUploadInto}
           cwdId={cwd}
-          registerContainer={el => (containerRef.current = el)}
+          registerContainer={setContainer}
         />
 
         <div className="flex h-6 flex-none items-center px-3 text-[11px] text-ink-2 select-none hairline-t">

@@ -17,6 +17,8 @@ export interface FilesViewProps {
   nodes: NodeMap;
   view: "grid" | "list";
   selectedIds: Set<string>;
+  /** The roving keyboard-nav cursor (B6) — exactly the item matching this id is a Tab stop; every other item is `tabIndex={-1}` (review-backlog #8). */
+  cursorId: string | null;
   /** Items staged as a Finder-style Cut (B5) — rendered dimmed until pasted or replaced. */
   cutIds: Set<string>;
   renamingId: string | null;
@@ -83,6 +85,7 @@ export function FilesView(props: FilesViewProps) {
     nodes,
     view,
     selectedIds,
+    cursorId,
     cutIds,
     renamingId,
     emptyLabel,
@@ -179,7 +182,11 @@ export function FilesView(props: FilesViewProps) {
     };
   }
 
-  function itemProps(node: FsNode) {
+  // `index` only matters when nothing has a cursor yet (a freshly opened,
+  // never-navigated folder) — it seeds the roving tab stop on the first item
+  // instead of leaving every item at `tabIndex={-1}` and the list untabbable.
+  function itemProps(node: FsNode, index: number) {
+    const isCursorItem = cursorId ? node.id === cursorId : index === 0;
     return {
       "ref": registerItemRef(node.id),
       // Item names can collide with the sidebar's "Places" labels (e.g. a
@@ -188,6 +195,11 @@ export function FilesView(props: FilesViewProps) {
       "data-node-name": node.name,
       // Stable hook for the keyboard cursor (B6) to scroll itself into view.
       "data-node-id": node.id,
+      "role": "option",
+      "aria-selected": selectedIds.has(node.id),
+      // Roving tabIndex (review-backlog #8): exactly one item is ever a Tab
+      // stop, matching the ARIA listbox pattern.
+      "tabIndex": isCursorItem ? 0 : -1,
       "draggable": renamingId !== node.id,
       "onMouseDown": (e: ReactMouseEvent) => e.stopPropagation(),
       "onDragStart": (e: DragEvent) => {
@@ -196,6 +208,10 @@ export function FilesView(props: FilesViewProps) {
       },
       "onClick": (e: ReactMouseEvent) => {
         e.stopPropagation();
+        // Move real DOM focus onto the clicked item so the container's
+        // keydown listener (bound to actual focus, not a window-level
+        // gate) has something inside it to bubble from.
+        (e.currentTarget as HTMLElement).focus();
         const mode: SelectMode = e.shiftKey ? "range" : e.metaKey || e.ctrlKey ? "toggle" : "replace";
         onSelectNode(node, mode);
       },
@@ -262,6 +278,8 @@ export function FilesView(props: FilesViewProps) {
       <>
         <div
           ref={registerContainer}
+          role="listbox"
+          aria-multiselectable="true"
           className={`grid flex-1 place-items-center text-[13px] text-ink-2 ${backgroundDropRing}`}
           {...backgroundProps}
         >
@@ -277,10 +295,12 @@ export function FilesView(props: FilesViewProps) {
       <>
         <div
           ref={registerContainer}
+          role="listbox"
+          aria-multiselectable="true"
           className={`grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-3 overflow-auto p-3.5 ${backgroundDropRing}`}
           {...backgroundProps}
         >
-          {items.map((node) => {
+          {items.map((node, index) => {
             const selected = selectedIds.has(node.id);
             return (
               <div
@@ -288,7 +308,7 @@ export function FilesView(props: FilesViewProps) {
                 className={`flex cursor-default flex-col gap-1.5 rounded-[11px] p-1.5 ${
                   selected ? "bg-ph-2" : "hover:bg-ph"
                 } ${cutIds.has(node.id) ? "opacity-45" : ""}`}
-                {...itemProps(node)}
+                {...itemProps(node, index)}
               >
                 <div
                   className={`grid aspect-4/3 place-items-center overflow-hidden rounded-[9px] bg-ph hairline ${
@@ -327,7 +347,13 @@ export function FilesView(props: FilesViewProps) {
 
   return (
     <>
-      <div ref={registerContainer} className={`flex-1 overflow-auto ${backgroundDropRing}`} {...backgroundProps}>
+      <div
+        ref={registerContainer}
+        role="listbox"
+        aria-multiselectable="true"
+        className={`flex-1 overflow-auto ${backgroundDropRing}`}
+        {...backgroundProps}
+      >
         <table className="w-full border-collapse text-[12.5px]">
           <thead>
             <tr className="text-left text-[11px] text-ink-2">
@@ -338,7 +364,7 @@ export function FilesView(props: FilesViewProps) {
             </tr>
           </thead>
           <tbody>
-            {items.map((node) => {
+            {items.map((node, index) => {
               const selected = selectedIds.has(node.id);
               return (
                 <tr
@@ -348,7 +374,7 @@ export function FilesView(props: FilesViewProps) {
                   } ${dropFolderId === node.id ? "outline-1 -outline-offset-1 outline-accent" : ""} ${
                     cutIds.has(node.id) ? "opacity-45" : ""
                   }`}
-                  {...itemProps(node)}
+                  {...itemProps(node, index)}
                 >
                   <td className="px-4 py-1.5">
                     <span className="flex items-center gap-2">

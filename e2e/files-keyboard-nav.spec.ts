@@ -86,4 +86,33 @@ test.describe("Files keyboard navigation (B6)", () => {
     await expect(page.getByText("new-name", { exact: true })).toBeVisible();
     await expect(page.getByText("old-name", { exact: true })).toHaveCount(0);
   });
+
+  test("role=option, aria-selected, and roving tabIndex stay correct across arrow-key navigation (B8 a11y)", async ({ page }) => {
+    await openFiles(page);
+    await seedItemsInFolder(page, "Nav ARIA Box", ["mango", "nectar", "olive"]);
+
+    await expect(page.getByRole("listbox")).toHaveAttribute("aria-multiselectable", "true");
+
+    const mango = page.getByRole("option", { name: "mango", exact: true });
+    const nectar = page.getByRole("option", { name: "nectar", exact: true });
+    const olive = page.getByRole("option", { name: "olive", exact: true });
+
+    // Creating "olive" last leaves the keyboard cursor — and so the single
+    // roving tab stop — sitting on it.
+    await expect(olive).toHaveAttribute("tabindex", "0");
+    await expect(olive).toHaveAttribute("aria-selected", "true");
+    await expect(mango).toHaveAttribute("tabindex", "-1");
+    await expect(mango).toHaveAttribute("aria-selected", "false");
+
+    await page.keyboard.press("ArrowLeft");
+
+    // The cursor (and its selection + tab stop) moved from "olive" to
+    // "nectar"; exactly one item is ever a Tab stop, and real DOM focus
+    // follows it rather than staying behind on the previous item.
+    await expect(nectar).toHaveAttribute("tabindex", "0");
+    await expect(nectar).toHaveAttribute("aria-selected", "true");
+    await expect(nectar).toBeFocused();
+    await expect(olive).toHaveAttribute("tabindex", "-1");
+    await expect(olive).toHaveAttribute("aria-selected", "false");
+  });
 });
