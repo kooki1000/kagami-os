@@ -1,20 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { openFiles } from "./helpers";
+import { expectApprox, openFiles } from "./helpers";
 
 // Quarter snap + keyboard window ops (C4). Corner-drag reuses windows.spec.ts's
 // raw pointer-event approach (Window.tsx drags via pointer capture, not HTML5
 // dragstart) — dropping within the corner band of an X edge now snaps to a
 // quarter instead of a half. Keyboard ops (⌃⌥←/→/↑/↓) exercise
 // windowShortcuts.ts's arrowSnapDirection predicate end to end.
-
-async function expectApprox(
-  read: () => Promise<number | undefined>,
-  expected: number,
-  tolerance: number,
-): Promise<void> {
-  await expect.poll(read).toBeGreaterThan(expected - tolerance);
-  await expect.poll(read).toBeLessThan(expected + tolerance);
-}
 
 test.describe("Quarter snap (drag to corner)", () => {
   test("drag to the top-left corner snaps to a quarter", async ({ page }) => {
