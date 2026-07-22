@@ -23,6 +23,23 @@ export function isHideChord(e: KeyboardEvent): boolean {
 }
 
 /**
+ * ⌃⌥←/→/↑/↓ (C4) — half-snap left/right, maximize, restore-to-normal.
+ * Arrow keys aren't remapped by Option on macOS the way letters are, but
+ * `e.code` is used anyway for consistency with the rest of this module.
+ */
+export function arrowSnapDirection(e: KeyboardEvent): "left" | "right" | "up" | "down" | null {
+  if (!e.ctrlKey || !e.altKey || e.metaKey || e.shiftKey)
+    return null;
+  switch (e.code) {
+    case "ArrowLeft": return "left";
+    case "ArrowRight": return "right";
+    case "ArrowUp": return "up";
+    case "ArrowDown": return "down";
+    default: return null;
+  }
+}
+
+/**
  * Global handler for the window-management shortcuts above. Registered
  * alongside `useGlobalShortcuts()` in `App.tsx`, not merged into it — these
  * chords are resolved by dedicated predicates instead of the menu-driven
@@ -42,6 +59,28 @@ export function useWindowManagementShortcuts(): void {
         if (focused) {
           e.preventDefault();
           hideApp(focused.appId);
+        }
+        return;
+      }
+
+      const direction = arrowSnapDirection(e);
+      if (direction) {
+        const { focusedId, windows, snapWindow, maximizeWindow, restoreToNormal } = useWindowStore.getState();
+        const focused = windows.find(w => w.id === focusedId);
+        if (!focused)
+          return;
+        e.preventDefault();
+        switch (direction) {
+          case "left":
+          case "right":
+            snapWindow(focused.id, direction);
+            break;
+          case "up":
+            maximizeWindow(focused.id);
+            break;
+          case "down":
+            restoreToNormal(focused.id);
+            break;
         }
       }
     }
