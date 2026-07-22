@@ -1,5 +1,6 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
+import { nameStem } from "@/lib/format";
 import { sweepUnreferencedBlobs } from "./blobGc";
 import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
@@ -150,9 +151,8 @@ export function uniqueChildName(
   );
   if (!siblings.has(desired.toLowerCase()))
     return desired;
-  const dot = desired.startsWith(".") ? -1 : desired.lastIndexOf(".");
-  const stem = dot > 0 ? desired.slice(0, dot) : desired;
-  const ext = dot > 0 ? desired.slice(dot) : "";
+  const stem = nameStem(desired);
+  const ext = desired.slice(stem.length);
   for (let i = 2; ; i++) {
     const candidate = `${stem} ${i}${ext}`;
     if (!siblings.has(candidate.toLowerCase()))
