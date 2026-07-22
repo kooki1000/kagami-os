@@ -13,7 +13,7 @@ test.describe("Files lifecycle", () => {
 
     // Move it to Trash via the context menu; it leaves the current folder.
     await page.getByText(NAME, { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Move to Trash" }).click();
+    await page.getByRole("menuitem", { name: "Move to Trash" }).click();
     await expect(page.getByText(NAME, { exact: true })).toHaveCount(0);
 
     // It now lives in the Trash.
@@ -22,7 +22,7 @@ test.describe("Files lifecycle", () => {
 
     // Restore it, then confirm it's back under Home.
     await page.getByText(NAME, { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Restore" }).click();
+    await page.getByRole("menuitem", { name: "Restore" }).click();
     await page.getByRole("button", { name: "Home" }).click();
     await expect(page.getByText(NAME, { exact: true })).toBeVisible();
   });

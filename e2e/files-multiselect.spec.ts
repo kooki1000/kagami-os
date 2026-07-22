@@ -27,7 +27,7 @@ test.describe("Files multi-select (B4)", () => {
     // Right-clicking a member of the selection keeps it and offers the bulk
     // action, whose label carries the live count.
     await page.getByText("item-2", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Move 3 Items to Trash" }).click();
+    await page.getByRole("menuitem", { name: "Move 3 Items to Trash" }).click();
 
     // All three leave the folder together.
     await expect(page.getByText(/item-[123]/)).toHaveCount(0);
@@ -87,6 +87,6 @@ test.describe("Files multi-select (B4)", () => {
 
     // The marquee swept all three — the bulk context action confirms the count.
     await page.getByText("m-2", { exact: true }).click({ button: "right" });
-    await expect(page.getByRole("button", { name: "Move 3 Items to Trash" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Move 3 Items to Trash" })).toBeVisible();
   });
 });

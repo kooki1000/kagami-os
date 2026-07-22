@@ -13,12 +13,12 @@ test.describe("Files: Open With submenu (B11)", () => {
     await expect(page.getByText("sample.svg", { exact: true })).toBeVisible();
 
     await page.getByText("sample.svg", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: /^Open With/ }).click();
+    await page.getByRole("menuitem", { name: /^Open With/ }).click();
     // The checkmark prefix ("✓  ") proves the built-in mime-family default
     // (image/* → viewer) is what the menu reports as current, not just that
     // an app happens to be named "Viewer" somewhere on the page (the dock
     // tile shares that accessible name with no checkmark).
-    const viewerEntry = page.getByRole("button", { name: "✓  Viewer", exact: true });
+    const viewerEntry = page.getByRole("menuitem", { name: "✓  Viewer", exact: true });
     await expect(viewerEntry).toBeVisible();
     await viewerEntry.click();
 
@@ -33,8 +33,8 @@ test.describe("Files: Open With submenu (B11)", () => {
     await expect(page.getByText("sample.txt", { exact: true })).toBeVisible();
 
     await page.getByText("sample.txt", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: /^Open With/ }).click();
-    await page.getByRole("button", { name: "✓  Notes", exact: true }).click();
+    await page.getByRole("menuitem", { name: /^Open With/ }).click();
+    await page.getByRole("menuitem", { name: "✓  Notes", exact: true }).click();
 
     // Notes is single-instance, so its window title stays "Notes" rather
     // than following the open file (unlike Viewer/Player); the selected

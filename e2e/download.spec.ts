@@ -17,7 +17,7 @@ test.describe("Files download (B3)", () => {
       page.waitForEvent("download"),
       // Non-exact name matching would also hit the sidebar's "Downloads"
       // Places entry, since it contains "Download" as a prefix.
-      page.getByRole("button", { name: "Download", exact: true }).click(),
+      page.getByRole("menuitem", { name: "Download", exact: true }).click(),
     ]);
     expect(download.suggestedFilename()).toBe("welcome.md");
   });
@@ -29,7 +29,7 @@ test.describe("Files download (B3)", () => {
     const [download] = await Promise.all([
       // Zipping runs off the main thread in zipWorker.ts — allow extra time.
       page.waitForEvent("download", { timeout: 15000 }),
-      page.getByRole("button", { name: "Download as Zip" }).click(),
+      page.getByRole("menuitem", { name: "Download as Zip" }).click(),
     ]);
     expect(download.suggestedFilename()).toBe("Documents.zip");
   });

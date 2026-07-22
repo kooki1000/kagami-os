@@ -14,7 +14,7 @@ test.describe("Files metadata & Get Info (B8)", () => {
     await expect(page.getByText("sample.txt", { exact: true })).toBeVisible();
 
     await page.getByText("sample.txt", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Get Info" }).click();
+    await page.getByRole("menuitem", { name: "Get Info" }).click();
 
     const dialog = page.getByRole("dialog", { name: "sample.txt info" });
     await expect(dialog).toBeVisible();
@@ -42,7 +42,7 @@ test.describe("Files metadata & Get Info (B8)", () => {
     await page.getByRole("button", { name: "Back" }).click();
     await page.getByRole("button", { name: "Back" }).click();
     await page.getByText("Rollup Box", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Get Info" }).click();
+    await page.getByRole("menuitem", { name: "Get Info" }).click();
 
     // 34 (direct) + 167 (one level deeper, inside "Nested") = 201 bytes —
     // proves the rollup recurses past the immediate children.
@@ -72,7 +72,7 @@ test.describe("Files metadata & Get Info (B8)", () => {
     await expect(page.getByText("sample.txt", { exact: true })).toBeVisible();
 
     await page.getByText("sample.txt", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Get Info" }).click();
+    await page.getByRole("menuitem", { name: "Get Info" }).click();
 
     const dialog = page.getByRole("dialog", { name: "sample.txt info" });
     await expect(dialog).toBeVisible();

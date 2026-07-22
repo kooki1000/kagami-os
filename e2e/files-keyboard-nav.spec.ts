@@ -43,7 +43,7 @@ test.describe("Files keyboard navigation (B6)", () => {
     await page.keyboard.press("Shift+ArrowRight");
 
     await page.getByText("bravo", { exact: true }).click({ button: "right" });
-    await expect(page.getByRole("button", { name: "Move 3 Items to Trash" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Move 3 Items to Trash" })).toBeVisible();
   });
 
   test("type-ahead jumps to the matching item; Enter opens it", async ({ page }) => {
