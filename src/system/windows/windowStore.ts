@@ -111,11 +111,21 @@ export interface WindowStore {
 
 let windowCounter = 0;
 
-/** Topmost non-minimized window, optionally excluding one id. */
-function topWindow(windows: OsWindow[], excludeId?: string): OsWindow | null {
+/**
+ * Topmost window by zIndex — non-minimized only unless `includeMinimized`,
+ * optionally excluding one id. Exported: Dock also needs this (to decide
+ * which of an app's windows to restore when every one is minimized), not
+ * just this store's own internal focus bookkeeping.
+ */
+export function topWindow(
+  windows: OsWindow[],
+  options: { excludeId?: string; includeMinimized?: boolean } = {},
+): OsWindow | null {
   let top: OsWindow | null = null;
   for (const w of windows) {
-    if (w.id === excludeId || w.minimized)
+    if (w.id === options.excludeId)
+      continue;
+    if (w.minimized && !options.includeMinimized)
       continue;
     if (!top || w.zIndex > top.zIndex)
       top = w;
@@ -338,7 +348,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     set({
       windows: updateWindow(windows, id, w => ({ ...w, minimized: true })),
       focusedId:
-        focusedId === id ? (topWindow(windows, id)?.id ?? null) : focusedId,
+        focusedId === id ? (topWindow(windows, { excludeId: id })?.id ?? null) : focusedId,
     });
   },
 
