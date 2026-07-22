@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { arrowSnapDirection, isHideChord } from "./windowShortcuts";
+import {
+  arrowSnapDirection,
+  isAppCycleChord,
+  isHideChord,
+  isSwitcherChord,
+  isSwitcherModifierRelease,
+  isSwitcherReverse,
+} from "./windowShortcuts";
 
 /** Minimal fake — only the fields the predicates read. */
 function key(overrides: Partial<KeyboardEvent>): KeyboardEvent {
@@ -64,5 +71,64 @@ describe("arrowSnapDirection", () => {
   it("rejects when Meta or Shift is also held", () => {
     expect(arrowSnapDirection(key({ ctrlKey: true, altKey: true, code: "ArrowLeft", metaKey: true }))).toBeNull();
     expect(arrowSnapDirection(key({ ctrlKey: true, altKey: true, code: "ArrowLeft", shiftKey: true }))).toBeNull();
+  });
+});
+
+describe("isSwitcherChord", () => {
+  it("matches ⌥Tab on macOS but not ⌃⌥Tab's plain-Alt-Tab counterpart on other platforms", () => {
+    expect(isSwitcherChord(key({ altKey: true, code: "Tab" }), true)).toBe(true);
+    expect(isSwitcherChord(key({ altKey: true, code: "Tab" }), false)).toBe(false);
+  });
+
+  it("matches ⌃⌥Tab on non-mac platforms but not on macOS", () => {
+    expect(isSwitcherChord(key({ ctrlKey: true, altKey: true, code: "Tab" }), false)).toBe(true);
+    expect(isSwitcherChord(key({ ctrlKey: true, altKey: true, code: "Tab" }), true)).toBe(false);
+  });
+
+  it("still matches with Shift held (reverse direction, not a different chord)", () => {
+    expect(isSwitcherChord(key({ altKey: true, shiftKey: true, code: "Tab" }), true)).toBe(true);
+  });
+
+  it("rejects a non-Tab key or Meta held", () => {
+    expect(isSwitcherChord(key({ altKey: true, code: "KeyH" }), true)).toBe(false);
+    expect(isSwitcherChord(key({ altKey: true, metaKey: true, code: "Tab" }), true)).toBe(false);
+  });
+});
+
+describe("isSwitcherReverse", () => {
+  it("reflects whether Shift is held", () => {
+    expect(isSwitcherReverse(key({ shiftKey: true }))).toBe(true);
+    expect(isSwitcherReverse(key({}))).toBe(false);
+  });
+});
+
+describe("isSwitcherModifierRelease", () => {
+  it("commits on releasing Alt on macOS", () => {
+    expect(isSwitcherModifierRelease(key({ key: "Alt" } as Partial<KeyboardEvent>), true)).toBe(true);
+  });
+
+  it("commits on releasing either Control or Alt on non-mac platforms", () => {
+    expect(isSwitcherModifierRelease(key({ key: "Control" } as Partial<KeyboardEvent>), false)).toBe(true);
+    expect(isSwitcherModifierRelease(key({ key: "Alt" } as Partial<KeyboardEvent>), false)).toBe(true);
+  });
+
+  it("ignores an unrelated key release", () => {
+    expect(isSwitcherModifierRelease(key({ key: "Tab" } as Partial<KeyboardEvent>), true)).toBe(false);
+  });
+});
+
+describe("isAppCycleChord", () => {
+  it("matches Ctrl+Backquote on every platform", () => {
+    expect(isAppCycleChord(key({ ctrlKey: true, code: "Backquote" }))).toBe(true);
+  });
+
+  it("rejects with Alt, Meta, or Shift also held", () => {
+    expect(isAppCycleChord(key({ ctrlKey: true, altKey: true, code: "Backquote" }))).toBe(false);
+    expect(isAppCycleChord(key({ ctrlKey: true, metaKey: true, code: "Backquote" }))).toBe(false);
+    expect(isAppCycleChord(key({ ctrlKey: true, shiftKey: true, code: "Backquote" }))).toBe(false);
+  });
+
+  it("rejects a different key", () => {
+    expect(isAppCycleChord(key({ ctrlKey: true, code: "KeyH" }))).toBe(false);
   });
 });
