@@ -2,11 +2,18 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
 import { memo, Suspense, useEffect, useRef, useState } from "react";
 import { getApp } from "@/system/apps/registry";
+import { useReducedMotion } from "@/system/theme/useReducedMotion";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
 
 const SNAP_EDGE_PX = 8;
 const MINIMIZE_MS = 240;
+const ENTER_MS = 180;
+// Kept well above 0ms even under "reduce motion" — some code paths (and
+// assistive tech) treat a 0ms transition as never having fired, and this
+// still has to outrun the fly-to-dock setTimeout below to avoid an
+// apparent hang before the window actually minimizes.
+const REDUCED_MOTION_MS = 20;
 
 /** Pointer capture can throw for already-released or synthetic pointers. */
 function capturePointer(el: Element, pointerId: number) {
@@ -82,6 +89,9 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
   const snapWindow = useWindowStore(s => s.snapWindow);
   const restoreToRect = useWindowStore(s => s.restoreToRect);
   const setSnapPreview = useWindowStore(s => s.setSnapPreview);
+  const reducedMotion = useReducedMotion();
+  const minimizeMs = reducedMotion ? REDUCED_MOTION_MS : MINIMIZE_MS;
+  const enterMs = reducedMotion ? REDUCED_MOTION_MS : ENTER_MS;
 
   const dragStateRef = useRef<DragState | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
@@ -246,7 +256,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         minimizeTimerRef.current = null;
         setMinimizeStyle(null);
         minimizeWindow(win.id);
-      }, MINIMIZE_MS);
+      }, minimizeMs);
     }
   }
 
@@ -261,8 +271,8 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     zIndex: win.zIndex,
     boxShadow: focused ? "var(--shadow-window-focus)" : "var(--shadow-window)",
     transition: minimizeStyle
-      ? `transform ${MINIMIZE_MS}ms cubic-bezier(.4,0,.7,1), opacity ${MINIMIZE_MS}ms ease-in`
-      : "transform 180ms ease-out, opacity 180ms ease-out",
+      ? `transform ${minimizeMs}ms cubic-bezier(.4,0,.7,1), opacity ${minimizeMs}ms ease-in`
+      : `transform ${enterMs}ms ease-out, opacity ${enterMs}ms ease-out`,
     ...(minimizeStyle ?? (entered ? {} : { transform: "scale(0.96)", opacity: 0 })),
   };
 

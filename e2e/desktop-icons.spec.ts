@@ -129,7 +129,7 @@ test.describe("Desktop icons (B7)", () => {
     }).toBe(true);
     // And it's still a live target, not just visually in-bounds.
     await icon.click({ button: "right" });
-    await expect(page.getByRole("button", { name: "Get Info", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Get Info", exact: true })).toBeVisible();
   });
 
   test("context menu: rename and Move to Trash on a Desktop icon", async ({ page }) => {
@@ -142,21 +142,21 @@ test.describe("Desktop icons (B7)", () => {
     await expect(page.locator("[data-window-id]")).toHaveCount(0);
 
     await desktopIcon(page, "sample.svg").click({ button: "right" });
-    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
     const rename = page.locator("input:focus");
     await rename.fill("renamed.svg");
     await rename.press("Enter");
     await expect(desktopIcon(page, "renamed.svg")).toBeVisible();
 
     await desktopIcon(page, "renamed.svg").click({ button: "right" });
-    await page.getByRole("button", { name: "Move to Trash", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Move to Trash", exact: true }).click();
     await expect(page.locator("[data-desktop-icon]")).toHaveCount(0);
   });
 
   test("right-click on empty wallpaper offers New Folder", async ({ page }) => {
     await boot(page);
     await page.locator(".wallpaper").click({ button: "right", position: { x: 400, y: 400 } });
-    await page.getByRole("button", { name: "New Folder", exact: true }).click();
+    await page.getByRole("menuitem", { name: "New Folder", exact: true }).click();
     const rename = page.locator("input:focus");
     await rename.fill("Fresh Folder");
     await rename.press("Enter");

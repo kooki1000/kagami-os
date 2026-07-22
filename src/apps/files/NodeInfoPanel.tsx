@@ -1,5 +1,7 @@
 import type { FsNode } from "@/system/fs/types";
+import { useFocusTrap } from "@/components/ui/useFocusTrap";
 import { formatBytes } from "@/lib/format";
+import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { nodeKind } from "./fileMeta";
 import { NodeGlyph } from "./NodeGlyph";
 
@@ -13,6 +15,12 @@ interface NodeInfoPanelProps {
 
 /** "Get Info" (B8): name, kind, size, location, and timestamps for one item. */
 export function NodeInfoPanel({ node, size, location, onClose }: NodeInfoPanelProps) {
+  // Always "active" for the lifetime this component is mounted — the panel
+  // unmounts entirely when closed, so there's no separate open/closed state
+  // to track here (see review-backlog #6).
+  const panelRef = useFocusTrap<HTMLDivElement>({ active: true, onClose, trapFocus: true });
+  useOverlayOpen(true);
+
   const rows: [string, string][] = [
     ["Kind", nodeKind(node)],
     ["Size", node.type === "folder" ? `${formatBytes(size)} (rolled up)` : formatBytes(size)],
@@ -25,8 +33,11 @@ export function NodeInfoPanel({ node, size, location, onClose }: NodeInfoPanelPr
     <>
       <div className="fixed inset-0 z-40" onPointerDown={onClose} />
       <div
+        ref={panelRef}
         role="dialog"
+        aria-modal="true"
         aria-label={`${node.name} info`}
+        tabIndex={-1}
         className="fixed top-1/2 left-1/2 z-50 w-72 -translate-1/2 rounded-window p-4 shadow-(--shadow-deep) chrome hairline"
       >
         <div className="flex items-center gap-2.5 pb-3">

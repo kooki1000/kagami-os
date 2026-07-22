@@ -36,4 +36,26 @@ test.describe("Shortcut routing", () => {
     await page.keyboard.press("ControlOrMeta+w");
     await expect(page.locator("[data-window-control]")).toHaveCount(0);
   });
+
+  test("a MenuBar dropdown being open gates ⌘W (overlay registry)", async ({ page }) => {
+    await openFiles(page);
+    await expect(page.locator("[data-window-control]")).toHaveCount(1);
+
+    // Open the "Kagami" system menu — while it's open, the overlay registry
+    // should make ⌘W a no-op instead of closing the window underneath it.
+    const trigger = page.getByRole("button", { name: "Kagami" });
+    await trigger.click();
+    await expect(page.getByRole("menu")).toBeVisible();
+
+    await page.keyboard.press("ControlOrMeta+w");
+    await expect(page.locator("[data-window-control]")).toHaveCount(1);
+    await expect(page.getByRole("menu")).toBeVisible();
+
+    // Close the menu — ⌘W now closes the window as normal.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    await page.keyboard.press("ControlOrMeta+w");
+    await expect(page.locator("[data-window-control]")).toHaveCount(0);
+  });
 });

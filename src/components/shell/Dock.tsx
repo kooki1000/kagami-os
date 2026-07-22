@@ -1,8 +1,10 @@
+import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppManifest } from "@/system/apps/types";
 import type { DockPosition } from "@/system/dock/dockStore";
 import type { OsWindow } from "@/system/windows/windowStore";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 import { launchApp } from "@/system/apps/launch";
 import { getApp } from "@/system/apps/registry";
 import { DOCK_TILE_PX, useDockStore } from "@/system/dock/dockStore";
@@ -67,6 +69,7 @@ export function Dock() {
   const closeApp = useWindowStore(s => s.closeApp);
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const menuApp = menu ? getApp(menu.appId) : undefined;
 
   const layout = POSITION[position];
   const tilePx = DOCK_TILE_PX[size];
@@ -81,6 +84,25 @@ export function Dock() {
     .filter((app): app is AppManifest => app !== undefined);
   const appZone = items.filter(a => a.dockZone !== "system");
   const systemZone = items.filter(a => a.dockZone === "system");
+
+  function dockMenuEntries(app: AppManifest): ContextMenuEntry[] {
+    const running = runningIds.includes(app.id);
+    const pinned = pinnedIds.includes(app.id);
+    return [
+      {
+        label: "New Window",
+        run: () => launchApp(app.id),
+        disabled: Boolean(app.singleInstance && running),
+      },
+      {
+        label: pinned ? "Unpin from Dock" : "Pin to Dock",
+        run: () => (pinned ? unpin(app.id) : pin(app.id)),
+        // Unpinning a non-running app would just vanish it mid-click; allow
+        // it, but keep at least the interaction predictable by allowing both.
+      },
+      ...(running ? [{ label: "Quit", run: () => closeApp(app.id) }] : []),
+    ];
+  }
 
   function onTileClick(appId: string) {
     const appWindows = useWindowStore.getState().windows.filter(w => w.appId === appId);
@@ -133,14 +155,12 @@ export function Dock() {
 
   return (
     <>
-      {menu && (
-        <DockContextMenu
-          menu={menu}
-          running={runningIds.includes(menu.appId)}
-          pinned={pinnedIds.includes(menu.appId)}
-          onPin={pin}
-          onUnpin={unpin}
-          onQuit={closeApp}
+      {menu && menuApp && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          header={menuApp.name}
+          entries={dockMenuEntries(menuApp)}
           onClose={() => setMenu(null)}
         />
       )}
@@ -152,84 +172,6 @@ export function Dock() {
           <div className={`self-center bg-hairline ${layout.separator}`} />
         )}
         {systemZone.map(renderTile)}
-      </div>
-    </>
-  );
-}
-
-function DockContextMenu({
-  menu,
-  running,
-  pinned,
-  onPin,
-  onUnpin,
-  onQuit,
-  onClose,
-}: {
-  menu: ContextMenuState;
-  running: boolean;
-  pinned: boolean;
-  onPin: (appId: string) => void;
-  onUnpin: (appId: string) => void;
-  onQuit: (appId: string) => void;
-  onClose: () => void;
-}) {
-  const app = getApp(menu.appId);
-  if (!app)
-    return null;
-
-  const actions: Array<{ label: string; run: () => void; disabled?: boolean }> = [
-    {
-      label: "New Window",
-      run: () => launchApp(app.id),
-      disabled: Boolean(app.singleInstance && running),
-    },
-    {
-      label: pinned ? "Unpin from Dock" : "Pin to Dock",
-      run: () => (pinned ? onUnpin(app.id) : onPin(app.id)),
-      // Unpinning a non-running app would just vanish it mid-click; allow it,
-      // but keep at least the interaction predictable by allowing both.
-    },
-    ...(running ? [{ label: "Quit", run: () => onQuit(app.id) }] : []),
-  ];
-
-  return (
-    <>
-      <div
-        className="fixed inset-0 z-40"
-        onPointerDown={onClose}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
-      <div
-        className="fixed z-50 min-w-40 rounded-[10px] p-1 shadow-(--shadow-deep) chrome hairline"
-        style={{ left: menu.x, top: menu.y - 8, transform: "translateY(-100%)" }}
-      >
-        <div className="px-2.5 py-1 text-[11px] font-semibold text-ink-2">
-          {app.name}
-        </div>
-        {actions.map(action => (
-          <button
-            key={action.label}
-            type="button"
-            disabled={action.disabled}
-            className={`block w-full rounded-btn px-2.5 py-1 text-left text-[13px] ${
-              action.disabled
-                ? "text-ink-2 opacity-50"
-                : "text-ink hover:bg-accent hover:text-white"
-            }`}
-            onClick={() => {
-              if (action.disabled)
-                return;
-              action.run();
-              onClose();
-            }}
-          >
-            {action.label}
-          </button>
-        ))}
       </div>
     </>
   );

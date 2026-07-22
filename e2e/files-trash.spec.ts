@@ -12,7 +12,7 @@ test.describe("Files Empty Trash", () => {
     // Create a folder and send it to the Trash.
     await createFolder(page, "Doomed");
     await page.getByText("Doomed", { exact: true }).click({ button: "right" });
-    await page.getByRole("button", { name: "Move to Trash" }).click();
+    await page.getByRole("menuitem", { name: "Move to Trash" }).click();
     await expect(page.getByText("Doomed", { exact: true })).toHaveCount(0);
 
     // It's in the Trash now.

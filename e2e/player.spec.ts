@@ -74,7 +74,7 @@ test.describe("Media Player (D5)", () => {
     // case-sensitive prefix match keeps it from colliding with the
     // lowercase "Next track" transport button elsewhere on the page.
     await page.getByRole("button", { name: "Playback", exact: true }).click();
-    await page.getByRole("button", { name: /^Next Track/ }).click();
+    await page.getByRole("menuitem", { name: /^Next Track/ }).click();
     await expect(title).toHaveText("03.mp3");
 
     // Wraps back around to the first track.

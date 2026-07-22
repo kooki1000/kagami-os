@@ -5,6 +5,7 @@ import { formatShortcut } from "@/lib/format";
 import { launchApp } from "@/system/apps/launch";
 import { openFile } from "@/system/apps/openFile";
 import { useFsStore } from "@/system/fs/fsStore";
+import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { searchNodes } from "@/system/search/searchNodes";
 import { useSearchStore } from "@/system/search/searchStore";
 import { MENU_BAR_HEIGHT } from "@/system/windows/windowStore";
@@ -19,6 +20,10 @@ export function SearchOverlay() {
 
   const results = useMemo(() => (open ? searchNodes(nodes, query) : []), [open, nodes, query]);
   const [highlighted, setHighlighted] = useState(0);
+
+  // Registers with the shared overlay registry so global shortcuts
+  // (system/shortcuts.ts) and other menus back off while search is open.
+  useOverlayOpen(open);
 
   // Reset the highlight whenever the query changes — state adjustment during
   // render (matching MenuBar's lastFocusedId pattern), not a useEffect.
@@ -66,6 +71,8 @@ export function SearchOverlay() {
     <>
       <div className="fixed inset-0 z-45" onPointerDown={closeSearch} />
       <div
+        role="dialog"
+        aria-modal="true"
         className="fixed left-1/2 z-50 flex max-h-[60vh] w-120 -translate-x-1/2 animate-flyout-in flex-col overflow-hidden rounded-[15px] shadow-(--shadow-deep) chrome hairline"
         style={{ top: MENU_BAR_HEIGHT + 80 }}
       >
