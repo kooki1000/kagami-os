@@ -13,34 +13,16 @@ export interface WindowRect {
   height: number;
 }
 
-export type WindowMode
-  = | "normal"
-    | "maximized"
-    | "snapped-left"
-    | "snapped-right"
-    | "snapped-top-left"
-    | "snapped-top-right"
-    | "snapped-bottom-left"
-    | "snapped-bottom-right";
 export type SnapZone = "left" | "right" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+export type WindowMode = "normal" | "maximized" | `snapped-${SnapZone}`;
 
-const MODE_FOR_ZONE: Record<SnapZone, WindowMode> = {
-  "left": "snapped-left",
-  "right": "snapped-right",
-  "top-left": "snapped-top-left",
-  "top-right": "snapped-top-right",
-  "bottom-left": "snapped-bottom-left",
-  "bottom-right": "snapped-bottom-right",
-};
+function modeForZone(zone: SnapZone): WindowMode {
+  return `snapped-${zone}`;
+}
 
-const ZONE_FOR_SNAPPED_MODE: Record<Exclude<WindowMode, "normal" | "maximized">, SnapZone> = {
-  "snapped-left": "left",
-  "snapped-right": "right",
-  "snapped-top-left": "top-left",
-  "snapped-top-right": "top-right",
-  "snapped-bottom-left": "bottom-left",
-  "snapped-bottom-right": "bottom-right",
-};
+function zoneForSnappedMode(mode: Exclude<WindowMode, "normal" | "maximized">): SnapZone {
+  return mode.slice("snapped-".length) as SnapZone;
+}
 
 export interface OsWindow {
   id: string;
@@ -176,6 +158,11 @@ export function topWindow(
   return top;
 }
 
+/** Keeps `focusedId` if it's still among `survivors`, else hands focus to their topmost. */
+function reassignFocus(focusedId: string | null, survivors: OsWindow[]): string | null {
+  return survivors.some(w => w.id === focusedId) ? focusedId : (topWindow(survivors)?.id ?? null);
+}
+
 /** Replace the window with id `id` via `updater`, leaving every other window untouched. */
 function updateWindow(
   windows: OsWindow[],
@@ -241,7 +228,7 @@ function rectForMode(
     case "normal":
       return clampToViewport(rect, viewport);
     default:
-      return rectForZone(ZONE_FOR_SNAPPED_MODE[mode], viewport);
+      return rectForZone(zoneForSnappedMode(mode), viewport);
   }
 }
 
@@ -387,10 +374,9 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   closeApp: (appId) => {
     const { windows, focusedId } = get();
     const remaining = windows.filter(w => w.appId !== appId);
-    const focusGone = !remaining.some(w => w.id === focusedId);
     set({
       windows: remaining,
-      focusedId: focusGone ? (topWindow(remaining)?.id ?? null) : focusedId,
+      focusedId: reassignFocus(focusedId, remaining),
       snapPreview: null,
     });
   },
@@ -401,14 +387,10 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
       return;
     const nextHidden = new Set(hiddenApps);
     nextHidden.add(appId);
-    // Same "hand focus to the topmost still-visible window" logic as
-    // closeApp/minimizeWindow, just filtered by the updated hidden set
-    // instead of by removal/minimized.
     const visible = windows.filter(w => !w.minimized && !nextHidden.has(w.appId));
-    const focusGone = !visible.some(w => w.id === focusedId);
     set({
       hiddenApps: nextHidden,
-      focusedId: focusGone ? (topWindow(visible)?.id ?? null) : focusedId,
+      focusedId: reassignFocus(focusedId, visible),
     });
   },
 
@@ -535,7 +517,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
 
   snapWindow: (id, zone) => {
     const { windows, viewport } = get();
-    const mode = MODE_FOR_ZONE[zone];
+    const mode = modeForZone(zone);
     set({
       snapPreview: null,
       windows: updateWindow(windows, id, w => ({
@@ -587,3 +569,21 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     });
   },
 }));
+
+/**
+ * Brings an app to the front for a "select/activate this app" gesture (Dock
+ * tile click, app-switcher commit): unhides it first if hidden, focuses its
+ * topmost visible window, or restores every minimized window if none are
+ * visible. Shared so callers don't each hand-roll the same three steps.
+ */
+export function revealApp(appId: string): void {
+  const store = useWindowStore.getState();
+  if (store.hiddenApps.has(appId))
+    store.unhideApp(appId);
+  const appWindows = store.windows.filter(w => w.appId === appId);
+  const visible = appWindows.filter(w => !w.minimized);
+  if (visible.length > 0)
+    store.focusWindow(topWindow(visible)!.id);
+  else if (appWindows.length > 0)
+    store.restoreApp(appId);
+}
