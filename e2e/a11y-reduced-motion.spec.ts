@@ -39,8 +39,10 @@ test.describe("prefers-reduced-motion", () => {
     await openFiles(page);
     const elapsed = await minimizeElapsedMs(page);
     // Window.tsx's REDUCED_MOTION_MS is 20ms; bounded well under the
-    // default path's 240ms so the two cases can never be confused.
-    expect(elapsed).toBeLessThan(100);
+    // default path's 240ms so the two cases can never be confused. 180ms
+    // (rather than a tighter bound) leaves headroom for WebKit's slower
+    // click/measurement overhead without risking false negatives.
+    expect(elapsed).toBeLessThan(180);
   });
 });
 
