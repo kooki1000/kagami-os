@@ -202,6 +202,12 @@ export function MenuBar() {
                 ]
               : []),
             {
+              id: "app-hide",
+              label: `Hide ${app.name}`,
+              shortcut: "⌃⌥H",
+              action: () => executeCommand("app.hide"),
+            },
+            {
               id: "app-quit",
               label: `Quit ${app.name}`,
               shortcut: "⌘Q",

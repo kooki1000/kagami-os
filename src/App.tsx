@@ -14,6 +14,7 @@ import { useSettingsStore } from "./system/settings/settingsStore";
 import { useGlobalShortcuts } from "./system/shortcuts";
 import { useThemeStore } from "./system/theme/themeStore";
 import { restoreSession, watchSessionForSave } from "./system/windows/sessionStore";
+import { useWindowManagementShortcuts } from "./system/windows/windowShortcuts";
 import { useWindowStore } from "./system/windows/windowStore";
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
   const setViewport = useWindowStore(s => s.setViewport);
 
   useGlobalShortcuts();
+  useWindowManagementShortcuts();
 
   // Reflect theme + accent + wallpaper onto the document root. Inline
   // custom properties override the static defaults in global.css, so the

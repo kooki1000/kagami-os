@@ -57,7 +57,8 @@ export function Dock() {
   // on every drag/resize frame of an unrelated window.
   const runningIds = useWindowStore(useShallow(s => [...new Set(s.windows.map(w => w.appId))]));
   const focusWindow = useWindowStore(s => s.focusWindow);
-  const restoreWindow = useWindowStore(s => s.restoreWindow);
+  const restoreApp = useWindowStore(s => s.restoreApp);
+  const unhideApp = useWindowStore(s => s.unhideApp);
   const closeApp = useWindowStore(s => s.closeApp);
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -97,6 +98,8 @@ export function Dock() {
   }
 
   function onTileClick(appId: string) {
+    if (useWindowStore.getState().hiddenApps.has(appId))
+      unhideApp(appId);
     const appWindows = useWindowStore.getState().windows.filter(w => w.appId === appId);
     if (appWindows.length === 0) {
       launchApp(appId);
@@ -107,7 +110,9 @@ export function Dock() {
       focusWindow(topWindow(visible)!.id);
     }
     else {
-      restoreWindow(topWindow(appWindows, { includeMinimized: true })!.id);
+      // Every window of this app is minimized — bring all of them back,
+      // not just one, then focus the (new) topmost.
+      restoreApp(appId);
     }
   }
 

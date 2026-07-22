@@ -5,6 +5,7 @@ export function WindowLayer() {
   const windows = useWindowStore(s => s.windows);
   const focusedId = useWindowStore(s => s.focusedId);
   const snapPreview = useWindowStore(s => s.snapPreview);
+  const hiddenApps = useWindowStore(s => s.hiddenApps);
 
   return (
     <div className="pointer-events-none absolute inset-0 isolate z-10">
@@ -26,7 +27,7 @@ export function WindowLayer() {
         </div>
       )}
       {windows
-        .filter(w => !w.minimized)
+        .filter(w => !w.minimized && !hiddenApps.has(w.appId))
         .map(w => (
           <Window key={w.id} win={w} focused={w.id === focusedId} />
         ))}
