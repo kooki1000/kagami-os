@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { boot } from "./helpers";
 
-// Review-backlog #1: context menus clipped off the bottom/right of the
-// viewport because the old positioning used hardcoded 200px/190px guesses
-// instead of measuring the real rendered menu. Review-backlog #9: Escape
-// didn't close a menu at all. Both are fixed in ContextMenu.tsx by measuring
-// the mounted menu and clamping it, plus wiring useFocusTrap.
+// Review-backlog #1: context menus clipped off the bottom/right because the
+// old positioning used hardcoded 200px/190px guesses instead of measuring
+// the real menu. #9: Escape didn't close a menu at all. Both fixed in
+// ContextMenu.tsx via measure-and-clamp plus useFocusTrap.
 test.describe("ContextMenu viewport clamping and Escape (review-backlog #1, #9)", () => {
   test("a menu opened near the bottom-right corner stays fully within the viewport, and Escape closes it", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 600 });

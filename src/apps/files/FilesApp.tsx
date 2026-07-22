@@ -122,10 +122,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  // Held as state, not a plain ref: the container element is swapped out
-  // whenever `view` toggles grid/list (FilesView renders a different DOM
-  // node for each), and the keydown listener below needs to re-attach to
-  // whichever one is current rather than the one it saw on mount.
+  // State, not a plain ref: `view` toggling grid/list swaps the container's
+  // DOM node (FilesView renders a different one for each), and the keydown
+  // listener needs to re-attach to whichever is current.
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const typeAheadRef = useRef({ text: "", at: 0 });
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
@@ -352,10 +351,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     () => (clipboardMode === "cut" ? new Set(clipboardIds) : new Set<string>()),
     [clipboardMode, clipboardIds],
   );
-  // `infoNode` only ever holds the snapshot captured when "Get Info" was
-  // invoked; re-derive the live node from `nodes` on every render so the
-  // panel reflects renames/moves made elsewhere while it's open, and closes
-  // itself (by simply not rendering) if the node is deleted out from under it.
+  // `infoNode` holds the snapshot captured when "Get Info" was invoked;
+  // re-derive the live node from `nodes` each render so the panel reflects
+  // renames/moves elsewhere, and closes itself (not rendering) if the node
+  // is deleted out from under it.
   const liveInfoNode = infoNode ? (nodes[infoNode.id] ?? null) : null;
 
   useAppCommand(windowId, (command) => {
@@ -517,12 +516,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     }
   }
 
-  // Keep real DOM focus following the roving cursor (review-backlog #8) even
-  // when it moves for a reason other than a direct click on the item — e.g.
-  // a new folder's rename committing, or a paste landing on new items — so
-  // the container's keydown listener always has something focused inside it
-  // to bubble from. Skipped while a rename is in progress: the RenameInput's
-  // own autofocus should win, not have this effect steal it back.
+  // Keeps DOM focus following the roving cursor (#8) when it moves without
+  // a click — a rename committing, a paste landing on new items — so the
+  // container's keydown listener always has something focused to bubble
+  // from. Skipped mid-rename so RenameInput's own autofocus wins.
   useEffect(() => {
     if (renamingId || !cursorId)
       return;
@@ -541,20 +538,19 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     return null;
   }
 
-  // Full roving-focus keyboard nav (B6): arrow keys move/extend the
-  // selection, Enter opens the cursor item, F2 renames it, printable
-  // characters do type-ahead search, Escape clears the selection, and
-  // Delete/Backspace trashes it. Scoped to this window being focused, and
-  // skipped while typing (filter, rename) — the outer listener below filters
-  // those by event target. Mirrors useAppCommand's ref-indirection so the
-  // listener itself never needs to be re-subscribed as selection/nodes change.
+  // Full roving-focus keyboard nav (B6): arrows move/extend the selection,
+  // Enter opens the cursor item, F2 renames it, printable characters
+  // type-ahead, Escape clears the selection, Delete/Backspace trashes it.
+  // Scoped to this window being focused and skipped while typing (filter,
+  // rename) via the outer listener's target filter. Mirrors useAppCommand's
+  // ref-indirection so the listener never needs re-subscribing as
+  // selection/nodes change.
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useLayoutEffect(() => {
     keyHandlerRef.current = (e: KeyboardEvent) => {
       // The Get Info panel is a modal dialog with its own focus trap and
-      // Escape handler (review-backlog #6) — while it's open, this handler
-      // must be a complete no-op rather than let Delete/F2/arrows/type-ahead
-      // act on the file list hidden behind it.
+      // Escape handler (#6) — while open, this handler is a complete no-op
+      // rather than letting Delete/F2/arrows/type-ahead act on the hidden list.
       if (liveInfoNode)
         return;
       switch (e.key) {
@@ -612,11 +608,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     };
   });
 
-  // Bound to the container itself (review-backlog #8) rather than `window`,
-  // so it fires only from real DOM focus inside this list — a second Files
-  // window, or focus anywhere else in the shell, no longer needs a
-  // `focusedId` string-comparison gate to stay silent; the browser's own
-  // focus/bubbling already scopes it correctly.
+  // Bound to the container itself (#8), not `window` — real DOM focus
+  // scopes it correctly, so a second Files window or focus elsewhere in the
+  // shell no longer needs the old `focusedId` string-comparison gate.
   useEffect(() => {
     if (!container)
       return;

@@ -29,10 +29,9 @@ function clamp(anchor: number, size: number, viewport: number, margin = 8): numb
 }
 
 /**
- * Measures `ref`'s real rendered size once mounted and clamps `anchor`
- * against the viewport — shared by the top-level menu and its submenu
- * flyout, both of which render at a raw point first, then correct once the
- * true box size is known (replacing hardcoded width/height guesses).
+ * Measures `ref`'s real size once mounted and clamps `anchor` against the
+ * viewport — shared by the top-level menu and its submenu, both of which
+ * render at a raw point first, then correct once the true size is known.
  */
 function useClampedPosition<T extends HTMLElement>(
   ref: RefObject<T | null>,
@@ -104,11 +103,10 @@ function EntryRow({ entry, onClose }: {
       </button>
       {entry.dividerAfter && <div className="mx-2 my-1 hairline-b" />}
       {entry.children && open && anchor && createPortal(
-        // Portaled to <body> rather than nested here: this flyout's
-        // viewport-relative coordinates need to escape the parent menu's own
-        // `overflow-y: auto` + `max-height` clamp (added alongside this
-        // positioning fix, for menus taller than the viewport), which would
-        // otherwise clip it.
+        // Portaled to <body>: this flyout's viewport-relative coordinates
+        // need to escape the parent menu's own `overflow-y: auto` +
+        // `max-height` clamp (for menus taller than the viewport), which
+        // would otherwise clip it.
         <div
           ref={submenuRef}
           role="menu"
@@ -133,10 +131,9 @@ function EntryRow({ entry, onClose }: {
 export function ContextMenu({ x, y, header, entries, onClose }: ContextMenuProps) {
   useOverlayOpen(true);
   const menuRef = useFocusTrap<HTMLDivElement>({ active: true, onClose, trapFocus: false });
-  // Render at the raw requested point first, then correct against the real
-  // measured box once mounted — replaces the old hardcoded
-  // `y > innerHeight - 200` / `innerWidth - 190` guesses, which didn't match
-  // the actual rendered menu.
+  // Render at the raw point first, then correct once measured — replaces
+  // the old hardcoded `y > innerHeight - 200` / `innerWidth - 190` guesses,
+  // which didn't match the real rendered menu.
   const anchor = useMemo(() => ({ left: x, top: y }), [x, y]);
   const pos = useClampedPosition(menuRef, anchor, true) ?? anchor;
 
