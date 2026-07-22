@@ -13,8 +13,34 @@ export interface WindowRect {
   height: number;
 }
 
-export type WindowMode = "normal" | "maximized" | "snapped-left" | "snapped-right";
-export type SnapSide = "left" | "right";
+export type WindowMode
+  = | "normal"
+    | "maximized"
+    | "snapped-left"
+    | "snapped-right"
+    | "snapped-top-left"
+    | "snapped-top-right"
+    | "snapped-bottom-left"
+    | "snapped-bottom-right";
+export type SnapZone = "left" | "right" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+const MODE_FOR_ZONE: Record<SnapZone, WindowMode> = {
+  "left": "snapped-left",
+  "right": "snapped-right",
+  "top-left": "snapped-top-left",
+  "top-right": "snapped-top-right",
+  "bottom-left": "snapped-bottom-left",
+  "bottom-right": "snapped-bottom-right",
+};
+
+const ZONE_FOR_SNAPPED_MODE: Record<Exclude<WindowMode, "normal" | "maximized">, SnapZone> = {
+  "snapped-left": "left",
+  "snapped-right": "right",
+  "snapped-top-left": "top-left",
+  "snapped-top-right": "top-right",
+  "snapped-bottom-left": "bottom-left",
+  "snapped-bottom-right": "bottom-right",
+};
 
 export interface OsWindow {
   id: string;
@@ -61,7 +87,7 @@ export interface WindowSnapshot {
   payload?: unknown;
 }
 
-interface Viewport {
+export interface Viewport {
   width: number;
   height: number;
 }
@@ -72,7 +98,7 @@ export interface WindowStore {
   nextZ: number;
   viewport: Viewport;
   /** Transient UI state: which snap zone is highlighted during a drag. */
-  snapPreview: SnapSide | null;
+  snapPreview: SnapZone | null;
   /**
    * App ids currently hidden (⌃⌥H / "Hide {app}"), kept separate from
    * per-window `minimized` — a window the user deliberately minimized
@@ -110,13 +136,15 @@ export interface WindowStore {
   restoreWindow: (id: string) => void;
   maximizeWindow: (id: string) => void;
   toggleMaximize: (id: string) => void;
-  snapWindow: (id: string, side: SnapSide) => void;
+  /** Leave maximized/snapped mode for whatever rect the window had before — a no-op if already normal. */
+  restoreToNormal: (id: string) => void;
+  snapWindow: (id: string, zone: SnapZone) => void;
   /**
    * Leave maximized/snapped mode with an explicit target rect
    *  (used when the user drags a maximized window by its title bar).
    */
   restoreToRect: (id: string, rect: WindowRect) => void;
-  setSnapPreview: (side: SnapSide | null) => void;
+  setSnapPreview: (zone: SnapZone | null) => void;
   /**
    * Replace the whole window list from a restored session (C1). Only ever
    * called once, at boot, before anything else has opened a window.
@@ -169,6 +197,33 @@ function clampToViewport(rect: WindowRect, viewport: Viewport): WindowRect {
 }
 
 /**
+ * The rect a snap zone occupies — halves span the full usable height, quarters
+ * split that in half again. Exported so `WindowLayer`'s drag preview overlay
+ * computes the exact same rect the store will snap into, instead of a second
+ * hand-rolled copy of this geometry.
+ */
+export function rectForZone(zone: SnapZone, viewport: Viewport): WindowRect {
+  const half = Math.round(viewport.width / 2);
+  const top = MENU_BAR_HEIGHT;
+  const filledHeight = viewport.height - top;
+  const vHalf = Math.round(filledHeight / 2);
+  switch (zone) {
+    case "left":
+      return { x: 0, y: top, width: half, height: filledHeight };
+    case "right":
+      return { x: half, y: top, width: viewport.width - half, height: filledHeight };
+    case "top-left":
+      return { x: 0, y: top, width: half, height: vHalf };
+    case "top-right":
+      return { x: half, y: top, width: viewport.width - half, height: vHalf };
+    case "bottom-left":
+      return { x: 0, y: top + vHalf, width: half, height: filledHeight - vHalf };
+    case "bottom-right":
+      return { x: half, y: top + vHalf, width: viewport.width - half, height: filledHeight - vHalf };
+  }
+}
+
+/**
  * The rect a window occupies in `mode`. Maximized/snapped rects derive purely
  * from the viewport, so this serves both initial placement, re-layout on
  * resize, and restoring a window straight into whatever mode it was saved in
@@ -180,18 +235,40 @@ function rectForMode(
   rect: WindowRect,
   viewport: Viewport,
 ): WindowRect {
-  const half = Math.round(viewport.width / 2);
-  const filled = { y: MENU_BAR_HEIGHT, height: viewport.height - MENU_BAR_HEIGHT };
   switch (mode) {
     case "maximized":
-      return { x: 0, width: viewport.width, ...filled };
-    case "snapped-left":
-      return { x: 0, width: half, ...filled };
-    case "snapped-right":
-      return { x: half, width: viewport.width - half, ...filled };
+      return { x: 0, y: MENU_BAR_HEIGHT, width: viewport.width, height: viewport.height - MENU_BAR_HEIGHT };
     case "normal":
       return clampToViewport(rect, viewport);
+    default:
+      return rectForZone(ZONE_FOR_SNAPPED_MODE[mode], viewport);
   }
+}
+
+const SNAP_EDGE_PX = 8;
+// How close (in px) to the top/bottom edge a drag has to be, on top of
+// already being at an X edge, to count as a corner (quarter) rather than a
+// half — mirrors the classic "corner vs. edge-midpoint" Aero Snap distinction.
+const SNAP_CORNER_BAND_PX = 120;
+
+/**
+ * Which snap zone (if any) a title-bar drag's pointer position corresponds
+ * to. Exported (and viewport-driven rather than reading `window.innerWidth`
+ * directly) so `Window.tsx`'s drag handler and this file's own tests share
+ * one source of truth for the thresholds.
+ */
+export function zoneForPointer(x: number, y: number, viewport: Viewport): SnapZone | null {
+  const nearLeft = x <= SNAP_EDGE_PX;
+  const nearRight = x >= viewport.width - SNAP_EDGE_PX;
+  if (!nearLeft && !nearRight)
+    return null;
+  const nearTop = y <= MENU_BAR_HEIGHT + SNAP_CORNER_BAND_PX;
+  const nearBottom = y >= viewport.height - SNAP_CORNER_BAND_PX;
+  if (nearTop)
+    return nearLeft ? "top-left" : "top-right";
+  if (nearBottom)
+    return nearLeft ? "bottom-left" : "bottom-right";
+  return nearLeft ? "left" : "right";
 }
 
 function cascadeRect(
@@ -443,18 +520,22 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     const win = get().windows.find(w => w.id === id);
     if (!win)
       return;
-    if (win.mode === "maximized") {
-      const target = win.restoreRect ?? win.rect;
-      get().restoreToRect(id, target);
-    }
-    else {
+    if (win.mode === "maximized")
+      get().restoreToNormal(id);
+    else
       get().maximizeWindow(id);
-    }
   },
 
-  snapWindow: (id, side) => {
+  restoreToNormal: (id) => {
+    const win = get().windows.find(w => w.id === id);
+    if (!win || win.mode === "normal")
+      return;
+    get().restoreToRect(id, win.restoreRect ?? win.rect);
+  },
+
+  snapWindow: (id, zone) => {
     const { windows, viewport } = get();
-    const mode: WindowMode = side === "left" ? "snapped-left" : "snapped-right";
+    const mode = MODE_FOR_ZONE[zone];
     set({
       snapPreview: null,
       windows: updateWindow(windows, id, w => ({
