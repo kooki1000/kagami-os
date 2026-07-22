@@ -3,7 +3,7 @@ import type { SelectMode } from "./FilesView";
 import type { UploadEntry } from "./upload";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
-import type { SortKey } from "@/system/fs/fsStore";
+import type { NodeMap, SortKey } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
 import {
   ArrowUpDown,
@@ -53,6 +53,11 @@ const SORT_LABELS: Record<SortKey, string> = {
   kind: "Kind",
 };
 
+/** Letters typed further apart than this start a fresh type-ahead search (B6) rather than extending the previous one. */
+const TYPE_AHEAD_RESET_MS = 800;
+/** How long the "Empty Trash" button stays armed after a first click before it disarms itself (B4-style confirm-by-clicking-again). */
+const EMPTY_TRASH_CONFIRM_MS = 3000;
+
 interface MenuState {
   x: number;
   y: number;
@@ -70,6 +75,11 @@ function payloadFolderId(payload: unknown): string | null {
     return (payload as { folderId: string }).folderId;
   }
   return null;
+}
+
+/** Resolve ids to their live nodes, silently dropping any that no longer exist. */
+function nodesForIds(nodes: NodeMap, ids: string[]): FsNode[] {
+  return ids.map(id => nodes[id]).filter((n): n is FsNode => !!n);
 }
 
 export default function FilesApp({ windowId, payload }: AppWindowProps) {
@@ -112,10 +122,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  // Held as state, not a plain ref: the container element is swapped out
-  // whenever `view` toggles grid/list (FilesView renders a different DOM
-  // node for each), and the keydown listener below needs to re-attach to
-  // whichever one is current rather than the one it saw on mount.
+  // State, not a plain ref: `view` toggling grid/list swaps the container's
+  // DOM node (FilesView renders a different one for each), and the keydown
+  // listener needs to re-attach to whichever is current.
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const typeAheadRef = useRef({ text: "", at: 0 });
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
@@ -192,9 +201,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   function trashManyWithUndo(ids: string[]): void {
     // Already in the Trash: moveToTrash would no-op, so don't include those —
     // an Undo that pulls them back out would be surprising.
-    const targets = ids
-      .map(id => nodes[id])
-      .filter((n): n is FsNode => !!n && n.parentId !== TRASH_ID);
+    const targets = nodesForIds(nodes, ids).filter(t => t.parentId !== TRASH_ID);
     if (targets.length === 0)
       return;
     targets.forEach(t => moveToTrash(t.id));
@@ -331,19 +338,23 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     const q = query.trim().toLowerCase();
     return q ? children.filter(n => n.name.toLowerCase().includes(q)) : children;
   }, [children, query]);
+  // Shared by both "Select All" and range-selection below — no need for either
+  // to re-derive its own copy of the same id list.
+  const visibleIds = useMemo(() => visible.map(n => n.id), [visible]);
   const crumbs = useMemo(() => pathOf(nodes, cwd).slice(1), [nodes, cwd]);
+  // A plain count, so a full childrenOf sort (which we'd throw away anyway) is skipped.
   const trashCount = useMemo(
-    () => childrenOf(nodes, TRASH_ID).length,
+    () => Object.values(nodes).filter(n => n.parentId === TRASH_ID).length,
     [nodes],
   );
   const cutIds = useMemo(
     () => (clipboardMode === "cut" ? new Set(clipboardIds) : new Set<string>()),
     [clipboardMode, clipboardIds],
   );
-  // `infoNode` only ever holds the snapshot captured when "Get Info" was
-  // invoked; re-derive the live node from `nodes` on every render so the
-  // panel reflects renames/moves made elsewhere while it's open, and closes
-  // itself (by simply not rendering) if the node is deleted out from under it.
+  // `infoNode` holds the snapshot captured when "Get Info" was invoked;
+  // re-derive the live node from `nodes` each render so the panel reflects
+  // renames/moves elsewhere, and closes itself (not rendering) if the node
+  // is deleted out from under it.
   const liveInfoNode = infoNode ? (nodes[infoNode.id] ?? null) : null;
 
   useAppCommand(windowId, (command) => {
@@ -388,7 +399,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
         navigate(TRASH_ID);
         break;
       case "files.selectAll":
-        setSelectedIds(new Set(visible.map(n => n.id)));
+        setSelectedIds(new Set(visibleIds));
         setAnchorId(null);
         setCursorId(null);
         break;
@@ -428,17 +439,16 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       return;
     }
     if (mode === "range") {
-      const ids = visible.map(n => n.id);
       const anchor = anchorId ?? node.id;
-      const from = ids.indexOf(anchor);
-      const to = ids.indexOf(node.id);
+      const from = visibleIds.indexOf(anchor);
+      const to = visibleIds.indexOf(node.id);
       if (from === -1 || to === -1) {
         setSelectedIds(new Set([node.id]));
         setAnchorId(node.id);
         return;
       }
       const [lo, hi] = from <= to ? [from, to] : [to, from];
-      setSelectedIds(new Set(ids.slice(lo, hi + 1)));
+      setSelectedIds(new Set(visibleIds.slice(lo, hi + 1)));
       return;
     }
     setSelectedIds(new Set([node.id]));
@@ -495,7 +505,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   function typeAhead(char: string): void {
     const state = typeAheadRef.current;
     const now = Date.now();
-    state.text = now - state.at < 800 ? state.text + char.toLowerCase() : char.toLowerCase();
+    state.text = now - state.at < TYPE_AHEAD_RESET_MS ? state.text + char.toLowerCase() : char.toLowerCase();
     state.at = now;
     const match = visible.find(n => n.name.toLowerCase().startsWith(state.text));
     if (match) {
@@ -506,12 +516,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     }
   }
 
-  // Keep real DOM focus following the roving cursor (review-backlog #8) even
-  // when it moves for a reason other than a direct click on the item — e.g.
-  // a new folder's rename committing, or a paste landing on new items — so
-  // the container's keydown listener always has something focused inside it
-  // to bubble from. Skipped while a rename is in progress: the RenameInput's
-  // own autofocus should win, not have this effect steal it back.
+  // Keeps DOM focus following the roving cursor (#8) when it moves without
+  // a click — a rename committing, a paste landing on new items — so the
+  // container's keydown listener always has something focused to bubble
+  // from. Skipped mid-rename so RenameInput's own autofocus wins.
   useEffect(() => {
     if (renamingId || !cursorId)
       return;
@@ -530,20 +538,19 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     return null;
   }
 
-  // Full roving-focus keyboard nav (B6): arrow keys move/extend the
-  // selection, Enter opens the cursor item, F2 renames it, printable
-  // characters do type-ahead search, Escape clears the selection, and
-  // Delete/Backspace trashes it. Scoped to this window being focused, and
-  // skipped while typing (filter, rename) — the outer listener below filters
-  // those by event target. Mirrors useAppCommand's ref-indirection so the
-  // listener itself never needs to be re-subscribed as selection/nodes change.
+  // Full roving-focus keyboard nav (B6): arrows move/extend the selection,
+  // Enter opens the cursor item, F2 renames it, printable characters
+  // type-ahead, Escape clears the selection, Delete/Backspace trashes it.
+  // Scoped to this window being focused and skipped while typing (filter,
+  // rename) via the outer listener's target filter. Mirrors useAppCommand's
+  // ref-indirection so the listener never needs re-subscribing as
+  // selection/nodes change.
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useLayoutEffect(() => {
     keyHandlerRef.current = (e: KeyboardEvent) => {
       // The Get Info panel is a modal dialog with its own focus trap and
-      // Escape handler (review-backlog #6) — while it's open, this handler
-      // must be a complete no-op rather than let Delete/F2/arrows/type-ahead
-      // act on the file list hidden behind it.
+      // Escape handler (#6) — while open, this handler is a complete no-op
+      // rather than letting Delete/F2/arrows/type-ahead act on the hidden list.
       if (liveInfoNode)
         return;
       switch (e.key) {
@@ -601,11 +608,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     };
   });
 
-  // Bound to the container itself (review-backlog #8) rather than `window`,
-  // so it fires only from real DOM focus inside this list — a second Files
-  // window, or focus anywhere else in the shell, no longer needs a
-  // `focusedId` string-comparison gate to stay silent; the browser's own
-  // focus/bubbling already scopes it correctly.
+  // Bound to the container itself (#8), not `window` — real DOM focus
+  // scopes it correctly, so a second Files window or focus elsewhere in the
+  // shell no longer needs the old `focusedId` string-comparison gate.
   useEffect(() => {
     if (!container)
       return;
@@ -628,9 +633,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       ];
     }
     const multi = selectedIds.has(node.id) && selectedIds.size > 1;
-    const targets = multi
-      ? [...selectedIds].map(id => nodes[id]).filter((n): n is FsNode => !!n)
-      : [node];
+    const targets = multi ? nodesForIds(nodes, [...selectedIds]) : [node];
     if (inTrash) {
       return [
         {
@@ -808,7 +811,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                   }
                   else {
                     setConfirmEmpty(true);
-                    window.setTimeout(setConfirmEmpty, 3000, false);
+                    window.setTimeout(setConfirmEmpty, EMPTY_TRASH_CONFIRM_MS, false);
                   }
                 }}
               >

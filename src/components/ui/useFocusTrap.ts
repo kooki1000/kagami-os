@@ -20,22 +20,18 @@ export interface UseFocusTrapOptions {
   /** Fires on Escape, or on Tab leaving the container in menu (`trapFocus: false`) mode. */
   onClose: () => void;
   /**
-   * `true` (default) for real modals: Tab wraps within the container.
-   * `false` for dismissable menus: Tab leaving the container closes it
-   * instead, matching the existing "click elsewhere to dismiss" behavior
-   * rather than forcing a hard trap on a surface that's meant to be casually
-   * dismissable.
+   * `true` (default): real modals, Tab wraps within the container.
+   * `false`: dismissable menus, Tab leaving closes it instead — matches the
+   * existing click-outside-to-dismiss behavior rather than a hard trap.
    */
   trapFocus?: boolean;
 }
 
 /**
- * Shared focus-management primitive for every overlay in the shell:
- * focus-on-mount into the container, Escape-to-close, focus-restore to
- * whatever was focused before on unmount, and either a Tab-wrap (modals) or
- * Tab-closes (menus). Consumers must put `tabIndex={-1}` on the element the
- * returned ref attaches to, so it's a valid focus target even when it has no
- * focusable children.
+ * Shared focus-management primitive for every shell overlay: focus-on-mount,
+ * Escape-to-close, focus-restore-on-unmount, and either a Tab-wrap (modals)
+ * or Tab-closes (menus). The element the returned ref attaches to needs
+ * `tabIndex={-1}` to stay a valid focus target with no focusable children.
  */
 export function useFocusTrap<T extends HTMLElement>({
   active,

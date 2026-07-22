@@ -1,6 +1,6 @@
 import type { NodeMap } from "../fs/fsStore";
 import type { FsNode } from "../fs/types";
-import { isDescendantOf, pathOf } from "../fs/fsStore";
+import { collator, isDescendantOf, pathOf } from "../fs/fsStore";
 import { TRASH_ID } from "../fs/types";
 
 export interface SearchResult {
@@ -45,7 +45,7 @@ export function searchNodes(nodes: NodeMap, query: string, limit = DEFAULT_LIMIT
     const bPrefix = b.name.toLowerCase().startsWith(q);
     if (aPrefix !== bPrefix)
       return aPrefix ? -1 : 1;
-    return a.name.localeCompare(b.name);
+    return collator.compare(a.name, b.name);
   });
 
   return matches.slice(0, limit).map(node => ({ node, path: pathLabel(nodes, node) }));

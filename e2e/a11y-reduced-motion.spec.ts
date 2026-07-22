@@ -1,21 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { openFiles } from "./helpers";
 
-// Window.tsx drives its minimize animation via inline style.transition, not
-// a CSS keyframe, so `prefers-reduced-motion` can't reach it through a media
-// query alone — it reads useReducedMotion() itself and compresses both the
-// transition duration *and* the setTimeout that gates when minimizeWindow()
-// actually fires (see Window.tsx's `minimizeMs`). This spec pins that
-// end-to-end behavior: under the default media environment the minimize
-// takes close to its full ~240ms, and under emulated "reduce motion" it
-// completes almost immediately.
+// Window.tsx drives its minimize animation via inline style, not a CSS
+// keyframe, so prefers-reduced-motion needs useReducedMotion() directly — it
+// compresses both the transition duration and the setTimeout gating when
+// minimizeWindow() fires (see `minimizeMs`). This spec pins that: default
+// motion takes ~240ms, reduced motion finishes almost instantly.
 //
-// emulateMedia must run before the app boots. Playwright's emulation of
-// `prefers-reduced-motion` is only reliable on Chromium in practice — Firefox
-// is noisy and WebKit intermittently doesn't honor it at all, occasionally
-// producing a full ~240ms+ duration under "reduced" emulation (confirmed by
-// direct measurement, not a hunch). Same flakiness class as files.spec.ts's
-// HTML5 DnD test — Chromium-only, not an application bug.
+// emulateMedia must run before the app boots. Its prefers-reduced-motion
+// emulation is reliable only on Chromium (confirmed by direct measurement —
+// Firefox is noisy, WebKit intermittently ignores it outright), so the
+// reduced-motion case is Chromium-only, same flakiness class as
+// files.spec.ts's HTML5 DnD test, not an app bug.
 
 async function minimizeElapsedMs(page: import("@playwright/test").Page): Promise<number> {
   const win = page.locator("[data-window-id]");

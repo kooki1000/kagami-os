@@ -22,6 +22,11 @@ const NAV: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "about", label: "About", icon: Info },
 ];
 
+/** Divider class for a row in a hairline-bordered list — every row but the last. */
+function dividerExceptLast(index: number, length: number): string {
+  return index < length - 1 ? "hairline-b" : "";
+}
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="px-5 py-4 hairline-b">
@@ -247,9 +252,7 @@ function FlagsDebug() {
           return (
             <div
               key={flag.id}
-              className={`flex items-center justify-between gap-3 px-3.5 py-2.5 ${
-                i < FLAGS.length - 1 ? "hairline-b" : ""
-              }`}
+              className={`flex items-center justify-between gap-3 px-3.5 py-2.5 ${dividerExceptLast(i, FLAGS.length)}`}
             >
               <div className="min-w-0">
                 <div className="truncate text-[12px] font-medium text-ink">
@@ -294,9 +297,7 @@ function AboutSection() {
         {facts.map(([key, value], i) => (
           <div
             key={key}
-            className={`flex items-center justify-between px-3.5 py-2 text-[12px] ${
-              i < facts.length - 1 ? "hairline-b" : ""
-            }`}
+            className={`flex items-center justify-between px-3.5 py-2 text-[12px] ${dividerExceptLast(i, facts.length)}`}
           >
             <span className="text-ink-2">{key}</span>
             <span className="font-medium text-ink">{value}</span>

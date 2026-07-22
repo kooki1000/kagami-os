@@ -1,5 +1,6 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
+import { nameStem } from "@/lib/format";
 import { sweepUnreferencedBlobs } from "./blobGc";
 import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
@@ -32,7 +33,9 @@ export const DEFAULT_SORT: SortSpec = { key: "name", dir: "asc" };
 // spins up a fresh collator per call, which dominated `childrenOf` at scale
 // (~147 ms vs ~3.5 ms for the numeric-only date sort on 10k nodes — see
 // docs/perf-baseline.md). Reusing it keeps identical ordering, far cheaper.
-const collator = new Intl.Collator(undefined, { numeric: true });
+// Exported so other name-sorting call sites (e.g. searchNodes.ts) share it
+// too, rather than each spinning up their own.
+export const collator = new Intl.Collator(undefined, { numeric: true });
 
 function byName(a: FsNode, b: FsNode): number {
   return collator.compare(a.name, b.name);
@@ -148,9 +151,8 @@ export function uniqueChildName(
   );
   if (!siblings.has(desired.toLowerCase()))
     return desired;
-  const dot = desired.startsWith(".") ? -1 : desired.lastIndexOf(".");
-  const stem = dot > 0 ? desired.slice(0, dot) : desired;
-  const ext = dot > 0 ? desired.slice(dot) : "";
+  const stem = nameStem(desired);
+  const ext = desired.slice(stem.length);
   for (let i = 2; ; i++) {
     const candidate = `${stem} ${i}${ext}`;
     if (!siblings.has(candidate.toLowerCase()))
@@ -422,6 +424,10 @@ export const useFsStore = create<FsStore>()((set, get) => {
         return null;
 
       const now = Date.now();
+      // Index children once rather than re-filtering the whole map per
+      // folder in the subtree (what childrenOf does) — cloning order doesn't
+      // need childrenOf's display sort, so the plain id index is enough.
+      const childIds = childIdsByParent(nodes);
       const newNodes: FsNode[] = [];
       function clone(node: FsNode, parentId: string): FsNode {
         const copy: FsNode = {
@@ -435,8 +441,8 @@ export const useFsStore = create<FsStore>()((set, get) => {
         };
         newNodes.push(copy);
         if (node.type === "folder") {
-          for (const child of childrenOf(nodes, node.id))
-            clone(child, copy.id);
+          for (const childId of childIds.get(node.id) ?? [])
+            clone(nodes[childId], copy.id);
         }
         return copy;
       }

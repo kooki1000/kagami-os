@@ -1,4 +1,5 @@
 import type { BlobStore } from "./types";
+import { idbTransactionDone, openIdbDatabase } from "./idbShared";
 
 // A separate database from the nodes adapter (`kagami-fs`): blobs are large
 // and content-addressed, and keeping them apart means introducing them needs
@@ -10,27 +11,14 @@ const DB_VERSION = 1;
 const STORE = "blobs";
 
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    // Out-of-line keys: the hash is the key, the Blob is the value.
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-  });
+  // Out-of-line keys: the hash is the key, the Blob is the value.
+  return openIdbDatabase(DB_NAME, DB_VERSION, db => db.createObjectStore(STORE));
 }
 
 /** What's actually stored per hash — see `put`/`get` below for why. */
 interface StoredBlob {
   buffer: ArrayBuffer;
   type: string;
-}
-
-function done(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed"));
-    tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
-  });
 }
 
 /** In-memory blob store for environments without IndexedDB (SSR, private mode, tests). */
@@ -74,14 +62,14 @@ export function createIdbBlobStore(): BlobStore {
     async has(hash) {
       const tx = (await db()).transaction(STORE, "readonly");
       const request = tx.objectStore(STORE).getKey(hash);
-      await done(tx);
+      await idbTransactionDone(tx);
       return request.result !== undefined;
     },
 
     async get(hash) {
       const tx = (await db()).transaction(STORE, "readonly");
       const request = tx.objectStore(STORE).get(hash);
-      await done(tx);
+      await idbTransactionDone(tx);
       const stored = request.result as StoredBlob | undefined;
       return stored ? new Blob([stored.buffer], { type: stored.type }) : null;
     },
@@ -96,7 +84,7 @@ export function createIdbBlobStore(): BlobStore {
       const stored: StoredBlob = { buffer: await blob.arrayBuffer(), type: blob.type };
       const tx = (await db()).transaction(STORE, "readwrite");
       tx.objectStore(STORE).put(stored, hash);
-      await done(tx);
+      await idbTransactionDone(tx);
     },
 
     async delete(hashes) {
@@ -106,13 +94,13 @@ export function createIdbBlobStore(): BlobStore {
       const store = tx.objectStore(STORE);
       for (const hash of hashes)
         store.delete(hash);
-      await done(tx);
+      await idbTransactionDone(tx);
     },
 
     async listHashes() {
       const tx = (await db()).transaction(STORE, "readonly");
       const request = tx.objectStore(STORE).getAllKeys();
-      await done(tx);
+      await idbTransactionDone(tx);
       return request.result as string[];
     },
   };

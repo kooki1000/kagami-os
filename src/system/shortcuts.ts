@@ -46,13 +46,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export function useGlobalShortcuts(): void {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      // A menu/dialog registered with the overlay registry (MenuBar's
-      // dropdown, SearchOverlay, ContextMenu, …) is open — let it own the
-      // keyboard instead of also dispatching shell chords underneath it.
-      // Checked before any chord processing, including ⌘K: at the moment
-      // ⌘K is pressed to *open* search, search isn't registered as open
-      // yet, so this doesn't block that first press — only reopening it or
-      // firing other chords while something is already open.
+      // A registered overlay (MenuBar dropdown, SearchOverlay, ContextMenu,
+      // …) is open — let it own the keyboard instead of racing shell chords
+      // underneath it. Checked before ⌘K too: pressing ⌘K to open search
+      // happens before search registers as open, so this only blocks
+      // reopening/other chords once something's already up.
       if (isOverlayOpen())
         return;
 

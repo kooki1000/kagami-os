@@ -1,26 +1,12 @@
 import type { FsNode, StorageAdapter } from "./types";
+import { idbTransactionDone, openIdbDatabase } from "./idbShared";
 
 const DB_NAME = "kagami-fs";
 const DB_VERSION = 1;
 const STORE = "nodes";
 
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(STORE, { keyPath: "id" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-  });
-}
-
-function done(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed"));
-    tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
-  });
+  return openIdbDatabase(DB_NAME, DB_VERSION, db => db.createObjectStore(STORE, { keyPath: "id" }));
 }
 
 /** No-op adapter for environments without IndexedDB (SSR, private mode, tests). */
@@ -53,7 +39,7 @@ export function createIdbAdapter(): StorageAdapter {
     async loadAll() {
       const tx = (await db()).transaction(STORE, "readonly");
       const request = tx.objectStore(STORE).getAll();
-      await done(tx);
+      await idbTransactionDone(tx);
       const nodes = request.result as FsNode[];
       return nodes.length > 0 ? nodes : null;
     },
@@ -65,7 +51,7 @@ export function createIdbAdapter(): StorageAdapter {
       const store = tx.objectStore(STORE);
       for (const node of nodes)
         store.put(node);
-      await done(tx);
+      await idbTransactionDone(tx);
     },
 
     async removeMany(ids: string[]) {
@@ -75,7 +61,7 @@ export function createIdbAdapter(): StorageAdapter {
       const store = tx.objectStore(STORE);
       for (const id of ids)
         store.delete(id);
-      await done(tx);
+      await idbTransactionDone(tx);
     },
   };
 }

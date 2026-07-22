@@ -1,14 +1,13 @@
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppManifest } from "@/system/apps/types";
 import type { DockPosition } from "@/system/dock/dockStore";
-import type { OsWindow } from "@/system/windows/windowStore";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { launchApp } from "@/system/apps/launch";
 import { getApp } from "@/system/apps/registry";
 import { DOCK_TILE_PX, useDockStore } from "@/system/dock/dockStore";
-import { useWindowStore } from "@/system/windows/windowStore";
+import { topWindow, useWindowStore } from "@/system/windows/windowStore";
 
 interface ContextMenuState {
   appId: string;
@@ -46,13 +45,6 @@ const POSITION: Record<DockPosition, {
     separator: "w-8.5 h-px",
   },
 };
-
-function topOf(windows: OsWindow[]): OsWindow | null {
-  return windows.reduce<OsWindow | null>(
-    (top, w) => (!top || w.zIndex > top.zIndex ? w : top),
-    null,
-  );
-}
 
 export function Dock() {
   const pinnedIds = useDockStore(s => s.pinnedIds);
@@ -94,11 +86,11 @@ export function Dock() {
         run: () => launchApp(app.id),
         disabled: Boolean(app.singleInstance && running),
       },
+      // Unpinning a non-running app would just vanish it mid-click; allow
+      // it, but keep at least the interaction predictable by allowing both.
       {
         label: pinned ? "Unpin from Dock" : "Pin to Dock",
         run: () => (pinned ? unpin(app.id) : pin(app.id)),
-        // Unpinning a non-running app would just vanish it mid-click; allow
-        // it, but keep at least the interaction predictable by allowing both.
       },
       ...(running ? [{ label: "Quit", run: () => closeApp(app.id) }] : []),
     ];
@@ -112,10 +104,10 @@ export function Dock() {
     }
     const visible = appWindows.filter(w => !w.minimized);
     if (visible.length > 0) {
-      focusWindow(topOf(visible)!.id);
+      focusWindow(topWindow(visible)!.id);
     }
     else {
-      restoreWindow(topOf(appWindows)!.id);
+      restoreWindow(topWindow(appWindows, { includeMinimized: true })!.id);
     }
   }
 

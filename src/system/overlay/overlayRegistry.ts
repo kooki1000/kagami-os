@@ -1,10 +1,9 @@
 import { useEffect } from "react";
 
 /**
- * Module-level count of currently-open blocking overlays (menus, dialogs).
- * Lets global keyboard handlers — `shortcuts.ts`'s chord listener, Files'
- * own window-level key handler — back off while something modal-ish is
- * open, without threading an "is a menu open" prop through every layer.
+ * Module-level count of open blocking overlays (menus, dialogs), so global
+ * keyboard handlers (`shortcuts.ts`, Files' window-level handler) can back
+ * off without threading an "is a menu open" prop through every layer.
  */
 let openCount = 0;
 

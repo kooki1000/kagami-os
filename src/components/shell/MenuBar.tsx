@@ -53,10 +53,10 @@ function itemAction(item: MenuItem): (() => void) | undefined {
 }
 
 function fromSections(sections: MenuSection[]): BarMenu[] {
-  // Keyed/id'd by position, not `section.title`/`item.label` — apps aren't
-  // guaranteed to keep those unique, and this branch's ARIA wiring
-  // (aria-expanded lookups, the trigger-ref map, the highlight index) needs
-  // stable identity that duplicate titles/labels can't collide on.
+  // Keyed by position, not `section.title`/`item.label` — apps don't
+  // guarantee those are unique, and the ARIA wiring here (aria-expanded,
+  // the trigger-ref map, the highlight index) needs identity duplicates
+  // can't collide on.
   return sections.map((section, sectionIndex) => ({
     key: `app-${sectionIndex}`,
     title: section.title,
@@ -275,11 +275,9 @@ export function MenuBar() {
                     setOpenKey(menu.key);
                 }}
                 onKeyDown={(e) => {
-                  // Real focus stays on the trigger button throughout — moving
-                  // it into the popup races Chromium's own "focus follows
-                  // click" behavior (applied asynchronously, after this
-                  // component's effects run) and reliably loses. Highlighting
-                  // an item is communicated via `aria-activedescendant`
+                  // Real focus stays on the trigger button — moving it into
+                  // the popup races Chromium's async "focus follows click"
+                  // and loses. Highlighting goes through `aria-activedescendant`
                   // instead, per the WAI-ARIA menu-button pattern.
                   if (openKey !== menu.key) {
                     if (e.key === "Enter" || e.key === " ") {

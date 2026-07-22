@@ -49,10 +49,10 @@ test.describe("Dock pin, running indicator, and relayout", () => {
     await expect(tile).toHaveCount(0);
   });
 
-  // Review-backlog #2/#9: the Dock used to have its own bespoke context menu
-  // with no horizontal clamp and an unconditional upward flip. It now reuses
-  // the shared, fixed ContextMenu component, so a tile near a viewport edge
-  // gets the same clamping and Escape handling as any other menu.
+  // Review-backlog #2/#9: Dock used to have its own bespoke context menu
+  // with no horizontal clamp and an unconditional upward flip. It now
+  // reuses the shared ContextMenu, so an edge tile gets the same clamping
+  // and Escape handling as any other menu.
   test("right-clicking a tile near the viewport edge keeps the menu clamped and closes it on Escape", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 600 });
     await boot(page);

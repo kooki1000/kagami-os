@@ -7,15 +7,12 @@ function getPreference(): boolean {
 }
 
 /**
- * Live-tracks the OS "reduce motion" preference. Deliberately re-reads
- * matchMedia() fresh on each mount (not cached once at module scope, the way
- * themeStore does for dark-mode) — Playwright's emulateMedia() applies
- * asynchronously relative to module evaluation on WebKit specifically, so a
- * singleton created at import time can capture a stale reading under test.
- * By the time this component first renders, well after the whole bundle has
- * loaded and evaluated, the race has settled; a real end-user's OS-level
- * preference never changes between module load and first render anyway, so
- * this costs nothing outside of tests.
+ * Live-tracks the OS "reduce motion" preference. Reads matchMedia() fresh
+ * per mount rather than caching one instance at module scope (unlike
+ * themeStore's dark-mode check) — Playwright's emulateMedia() can apply
+ * after module evaluation on WebKit, so a module-scope singleton risks a
+ * stale reading under test; free in production, since a real preference
+ * never changes between module load and first render.
  */
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(getPreference);

@@ -126,6 +126,14 @@ function out(text: string): ShellResult {
   return { lines: text === "" ? [] : [line("output", text)] };
 }
 
+/**
+ * Shared guard for mkdir/touch/echo>: a "/" in a bare name would create a
+ * node the path resolver (which splits on "/") could never reach again.
+ */
+function slashNameError(command: string, name: string): ShellResult | null {
+  return name.includes("/") ? err(`${command}: ${name}: names cannot contain '/'`) : null;
+}
+
 interface ParsedCommand {
   command: string;
   args: string[];
@@ -239,10 +247,9 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
     case "mkdir": {
       if (!args[0])
         return err("mkdir: missing operand");
-      // A "/" in the name would create a node the path resolver (which
-      // splits on "/") could never reach again.
-      if (args[0].includes("/"))
-        return err(`mkdir: ${args[0]}: names cannot contain '/'`);
+      const slashError = slashNameError("mkdir", args[0]);
+      if (slashError)
+        return slashError;
       if (childByName(nodes, cwd, args[0]))
         return err(`mkdir: ${args[0]}: file exists`);
       ctx.createFolder(cwd, args[0]);
@@ -252,8 +259,9 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
     case "touch": {
       if (!args[0])
         return err("touch: missing file operand");
-      if (args[0].includes("/"))
-        return err(`touch: ${args[0]}: names cannot contain '/'`);
+      const slashError = slashNameError("touch", args[0]);
+      if (slashError)
+        return slashError;
       const existing = childByName(nodes, cwd, args[0]);
       if (existing) {
         // Refresh the timestamp instead of creating a "name 2" duplicate.
@@ -270,8 +278,9 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
     case "echo": {
       const text = args.join(" ");
       if (redirect) {
-        if (redirect.includes("/"))
-          return err(`echo: ${redirect}: names cannot contain '/'`);
+        const slashError = slashNameError("echo", redirect);
+        if (slashError)
+          return slashError;
         const existing = childByName(nodes, cwd, redirect);
         if (existing?.type === "folder")
           return err(`echo: ${redirect}: is a directory`);

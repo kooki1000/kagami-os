@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { nameStem } from "@/lib/format";
 
 interface RenameInputProps {
   value: string;
@@ -18,8 +19,7 @@ export function RenameInput({ value, selectStem = false, className = "", onCommi
     if (!input)
       return;
     input.focus();
-    const dot = value.lastIndexOf(".");
-    input.setSelectionRange(0, selectStem && dot > 0 ? dot : value.length);
+    input.setSelectionRange(0, selectStem ? nameStem(value).length : value.length);
   }, [value, selectStem]);
 
   return (

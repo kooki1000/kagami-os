@@ -9,10 +9,9 @@ import { WindowErrorBoundary } from "./WindowErrorBoundary";
 const SNAP_EDGE_PX = 8;
 const MINIMIZE_MS = 240;
 const ENTER_MS = 180;
-// Kept well above 0ms even under "reduce motion" — some code paths (and
-// assistive tech) treat a 0ms transition as never having fired, and this
-// still has to outrun the fly-to-dock setTimeout below to avoid an
-// apparent hang before the window actually minimizes.
+// Kept above 0ms even under "reduce motion" — some code paths/assistive
+// tech treat a 0ms transition as never having fired, and this still has to
+// outrun the fly-to-dock setTimeout below to avoid an apparent hang.
 const REDUCED_MOTION_MS = 20;
 
 /** Pointer capture can throw for already-released or synthetic pointers. */

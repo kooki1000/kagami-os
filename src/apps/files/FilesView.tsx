@@ -11,6 +11,9 @@ import { NodeGlyph } from "./NodeGlyph";
 
 export type SelectMode = "replace" | "toggle" | "range";
 
+/** Mouse movement (px) past which a background mousedown becomes a marquee drag rather than a plain click. */
+const MARQUEE_ENGAGE_THRESHOLD_PX = 4;
+
 export interface FilesViewProps {
   items: FsNode[];
   /** Full tree, for the list view's Size column (B8) — folder sizes are a recursive rollup, so they need more than just the visible `items`. */
@@ -140,7 +143,7 @@ export function FilesView(props: FilesViewProps) {
 
     function onMove(ev: globalThis.MouseEvent): void {
       if (!engaged) {
-        if (Math.abs(ev.clientX - originX) < 4 && Math.abs(ev.clientY - originY) < 4)
+        if (Math.abs(ev.clientX - originX) < MARQUEE_ENGAGE_THRESHOLD_PX && Math.abs(ev.clientY - originY) < MARQUEE_ENGAGE_THRESHOLD_PX)
           return;
         engaged = true;
         suppressClickRef.current = true;
@@ -273,86 +276,79 @@ export function FilesView(props: FilesViewProps) {
     />
   );
 
+  // Shared by all three layouts below (empty state, grid, list) — only the
+  // className and inner content differ per case.
+  const containerProps = {
+    "ref": registerContainer,
+    "role": "listbox" as const,
+    "aria-multiselectable": "true" as const,
+    ...backgroundProps,
+  };
+
+  let content;
   if (items.length === 0) {
-    return (
-      <>
-        <div
-          ref={registerContainer}
-          role="listbox"
-          aria-multiselectable="true"
-          className={`grid flex-1 place-items-center text-[13px] text-ink-2 ${backgroundDropRing}`}
-          {...backgroundProps}
-        >
-          {emptyLabel}
-        </div>
-        {marqueeOverlay}
-      </>
-    );
-  }
-
-  if (view === "grid") {
-    return (
-      <>
-        <div
-          ref={registerContainer}
-          role="listbox"
-          aria-multiselectable="true"
-          className={`grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-3 overflow-auto p-3.5 ${backgroundDropRing}`}
-          {...backgroundProps}
-        >
-          {items.map((node, index) => {
-            const selected = selectedIds.has(node.id);
-            return (
-              <div
-                key={node.id}
-                className={`flex cursor-default flex-col gap-1.5 rounded-[11px] p-1.5 ${
-                  selected ? "bg-ph-2" : "hover:bg-ph"
-                } ${cutIds.has(node.id) ? "opacity-45" : ""}`}
-                {...itemProps(node, index)}
-              >
-                <div
-                  className={`grid aspect-4/3 place-items-center overflow-hidden rounded-[9px] bg-ph hairline ${
-                    dropFolderId === node.id ? "ring-2 ring-accent" : ""
-                  }`}
-                >
-                  <Thumbnail node={node} />
-                </div>
-                {renamingId === node.id
-                  ? (
-                      <RenameInput
-                        value={node.name}
-                        selectStem={node.type === "file"}
-                        className="text-center"
-                        onCommit={name => onRenameCommit(node.id, name)}
-                        onCancel={onRenameCancel}
-                      />
-                    )
-                  : (
-                      <span
-                        className={`truncate text-center text-[12px] font-medium ${
-                          selected ? "text-ink" : "text-ink-2"
-                        }`}
-                      >
-                        {node.name}
-                      </span>
-                    )}
-              </div>
-            );
-          })}
-        </div>
-        {marqueeOverlay}
-      </>
-    );
-  }
-
-  return (
-    <>
+    content = (
       <div
-        ref={registerContainer}
-        role="listbox"
-        aria-multiselectable="true"
+        className={`grid flex-1 place-items-center text-[13px] text-ink-2 ${backgroundDropRing}`}
+        {...containerProps}
+      >
+        {emptyLabel}
+      </div>
+    );
+  }
+  else if (view === "grid") {
+    content = (
+      <div
+        className={`grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-3 overflow-auto p-3.5 ${backgroundDropRing}`}
+        {...containerProps}
+      >
+        {items.map((node, index) => {
+          const selected = selectedIds.has(node.id);
+          return (
+            <div
+              key={node.id}
+              className={`flex cursor-default flex-col gap-1.5 rounded-[11px] p-1.5 ${
+                selected ? "bg-ph-2" : "hover:bg-ph"
+              } ${cutIds.has(node.id) ? "opacity-45" : ""}`}
+              {...itemProps(node, index)}
+            >
+              <div
+                className={`grid aspect-4/3 place-items-center overflow-hidden rounded-[9px] bg-ph hairline ${
+                  dropFolderId === node.id ? "ring-2 ring-accent" : ""
+                }`}
+              >
+                <Thumbnail node={node} />
+              </div>
+              {renamingId === node.id
+                ? (
+                    <RenameInput
+                      value={node.name}
+                      selectStem={node.type === "file"}
+                      className="text-center"
+                      onCommit={name => onRenameCommit(node.id, name)}
+                      onCancel={onRenameCancel}
+                    />
+                  )
+                : (
+                    <span
+                      className={`truncate text-center text-[12px] font-medium ${
+                        selected ? "text-ink" : "text-ink-2"
+                      }`}
+                    >
+                      {node.name}
+                    </span>
+                  )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  else {
+    content = (
+      <div
         className={`flex-1 overflow-auto ${backgroundDropRing}`}
-        {...backgroundProps}
+        {...containerProps}
       >
         <table className="w-full border-collapse text-[12.5px]">
           <thead>
@@ -408,6 +404,12 @@ export function FilesView(props: FilesViewProps) {
           </tbody>
         </table>
       </div>
+    );
+  }
+
+  return (
+    <>
+      {content}
       {marqueeOverlay}
     </>
   );
