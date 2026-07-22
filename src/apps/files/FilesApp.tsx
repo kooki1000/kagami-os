@@ -3,7 +3,7 @@ import type { SelectMode } from "./FilesView";
 import type { UploadEntry } from "./upload";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
-import type { SortKey } from "@/system/fs/fsStore";
+import type { NodeMap, SortKey } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
 import {
   ArrowUpDown,
@@ -53,6 +53,11 @@ const SORT_LABELS: Record<SortKey, string> = {
   kind: "Kind",
 };
 
+/** Letters typed further apart than this start a fresh type-ahead search (B6) rather than extending the previous one. */
+const TYPE_AHEAD_RESET_MS = 800;
+/** How long the "Empty Trash" button stays armed after a first click before it disarms itself (B4-style confirm-by-clicking-again). */
+const EMPTY_TRASH_CONFIRM_MS = 3000;
+
 interface MenuState {
   x: number;
   y: number;
@@ -70,6 +75,11 @@ function payloadFolderId(payload: unknown): string | null {
     return (payload as { folderId: string }).folderId;
   }
   return null;
+}
+
+/** Resolve ids to their live nodes, silently dropping any that no longer exist. */
+function nodesForIds(nodes: NodeMap, ids: string[]): FsNode[] {
+  return ids.map(id => nodes[id]).filter((n): n is FsNode => !!n);
 }
 
 export default function FilesApp({ windowId, payload }: AppWindowProps) {
@@ -192,9 +202,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   function trashManyWithUndo(ids: string[]): void {
     // Already in the Trash: moveToTrash would no-op, so don't include those —
     // an Undo that pulls them back out would be surprising.
-    const targets = ids
-      .map(id => nodes[id])
-      .filter((n): n is FsNode => !!n && n.parentId !== TRASH_ID);
+    const targets = nodesForIds(nodes, ids).filter(t => t.parentId !== TRASH_ID);
     if (targets.length === 0)
       return;
     targets.forEach(t => moveToTrash(t.id));
@@ -331,9 +339,13 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     const q = query.trim().toLowerCase();
     return q ? children.filter(n => n.name.toLowerCase().includes(q)) : children;
   }, [children, query]);
+  // Shared by both "Select All" and range-selection below — no need for either
+  // to re-derive its own copy of the same id list.
+  const visibleIds = useMemo(() => visible.map(n => n.id), [visible]);
   const crumbs = useMemo(() => pathOf(nodes, cwd).slice(1), [nodes, cwd]);
+  // A plain count, so a full childrenOf sort (which we'd throw away anyway) is skipped.
   const trashCount = useMemo(
-    () => childrenOf(nodes, TRASH_ID).length,
+    () => Object.values(nodes).filter(n => n.parentId === TRASH_ID).length,
     [nodes],
   );
   const cutIds = useMemo(
@@ -388,7 +400,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
         navigate(TRASH_ID);
         break;
       case "files.selectAll":
-        setSelectedIds(new Set(visible.map(n => n.id)));
+        setSelectedIds(new Set(visibleIds));
         setAnchorId(null);
         setCursorId(null);
         break;
@@ -428,17 +440,16 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       return;
     }
     if (mode === "range") {
-      const ids = visible.map(n => n.id);
       const anchor = anchorId ?? node.id;
-      const from = ids.indexOf(anchor);
-      const to = ids.indexOf(node.id);
+      const from = visibleIds.indexOf(anchor);
+      const to = visibleIds.indexOf(node.id);
       if (from === -1 || to === -1) {
         setSelectedIds(new Set([node.id]));
         setAnchorId(node.id);
         return;
       }
       const [lo, hi] = from <= to ? [from, to] : [to, from];
-      setSelectedIds(new Set(ids.slice(lo, hi + 1)));
+      setSelectedIds(new Set(visibleIds.slice(lo, hi + 1)));
       return;
     }
     setSelectedIds(new Set([node.id]));
@@ -495,7 +506,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   function typeAhead(char: string): void {
     const state = typeAheadRef.current;
     const now = Date.now();
-    state.text = now - state.at < 800 ? state.text + char.toLowerCase() : char.toLowerCase();
+    state.text = now - state.at < TYPE_AHEAD_RESET_MS ? state.text + char.toLowerCase() : char.toLowerCase();
     state.at = now;
     const match = visible.find(n => n.name.toLowerCase().startsWith(state.text));
     if (match) {
@@ -628,9 +639,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       ];
     }
     const multi = selectedIds.has(node.id) && selectedIds.size > 1;
-    const targets = multi
-      ? [...selectedIds].map(id => nodes[id]).filter((n): n is FsNode => !!n)
-      : [node];
+    const targets = multi ? nodesForIds(nodes, [...selectedIds]) : [node];
     if (inTrash) {
       return [
         {
@@ -808,7 +817,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                   }
                   else {
                     setConfirmEmpty(true);
-                    window.setTimeout(setConfirmEmpty, 3000, false);
+                    window.setTimeout(setConfirmEmpty, EMPTY_TRASH_CONFIRM_MS, false);
                   }
                 }}
               >
