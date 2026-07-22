@@ -94,11 +94,11 @@ export function Dock() {
         run: () => launchApp(app.id),
         disabled: Boolean(app.singleInstance && running),
       },
+      // Unpinning a non-running app would just vanish it mid-click; allow
+      // it, but keep at least the interaction predictable by allowing both.
       {
         label: pinned ? "Unpin from Dock" : "Pin to Dock",
         run: () => (pinned ? unpin(app.id) : pin(app.id)),
-        // Unpinning a non-running app would just vanish it mid-click; allow
-        // it, but keep at least the interaction predictable by allowing both.
       },
       ...(running ? [{ label: "Quit", run: () => closeApp(app.id) }] : []),
     ];
