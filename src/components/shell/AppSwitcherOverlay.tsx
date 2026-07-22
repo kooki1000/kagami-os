@@ -5,10 +5,9 @@ import { MENU_BAR_HEIGHT } from "@/system/windows/windowStore";
 
 /**
  * ⌥Tab / ⌃⌥Tab app switcher (C2) — shown while the modifier is held, moved
- * by repeated Tab, committed on modifier release (see
- * `windowShortcuts.ts`'s `useWindowManagementShortcuts`). Mouse-driven like
- * `SearchOverlay`, but pointer interaction is deliberately not wired up —
- * a hold-and-release overlay isn't normally mouse-driven.
+ * by repeated Tab, committed on release (see `windowShortcuts.ts`'s
+ * `useWindowManagementShortcuts`). Unlike `SearchOverlay`, no pointer
+ * handlers — a hold-and-release overlay isn't mouse-driven.
  */
 export function AppSwitcherOverlay() {
   const open = useSwitcherStore(s => s.open);

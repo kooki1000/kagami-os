@@ -3,23 +3,16 @@ import { isMacPlatform } from "@/lib/format";
 import { isOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { orderedRunningApps } from "./appSwitcher";
 import { useSwitcherStore } from "./switcherStore";
-import { topWindow, useWindowStore } from "./windowStore";
+import { revealApp, useWindowStore } from "./windowStore";
 
-/**
- * Modifier-combo window-management shortcuts that fall outside
- * `shortcuts.ts`'s `chordFromEvent` (letters-only, no Alt — Alt is reserved
- * here for chords that would otherwise collide with real OS/browser bindings:
- * macOS intercepts ⌘Tab/⌘H/⌘` itself before a browser tab ever sees them, and
- * Ctrl+H is browser History in Chrome/Firefox everywhere; plain Alt+Tab is
- * OS-reserved on Windows/Linux). Kept as its own module/hook (wired
- * alongside, not into, `useGlobalShortcuts`) so these predicates stay pure
- * and unit-testable without React.
- *
- * `e.code` (the physical key), not `e.key`, drives every predicate below —
- * macOS remaps `e.key` for Option-held letters into composed/dead-key
- * characters (e.g. Option+H isn't "h"), but `e.code` ("KeyH") is unaffected
- * by modifiers.
- */
+// Alt-bearing chords live here, not shortcuts.ts's letters-only chordFromEvent,
+// because they'd otherwise collide with real OS/browser bindings (⌘Tab/⌘H/⌘`
+// on macOS, Ctrl+H = browser History, plain Alt+Tab OS-reserved on Win/Linux).
+// Every predicate reads e.code, not e.key — macOS remaps e.key for Option-held
+// letters into composed characters.
+
+/** Computed once — the real platform doesn't change mid-session, and this fires on every keystroke app-wide. */
+const IS_MAC = isMacPlatform();
 
 /** ⌃⌥H — hide the focused app (same chord on every platform). */
 export function isHideChord(e: KeyboardEvent): boolean {
@@ -71,26 +64,13 @@ export function isAppCycleChord(e: KeyboardEvent): boolean {
   return e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.code === "Backquote";
 }
 
-/** Commits the switcher's highlighted app: focuses its topmost window, restoring/unhiding it first if needed. */
+/** Commits the switcher's highlighted app via the same reveal logic Dock's tile click uses. */
 function commitSwitcherSelection(): void {
   const { order, index } = useSwitcherStore.getState();
   const appId = order[index];
   useSwitcherStore.getState().close();
-  if (!appId)
-    return;
-
-  const store = useWindowStore.getState();
-  if (store.hiddenApps.has(appId))
-    store.unhideApp(appId);
-
-  // Same "focus if visible, else restore every minimized window" logic as
-  // Dock.tsx's onTileClick (C6) — the switcher is another way to reach it.
-  const appWindows = useWindowStore.getState().windows.filter(w => w.appId === appId);
-  const visible = appWindows.filter(w => !w.minimized);
-  if (visible.length > 0)
-    store.focusWindow(topWindow(visible)!.id);
-  else if (appWindows.length > 0)
-    store.restoreApp(appId);
+  if (appId)
+    revealApp(appId);
 }
 
 /** ⌃` — focuses the next window belonging to the currently focused app, wrapping around; a no-op with only one. */
@@ -119,14 +99,12 @@ function cycleWindowsOfFocusedApp(): void {
 export function useWindowManagementShortcuts(): void {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      const mac = isMacPlatform();
-
       // The switcher's own chords must keep working while it's open — it
       // registers itself as *the* open overlay (AppSwitcherOverlay's
       // useOverlayOpen), so the generic overlay guard below — meant for
       // every other shortcut in this file backing off for menus/search —
       // would otherwise also block the Tab-presses/Escape that drive it.
-      if (isSwitcherChord(e, mac)) {
+      if (isSwitcherChord(e, IS_MAC)) {
         e.preventDefault();
         if (!useSwitcherStore.getState().open)
           useSwitcherStore.getState().openSwitcher(orderedRunningApps(useWindowStore.getState().windows));
@@ -185,7 +163,7 @@ export function useWindowManagementShortcuts(): void {
     }
 
     function onKeyUp(e: KeyboardEvent) {
-      if (useSwitcherStore.getState().open && isSwitcherModifierRelease(e, isMacPlatform()))
+      if (useSwitcherStore.getState().open && isSwitcherModifierRelease(e, IS_MAC))
         commitSwitcherSelection();
     }
 
