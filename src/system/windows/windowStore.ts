@@ -73,6 +73,12 @@ export interface WindowStore {
   viewport: Viewport;
   /** Transient UI state: which snap zone is highlighted during a drag. */
   snapPreview: SnapSide | null;
+  /**
+   * App ids currently hidden (⌃⌥H / "Hide {app}"), kept separate from
+   * per-window `minimized` — a window the user deliberately minimized
+   * shouldn't un-minimize just because the app is unhidden.
+   */
+  hiddenApps: Set<string>;
 
   setViewport: (viewport: Viewport) => void;
   openWindow: (appId: string, opts: OpenWindowOptions) => string;
@@ -87,6 +93,15 @@ export interface WindowStore {
   setWindowPayload: (id: string, payload: unknown) => void;
   closeWindow: (id: string) => void;
   closeApp: (appId: string) => void;
+  /** Hide every window of an app (⌃⌥H, Dock/menu "Hide {app}") without minimizing them. */
+  hideApp: (appId: string) => void;
+  /** Reveal a hidden app's windows again — does not restore ones minimized before/after hiding. */
+  unhideApp: (appId: string) => void;
+  /**
+   * Restore every minimized window of an app at once (Dock tile click when
+   * every window of that app is minimized), focusing the new topmost.
+   */
+  restoreApp: (appId: string) => void;
   focusWindow: (id: string) => void;
   blurAll: () => void;
   moveWindow: (id: string, x: number, y: number) => void;
@@ -201,6 +216,7 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
   nextZ: 1,
   viewport: { width: 1440, height: 900 },
   snapPreview: null,
+  hiddenApps: new Set(),
 
   // Re-lays out every window: maximized/snapped ones re-fill the new viewport,
   // normal ones are clamped so a shrink can't strand a title bar out of reach.
@@ -299,6 +315,54 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
       windows: remaining,
       focusedId: focusGone ? (topWindow(remaining)?.id ?? null) : focusedId,
       snapPreview: null,
+    });
+  },
+
+  hideApp: (appId) => {
+    const { hiddenApps, windows, focusedId } = get();
+    if (hiddenApps.has(appId))
+      return;
+    const nextHidden = new Set(hiddenApps);
+    nextHidden.add(appId);
+    // Same "hand focus to the topmost still-visible window" logic as
+    // closeApp/minimizeWindow, just filtered by the updated hidden set
+    // instead of by removal/minimized.
+    const visible = windows.filter(w => !w.minimized && !nextHidden.has(w.appId));
+    const focusGone = !visible.some(w => w.id === focusedId);
+    set({
+      hiddenApps: nextHidden,
+      focusedId: focusGone ? (topWindow(visible)?.id ?? null) : focusedId,
+    });
+  },
+
+  unhideApp: (appId) => {
+    const { hiddenApps } = get();
+    if (!hiddenApps.has(appId))
+      return;
+    const nextHidden = new Set(hiddenApps);
+    nextHidden.delete(appId);
+    set({ hiddenApps: nextHidden });
+  },
+
+  restoreApp: (appId) => {
+    const { windows, nextZ } = get();
+    // Oldest-to-newest so relative stacking order is preserved: the window
+    // that was topmost before minimizing ends up topmost again, and it's
+    // the one that gets focus.
+    const minimizedOfApp = windows
+      .filter(w => w.appId === appId && w.minimized)
+      .sort((a, b) => a.zIndex - b.zIndex);
+    if (minimizedOfApp.length === 0)
+      return;
+    let z = nextZ;
+    const zById = new Map<string, number>();
+    for (const w of minimizedOfApp)
+      zById.set(w.id, z++);
+    set({
+      windows: windows.map(w =>
+        zById.has(w.id) ? { ...w, minimized: false, zIndex: zById.get(w.id)! } : w),
+      focusedId: minimizedOfApp[minimizedOfApp.length - 1].id,
+      nextZ: z,
     });
   },
 

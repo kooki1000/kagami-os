@@ -11,6 +11,7 @@ function reset() {
     nextZ: 1,
     snapPreview: null,
     viewport: VIEWPORT,
+    hiddenApps: new Set(),
   });
 }
 
@@ -140,6 +141,80 @@ describe("minimize + restore", () => {
     expect(win(b).minimized).toBe(false);
     expect(api().focusedId).toBe(b);
     expect(win(b).zIndex).toBeGreaterThan(win(a).zIndex);
+  });
+});
+
+describe("hide + unhide app", () => {
+  it("hideApp marks the app hidden and hands focus to another visible window", () => {
+    const a = open("files");
+    const b = open("notes");
+    api().hideApp("notes");
+    expect(api().hiddenApps.has("notes")).toBe(true);
+    expect(api().focusedId).toBe(a);
+    // The window itself is untouched — hiding isn't minimizing.
+    expect(win(b).minimized).toBe(false);
+  });
+
+  it("hideApp is a no-op the second time (no needless re-render churn)", () => {
+    open("files");
+    api().hideApp("files");
+    const before = api().hiddenApps;
+    api().hideApp("files");
+    expect(api().hiddenApps).toBe(before);
+  });
+
+  it("hideApp clears focus entirely when it was the only app", () => {
+    open("files");
+    api().hideApp("files");
+    expect(api().focusedId).toBeNull();
+  });
+
+  it("unhideApp reveals the app again without touching minimized state", () => {
+    const id = open("files");
+    api().minimizeWindow(id);
+    api().hideApp("files");
+    api().unhideApp("files");
+    expect(api().hiddenApps.has("files")).toBe(false);
+    // A window deliberately minimized before the hide stays minimized —
+    // unhiding the app must not resurrect it.
+    expect(win(id).minimized).toBe(true);
+  });
+
+  it("unhideApp is a no-op for an app that isn't hidden", () => {
+    open("files");
+    const before = api().hiddenApps;
+    api().unhideApp("files");
+    expect(api().hiddenApps).toBe(before);
+  });
+});
+
+describe("restoreApp", () => {
+  it("restores every minimized window of an app and focuses the new topmost", () => {
+    const a = open("files");
+    const b = open("files");
+    const c = open("files");
+    api().minimizeWindow(a);
+    api().minimizeWindow(b);
+    api().minimizeWindow(c);
+    expect(api().windows.every(w => w.minimized)).toBe(true);
+
+    api().restoreApp("files");
+
+    expect(win(a).minimized).toBe(false);
+    expect(win(b).minimized).toBe(false);
+    expect(win(c).minimized).toBe(false);
+    // c was topmost (minimized last, so highest z) before minimizing —
+    // it should be the one focused after the group restore.
+    expect(api().focusedId).toBe(c);
+    expect(win(c).zIndex).toBeGreaterThan(win(a).zIndex);
+    expect(win(c).zIndex).toBeGreaterThan(win(b).zIndex);
+  });
+
+  it("is a no-op for an app with no minimized windows", () => {
+    open("files");
+    const before = api().windows;
+    api().restoreApp("files");
+    expect(api().windows).toBe(before);
   });
 });
 
