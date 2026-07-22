@@ -3,10 +3,9 @@ import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
 import { memo, Suspense, useEffect, useRef, useState } from "react";
 import { getApp } from "@/system/apps/registry";
 import { useReducedMotion } from "@/system/theme/useReducedMotion";
-import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
+import { TITLE_BAR_HEIGHT, useWindowStore, zoneForPointer } from "@/system/windows/windowStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
 
-const SNAP_EDGE_PX = 8;
 const MINIMIZE_MS = 240;
 const ENTER_MS = 180;
 // Kept above 0ms even under "reduce motion" — some code paths/assistive
@@ -88,6 +87,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
   const snapWindow = useWindowStore(s => s.snapWindow);
   const restoreToRect = useWindowStore(s => s.restoreToRect);
   const setSnapPreview = useWindowStore(s => s.setSnapPreview);
+  const viewport = useWindowStore(s => s.viewport);
   const reducedMotion = useReducedMotion();
   const minimizeMs = reducedMotion ? REDUCED_MOTION_MS : MINIMIZE_MS;
   const enterMs = reducedMotion ? REDUCED_MOTION_MS : ENTER_MS;
@@ -157,10 +157,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
     if (!drag)
       return;
     moveWindow(win.id, e.clientX - drag.offsetX, e.clientY - drag.offsetY);
-    const vw = window.innerWidth;
-    setSnapPreview(
-      e.clientX <= SNAP_EDGE_PX ? "left" : e.clientX >= vw - SNAP_EDGE_PX ? "right" : null,
-    );
+    setSnapPreview(zoneForPointer(e.clientX, e.clientY, viewport));
   }
 
   function onTitlePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
@@ -168,9 +165,9 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
       return;
     dragStateRef.current = null;
     releasePointer(e.currentTarget, e.pointerId);
-    const side = useWindowStore.getState().snapPreview;
-    if (side)
-      snapWindow(win.id, side);
+    const zone = useWindowStore.getState().snapPreview;
+    if (zone)
+      snapWindow(win.id, zone);
     setSnapPreview(null);
   }
 
