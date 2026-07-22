@@ -337,6 +337,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     () => (clipboardMode === "cut" ? new Set(clipboardIds) : new Set<string>()),
     [clipboardMode, clipboardIds],
   );
+  // `infoNode` only ever holds the snapshot captured when "Get Info" was
+  // invoked; re-derive the live node from `nodes` on every render so the
+  // panel reflects renames/moves made elsewhere while it's open, and closes
+  // itself (by simply not rendering) if the node is deleted out from under it.
+  const liveInfoNode = infoNode ? (nodes[infoNode.id] ?? null) : null;
 
   useAppCommand(windowId, (command) => {
     switch (command) {
@@ -509,6 +514,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useLayoutEffect(() => {
     keyHandlerRef.current = (e: KeyboardEvent) => {
+      // The Get Info panel is a modal dialog with its own focus trap and
+      // Escape handler (review-backlog #6) — while it's open, this handler
+      // must be a complete no-op rather than let Delete/F2/arrows/type-ahead
+      // act on the file list hidden behind it.
+      if (liveInfoNode)
+        return;
       switch (e.key) {
         case "Escape":
           if (selectedIds.size > 0) {
@@ -689,12 +700,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           onClose={() => setSortMenu(null)}
         />
       )}
-      {infoNode && (
+      {liveInfoNode && (
         <NodeInfoPanel
-          node={infoNode}
-          size={nodeSize(nodes, infoNode)}
-          location={infoNode.parentId
-            ? pathOf(nodes, infoNode.parentId).slice(1).map(n => n.name).join(" / ")
+          node={liveInfoNode}
+          size={nodeSize(nodes, liveInfoNode)}
+          location={liveInfoNode.parentId
+            ? pathOf(nodes, liveInfoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}
           onClose={() => setInfoNode(null)}
         />

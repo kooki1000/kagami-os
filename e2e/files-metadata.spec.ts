@@ -65,4 +65,49 @@ test.describe("Files metadata & Get Info (B8)", () => {
     await page.getByRole("button", { name: "View as list" }).click();
     await expect(page.getByRole("cell", { name: "34 bytes" })).toBeVisible();
   });
+
+  test("Escape closes the Get Info dialog, and focus moves into it on open", async ({ page }) => {
+    await openFiles(page);
+    await page.locator("input[type=\"file\"]").first().setInputFiles("e2e/fixtures/sample.txt");
+    await expect(page.getByText("sample.txt", { exact: true })).toBeVisible();
+
+    await page.getByText("sample.txt", { exact: true }).click({ button: "right" });
+    await page.getByRole("button", { name: "Get Info" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "sample.txt info" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
+
+  test("focus returns to whatever was focused before Get Info opened, and Tab can't leave the dialog", async ({ page }) => {
+    await openFiles(page);
+    await page.locator("input[type=\"file\"]").first().setInputFiles("e2e/fixtures/sample.txt");
+    await expect(page.getByText("sample.txt", { exact: true })).toBeVisible();
+
+    // Select the file, then explicitly focus a toolbar control that stays
+    // mounted for the dialog's whole lifetime — unlike the context menu's own
+    // "Get Info" button, which unmounts the instant it's clicked, so it can't
+    // be the thing focus restores to.
+    await page.getByText("sample.txt", { exact: true }).click();
+    const filter = page.getByPlaceholder("Filter");
+    await filter.click();
+    await expect(filter).toBeFocused();
+
+    await page.keyboard.press("ControlOrMeta+i");
+    const dialog = page.getByRole("dialog", { name: "sample.txt info" });
+    const closeButton = dialog.getByRole("button", { name: "Close" });
+    await expect(closeButton).toBeFocused();
+
+    // Only one focusable element in the panel, so Tab should keep focus on
+    // it rather than let focus escape to the rest of the page.
+    await page.keyboard.press("Tab");
+    await expect(closeButton).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(filter).toBeFocused();
+  });
 });
