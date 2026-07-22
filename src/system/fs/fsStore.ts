@@ -422,6 +422,10 @@ export const useFsStore = create<FsStore>()((set, get) => {
         return null;
 
       const now = Date.now();
+      // Index children once rather than re-filtering the whole map per
+      // folder in the subtree (what childrenOf does) — cloning order doesn't
+      // need childrenOf's display sort, so the plain id index is enough.
+      const childIds = childIdsByParent(nodes);
       const newNodes: FsNode[] = [];
       function clone(node: FsNode, parentId: string): FsNode {
         const copy: FsNode = {
@@ -435,8 +439,8 @@ export const useFsStore = create<FsStore>()((set, get) => {
         };
         newNodes.push(copy);
         if (node.type === "folder") {
-          for (const child of childrenOf(nodes, node.id))
-            clone(child, copy.id);
+          for (const childId of childIds.get(node.id) ?? [])
+            clone(nodes[childId], copy.id);
         }
         return copy;
       }
