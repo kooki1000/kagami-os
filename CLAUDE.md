@@ -27,7 +27,13 @@ pnpm test                        # Vitest unit suites (run mode)
 pnpm test:watch                  # Vitest watch mode
 pnpm test:e2e                    # Playwright, against a production preview build
 pnpm bench                       # Vitest bench suites
+pnpm tauri dev                   # native (Tauri) shell against Vite — needs a Rust toolchain
+pnpm tauri build                 # native desktop build — needs a Rust toolchain
 ```
+
+`pnpm tauri dev`/`build` (`src-tauri/`) are the native-desktop track
+(`DIRECTION.md`); they need [rustup](https://rustup.rs) installed but touch
+no web-build files — `pnpm dev`/`build` are unaffected either way.
 
 Single test file: `pnpm vitest run src/system/fs/fsStore.test.ts` (or
 `pnpm vitest src/system/fs/fsStore.test.ts` to watch). Single Playwright spec:
