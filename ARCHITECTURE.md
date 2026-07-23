@@ -195,15 +195,18 @@ createdAt, modifiedAt, trashedFrom? }`) held in `useFsStore` (Zustand),
 with two seams around it:
 
 - **`StorageAdapter`** (persistence seam): `loadAll` / `putMany` /
-  `removeMany`. The MVP implementation is raw IndexedDB
-  (`idbAdapter.ts`) — the `idb` convenience library is currently blocked
-  by the workspace's `minimumReleaseAge` pnpm policy; swapping it (or a
-  real server backend) in touches only this file. Every store mutation
-  persists write-through, fire-and-forget. This seam (and its `BlobStore`
-  sibling) is also where the two planned backends plug in: a remote/API
-  adapter for the online track (`ROADMAP.md` area A) and a filesystem
-  adapter for the native desktop track (`DIRECTION.md`, area N) — both
-  selected at runtime behind the same interface.
+  `removeMany`. The web implementation is raw IndexedDB (`idbAdapter.ts`)
+  — the `idb` convenience library is currently blocked by the workspace's
+  `minimumReleaseAge` pnpm policy. Every store mutation persists
+  write-through, fire-and-forget. The native desktop track (`DIRECTION.md`,
+  area N) plugs in here too: `tauriAdapter.ts` (and its `BlobStore` sibling
+  `tauriBlobStore.ts`) write a JSON node file and one file per blob under
+  the Tauri app's `$APPDATA/disk` folder — a real, isolated folder on the
+  host machine — instead of IndexedDB. `fsStore.ts`/`blobStore.ts` each
+  pick the adapter at construction with one `isTauri()` check
+  (`system/platform.ts`); a remote/API adapter for the online track
+  (`ROADMAP.md` area A) will select in behind the same interface the same
+  way.
 - **`FileSystemProvider`** (`provider.ts`, app-facing seam): async
   `readDir/readFile/writeFile/mkdir/move/rename/delete/stat` for external
   consumers that don't need reactivity. UI like Files subscribes to the
@@ -385,6 +388,12 @@ stay lean and stable:
     Tab focus trap, visible focus rings, reduced-motion variants, axe-core
     audit)
 
+**Native desktop track (parallel, not phase-numbered — see `DIRECTION.md`):**
+N-1 shipped — Tauri v2 shell (`src-tauri/`), `isTauri()` platform detection,
+and the native `StorageAdapter`/`BlobStore` pair under `$APPDATA/disk`,
+described under `StorageAdapter` above. `pnpm dev`/`build` (the website) are
+unaffected. Remaining: N-2 (built-in Browser) and N-3 (signed/notarized
+distribution, desktop e2e via `tauri-driver`).
+
 **Next (planned, not yet built):** the online track (`ROADMAP.md` phases
-12+) and the native desktop track (`DIRECTION.md`) described under
-`StorageAdapter` above.
+12+).
