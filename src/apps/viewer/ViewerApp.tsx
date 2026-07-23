@@ -7,7 +7,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
 import { useFsStore } from "@/system/fs/fsStore";
@@ -81,14 +81,83 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
     return () => observer.disconnect();
   }, []);
 
-  function zoomBy(factor: number): void {
+  // Stable identity (only ever touches state setters) so the wheel-zoom
+  // native listener below can depend on it without reinstalling itself.
+  const zoomBy = useCallback((factor: number): void => {
     setFitted(false);
     setZoom(z => Math.min(Math.max(z * factor, MIN_ZOOM), MAX_ZOOM));
-  }
+  }, []);
+
+  // Trackpad pinch delivers a native `wheel` event with `ctrlKey: true` in
+  // every engine — no separate gesture API needed. React attaches its own
+  // wheel listener as passive by default, so `preventDefault` there is a
+  // silent no-op; a native listener with `{ passive: false }` is required to
+  // actually stop the browser's page-zoom.
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body)
+      return;
+    function onWheel(e: WheelEvent): void {
+      if (!e.ctrlKey)
+        return;
+      e.preventDefault();
+      zoomBy(1 - e.deltaY * 0.01);
+    }
+    body.addEventListener("wheel", onWheel, { passive: false });
+    return () => body.removeEventListener("wheel", onWheel);
+  }, [zoomBy]);
 
   function fit(): void {
     setFitted(true);
     setZoom(fitZoomFor(rotatedWidth, rotatedHeight));
+  }
+
+  // Drag-to-pan (only when the image overflows its box): tracked in a ref,
+  // not state, so pointermove doesn't re-render on every pixel — `isPanning`
+  // is just for the cursor's grab/grabbing affordance.
+  const panRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+  } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+
+  function onBodyPointerDown(e: React.PointerEvent<HTMLDivElement>): void {
+    const body = bodyRef.current;
+    if (!body || e.button !== 0)
+      return;
+    const overflowing = body.scrollWidth > body.clientWidth || body.scrollHeight > body.clientHeight;
+    if (!overflowing)
+      return;
+    body.setPointerCapture(e.pointerId);
+    panRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startScrollLeft: body.scrollLeft,
+      startScrollTop: body.scrollTop,
+    };
+    setIsPanning(true);
+  }
+
+  function onBodyPointerMove(e: React.PointerEvent<HTMLDivElement>): void {
+    const pan = panRef.current;
+    const body = bodyRef.current;
+    if (!pan || !body || pan.pointerId !== e.pointerId)
+      return;
+    body.scrollLeft = pan.startScrollLeft - (e.clientX - pan.startX);
+    body.scrollTop = pan.startScrollTop - (e.clientY - pan.startY);
+  }
+
+  function endBodyPan(e: React.PointerEvent<HTMLDivElement>): void {
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== e.pointerId)
+      return;
+    bodyRef.current?.releasePointerCapture(e.pointerId);
+    panRef.current = null;
+    setIsPanning(false);
   }
 
   function rotate(degrees: number): void {
@@ -176,7 +245,14 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
         </span>
       </div>
 
-      <div ref={bodyRef} className="flex min-h-0 flex-1 overflow-auto bg-surface-2 p-4">
+      <div
+        ref={bodyRef}
+        className={`flex min-h-0 flex-1 overflow-auto bg-surface-2 p-4 ${fitted ? "" : isPanning ? "cursor-grabbing" : "cursor-grab"}`}
+        onPointerDown={onBodyPointerDown}
+        onPointerMove={onBodyPointerMove}
+        onPointerUp={endBodyPan}
+        onPointerCancel={endBodyPan}
+      >
         <div
           className="m-auto grid flex-none place-items-center"
           style={{
