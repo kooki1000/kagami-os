@@ -370,3 +370,13 @@ stay lean and stable:
 6. ✅ Settings — live accent/wallpaper/theme + dock size/position
 7. ✅ Notifications + keyboard shortcuts + polish (toast/undo, ⌘-shortcuts)
 8. ✅ Persistence hardening + Vitest suites (56 tests, both stores + engine)
+9. ✅ Foundations & guardrails — CI (lint/typecheck/unit/e2e per PR across
+   three browser engines), error boundaries, feature flags, CSP
+10. ✅ File system maturity — content-addressed blob store, upload/download,
+    multi-select, clipboard, keyboard nav, Get Info, open-with, Media Player
+11. ✅ Desktop experience — desktop icons, session restore, app/window
+    switchers, quarter snap + keyboard window ops, ⌘K search, dock
+    focus-follows-app, Viewer pan/zoom/next-prev/slideshow, Terminal engine
+    v2, accessibility pass (ARIA menu roles + arrow-key traversal, per-window
+    Tab focus trap, visible focus rings, reduced-motion variants, axe-core
+    audit)

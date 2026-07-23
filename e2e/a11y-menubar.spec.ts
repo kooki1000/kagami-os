@@ -47,4 +47,15 @@ test.describe("MenuBar accessibility", () => {
     await expect(trigger).toBeFocused();
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
+
+  // H1: icon-only system controls (search/appearance/notifications) carry
+  // an `aria-label` instead of relying on their glyph; sampled here to
+  // confirm the pattern stays queryable by accessible name.
+  test("icon-only system controls expose an accessible name", async ({ page }) => {
+    await boot(page);
+
+    await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Toggle appearance" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Notifications" })).toBeVisible();
+  });
 });

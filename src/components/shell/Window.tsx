@@ -1,10 +1,17 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
 import { memo, Suspense, useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "@/components/ui/useFocusTrap";
 import { getApp } from "@/system/apps/registry";
 import { useReducedMotion } from "@/system/theme/useReducedMotion";
 import { TITLE_BAR_HEIGHT, useWindowStore, zoneForPointer } from "@/system/windows/windowStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
+
+/**
+ * No-op: `onClose` is required by `useFocusTrap`'s signature, but with
+ * `closeOnEscape: false` below it's never actually invoked.
+ */
+function noop(): void {}
 
 const MINIMIZE_MS = 240;
 const ENTER_MS = 180;
@@ -90,6 +97,18 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
   const reducedMotion = useReducedMotion();
   const minimizeMs = reducedMotion ? REDUCED_MOTION_MS : MINIMIZE_MS;
   const enterMs = reducedMotion ? REDUCED_MOTION_MS : ENTER_MS;
+
+  // Tab stays within the focused window's own controls instead of leaking
+  // into a background window or the browser chrome — no auto-focus/restore
+  // (a click should focus whatever was clicked) and no Escape-close (that's
+  // the window's own content's to handle).
+  const trapRef = useFocusTrap<HTMLDivElement>({
+    active: focused,
+    onClose: noop,
+    trapFocus: true,
+    autoFocus: false,
+    closeOnEscape: false,
+  });
 
   const dragStateRef = useRef<DragState | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
@@ -273,6 +292,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
 
   return (
     <div
+      ref={trapRef}
       className={`pointer-events-auto absolute flex flex-col overflow-hidden rounded-window bg-surface hairline ${
         focused ? "" : "saturate-[.85]"
       }`}
