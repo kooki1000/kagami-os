@@ -3,9 +3,10 @@ import type { ShellContext, ShellLine } from "./shell";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { openFile } from "@/system/apps/openFile";
 import { pathOf, useFsStore } from "@/system/fs/fsStore";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
-import { runCommand } from "./shell";
+import { completeToken, runCommand } from "./shell";
 
 const USER = "kagami";
 
@@ -22,6 +23,15 @@ function promptPath(nodes: NodeMap, cwd: string): string {
   if (parts.length >= home.length && home.every((p, i) => p === parts[i]))
     return `~/${parts.slice(home.length).join("/")}`;
   return `/${parts.join("/")}`;
+}
+
+/** Longest string all `candidates` start with. */
+function commonPrefix(candidates: string[]): string {
+  return candidates.reduce((a, b) => {
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    return a.slice(0, i);
+  });
 }
 
 let lineCounter = 0;
@@ -77,7 +87,11 @@ export default function TerminalApp({ focused }: AppWindowProps) {
       createFile: state.createFile,
       updateFileContent: state.updateFileContent,
       touchFile: state.touchFile,
+      rename: state.rename,
+      move: state.move,
+      duplicate: state.duplicate,
       moveToTrash: state.moveToTrash,
+      openPath: openFile,
       user: USER,
     };
 
@@ -127,6 +141,26 @@ export default function TerminalApp({ focused }: AppWindowProps) {
       else {
         setHistoryPos(next);
         setInput(commandHistory[next]);
+      }
+    }
+    else if (e.key === "Tab") {
+      e.preventDefault();
+      const tokens = input.split(/\s+/);
+      const matches = completeToken(nodes, safeCwd, tokens);
+      if (matches.length === 0)
+        return;
+      if (matches.length === 1) {
+        tokens[tokens.length - 1] = matches[0];
+        setInput(tokens.join(" "));
+        return;
+      }
+      const prefix = commonPrefix(matches);
+      if (prefix.length > (tokens.at(-1)?.length ?? 0)) {
+        tokens[tokens.length - 1] = prefix;
+        setInput(tokens.join(" "));
+      }
+      else {
+        appendLines([{ kind: "system", text: matches.join("  ") }]);
       }
     }
   }

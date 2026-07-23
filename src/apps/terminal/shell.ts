@@ -36,25 +36,59 @@ export interface ShellContext {
   createFile: (parentId: string, name: string, content: string, mimeType?: string) => FsNode;
   updateFileContent: (id: string, content: string) => void;
   touchFile: (id: string) => void;
+  rename: (id: string, name: string) => void;
+  move: (id: string, newParentId: string) => boolean;
+  duplicate: (id: string, targetParentId: string) => FsNode | null;
   moveToTrash: (id: string) => void;
+  /** Launch the file's associated app; false when nothing is associated. */
+  openPath: (node: FsNode) => boolean;
   user: string;
 }
 
+const COMMAND_NAMES = [
+  "help",
+  "clear",
+  "whoami",
+  "date",
+  "pwd",
+  "ls",
+  "cd",
+  "cat",
+  "mkdir",
+  "touch",
+  "echo",
+  "rm",
+  "cp",
+  "mv",
+  "head",
+  "tail",
+  "grep",
+  "open",
+  "tree",
+] as const;
+
 const HELP_TEXT = [
   "Kagami Shell — available commands:",
-  "  ls [path]        list directory contents",
-  "  cd [path]        change directory (cd .. , cd ~ , cd /)",
-  "  pwd              print working directory",
-  "  cat <file>       print a file's contents",
-  "  mkdir <name>     create a directory",
-  "  touch <name>     create an empty file",
-  "  echo <text>      print text (> file to write)",
-  "  rm <name>        move an item to the Trash",
-  "  tree             show the tree below the current directory",
-  "  whoami           print the current user",
-  "  date             print the current date and time",
-  "  clear            clear the screen",
-  "  help             show this help",
+  "  ls [path]           list directory contents",
+  "  cd [path]           change directory (cd .. , cd ~ , cd /)",
+  "  pwd                 print working directory",
+  "  cat <file>          print a file's contents",
+  "  mkdir <path>        create a directory (parent dirs must exist)",
+  "  touch <path>        create an empty file (parent dirs must exist)",
+  "  echo <text>         print text (> file to write, >> to append)",
+  "  cp <src> <dest>     copy a file or folder",
+  "  mv <src> <dest>     move or rename a file or folder",
+  "  head [-n N] <file>  print the first N lines (default 10)",
+  "  tail [-n N] <file>  print the last N lines (default 10)",
+  "  grep [-i] <pat> <file>  print lines matching a substring",
+  "  open <path>         open a file in its associated app",
+  "  rm <name>           move an item to the Trash",
+  "  tree                show the tree below the current directory",
+  "  whoami              print the current user",
+  "  date                print the current date and time",
+  "  clear               clear the screen",
+  "  help                show this help",
+  "Pipe builtins together with |, e.g. `ls | grep .txt`. Tab completes commands and paths.",
 ].join("\n");
 
 /** Absolute "/a/b/c" path string for a node. */
@@ -114,6 +148,14 @@ export function resolvePath(
   return current;
 }
 
+/** Split a path around its last "/" into a parent path and a leaf name. */
+function splitPath(path: string): { dir: string; leaf: string } {
+  const idx = path.lastIndexOf("/");
+  return idx === -1
+    ? { dir: "", leaf: path }
+    : { dir: path.slice(0, idx), leaf: path.slice(idx + 1) };
+}
+
 function line(kind: ShellLine["kind"], text: string): ShellLine {
   return { kind, text };
 }
@@ -127,35 +169,160 @@ function out(text: string): ShellResult {
 }
 
 /**
- * Shared guard for mkdir/touch/echo>: a "/" in a bare name would create a
- * node the path resolver (which splits on "/") could never reach again.
+ * Resolve `parentId` + `leaf` for a create-style path argument (mkdir,
+ * touch): everything up to the last "/" must already exist as a folder —
+ * intermediate directories are not auto-created, matching plain `mkdir`.
  */
-function slashNameError(command: string, name: string): ShellResult | null {
-  return name.includes("/") ? err(`${command}: ${name}: names cannot contain '/'`) : null;
+function resolveCreateParent(
+  nodes: Record<string, FsNode>,
+  cwd: string,
+  command: string,
+  path: string,
+): { parentId: string; leaf: string } | ShellResult {
+  const { dir, leaf } = splitPath(path);
+  if (!leaf)
+    return err(`${command}: ${path}: names cannot contain '/'`);
+  const parentId = dir ? resolvePath(nodes, cwd, dir) : cwd;
+  if (parentId === null)
+    return err(`${command}: ${path}: no such directory`);
+  if (nodes[parentId].type !== "folder")
+    return err(`${command}: ${path}: not a directory`);
+  return { parentId, leaf };
+}
+
+type Destination
+  = | { kind: "dir"; id: string }
+    | { kind: "path"; parentId: string; name: string };
+
+/**
+ * Resolve a cp/mv destination argument: an existing folder receives the
+ * item under its own name; anything else is a not-yet-existing path whose
+ * parent must already exist (the new/renamed leaf).
+ */
+function resolveDestination(
+  nodes: Record<string, FsNode>,
+  cwd: string,
+  path: string,
+): Destination | { error: string } {
+  const direct = resolvePath(nodes, cwd, path);
+  if (direct !== null) {
+    const target = nodes[direct];
+    if (target.type === "folder")
+      return { kind: "dir", id: direct };
+    return { error: `${path}: already exists` };
+  }
+  const { dir, leaf } = splitPath(path);
+  if (!leaf)
+    return { error: `${path}: names cannot contain '/'` };
+  const parentId = dir ? resolvePath(nodes, cwd, dir) : cwd;
+  if (parentId === null || nodes[parentId].type !== "folder")
+    return { error: `${path}: no such directory` };
+  return { kind: "path", parentId, name: leaf };
+}
+
+/** Read a file's lines by path, or fall back to piped stdin when no path is given. */
+function inputLines(
+  command: string,
+  path: string | undefined,
+  nodes: Record<string, FsNode>,
+  cwd: string,
+  stdin: string | undefined,
+): string[] | ShellResult {
+  if (path === undefined) {
+    if (stdin === undefined)
+      return err(`${command}: missing file operand`);
+    return stdin === "" ? [] : stdin.split("\n");
+  }
+  const targetId = resolvePath(nodes, cwd, path);
+  if (targetId === null)
+    return err(`${command}: ${path}: no such file or directory`);
+  const target = nodes[targetId];
+  if (target.type === "folder")
+    return err(`${command}: ${path}: is a directory`);
+  if (target.contentRef)
+    return err(`${command}: ${path}: binary file`);
+  const content = target.content ?? "";
+  return content === "" ? [] : content.split("\n");
+}
+
+/** Parse a leading `-n <count>` flag shared by head/tail. */
+function parseCountFlag(args: string[], fallback = 10): { count: number; rest: string[] } {
+  if (args[0] === "-n" && args[1] !== undefined) {
+    const count = Number.parseInt(args[1], 10);
+    return { count: Number.isNaN(count) ? fallback : count, rest: args.slice(2) };
+  }
+  return { count: fallback, rest: args };
 }
 
 interface ParsedCommand {
   command: string;
   args: string[];
-  /** `> target` redirect, if present. */
-  redirect: string | null;
+  redirect: { path: string; append: boolean } | null;
 }
 
+function unquote(token: string): string {
+  return token.replace(/^["']|["']$/g, "");
+}
+
+/**
+ * Tokenize on whitespace, treating a quoted span as one token so a `>`
+ * inside quotes (`echo "a > b"`) is never mistaken for a redirect, then
+ * pull any `>`/`>>` token (glued or spaced) out as the redirect.
+ */
 function parse(input: string): ParsedCommand {
-  let redirect: string | null = null;
-  let body = input;
-  const redirectMatch = input.match(/>\s*(\S+)\s*$/);
-  if (redirectMatch) {
-    redirect = redirectMatch[1];
-    body = input.slice(0, redirectMatch.index).trim();
+  const tokens = input.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+  let redirect: ParsedCommand["redirect"] = null;
+  const rest: string[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok === ">" || tok === ">>") {
+      const target = tokens[i + 1];
+      if (target !== undefined) {
+        redirect = { path: unquote(target), append: tok === ">>" };
+        i++;
+      }
+      continue;
+    }
+    if (tok.startsWith(">>") && tok.length > 2) {
+      redirect = { path: unquote(tok.slice(2)), append: true };
+      continue;
+    }
+    if (tok.startsWith(">") && tok.length > 1) {
+      redirect = { path: unquote(tok.slice(1)), append: false };
+      continue;
+    }
+    rest.push(unquote(tok));
   }
-  const tokens = body.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
-  const cleaned = tokens.map(t => t.replace(/^["']|["']$/g, ""));
-  return {
-    command: cleaned[0] ?? "",
-    args: cleaned.slice(1),
-    redirect,
-  };
+
+  return { command: rest[0] ?? "", args: rest.slice(1), redirect };
+}
+
+/** Split a command line on top-level `|`, ignoring `|` inside quotes. */
+function splitPipeline(input: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  for (const ch of input) {
+    if (quote) {
+      current += ch;
+      if (ch === quote)
+        quote = null;
+    }
+    else if (ch === "\"" || ch === "'") {
+      quote = ch;
+      current += ch;
+    }
+    else if (ch === "|") {
+      parts.push(current);
+      current = "";
+    }
+    else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts.map(s => s.trim());
 }
 
 function treeLines(
@@ -174,147 +341,296 @@ function treeLines(
   return lines;
 }
 
-/** Execute one command line. Pure: all effects go through `ctx`. */
+/** Write a command's output to its `> file` / `>> file` redirect target, if any. */
+function applyRedirect(
+  redirect: { path: string; append: boolean },
+  result: ShellResult,
+  ctx: ShellContext,
+): ShellResult {
+  const { nodes, cwd } = ctx;
+  if (redirect.path.includes("/"))
+    return err(`${redirect.path}: names cannot contain '/'`);
+  const existing = childByName(nodes, cwd, redirect.path);
+  if (existing?.type === "folder")
+    return err(`${redirect.path}: is a directory`);
+  if (existing?.contentRef)
+    return err(`${redirect.path}: cannot write to a binary file`);
+
+  const text = result.lines.map(l => l.text).join("\n");
+  const finalText = redirect.append && existing ? `${existing.content ?? ""}${text}\n` : `${text}\n`;
+  if (existing)
+    ctx.updateFileContent(existing.id, finalText);
+  else
+    ctx.createFile(cwd, redirect.path, finalText, "text/plain");
+  return { ...result, lines: [] };
+}
+
+/** Execute one (already pipe-split) command line, threading piped stdin through. */
+function execSingle(input: string, ctx: ShellContext, stdin: string | undefined): ShellResult {
+  const trimmed = input.trim();
+  if (trimmed === "")
+    return { lines: [] };
+
+  const parsed = parse(trimmed);
+  const { command, args } = parsed;
+  const { nodes, cwd } = ctx;
+
+  const result = ((): ShellResult => {
+    switch (command) {
+      case "help":
+        return out(HELP_TEXT);
+
+      case "clear":
+        return { lines: [], clear: true };
+
+      case "whoami":
+        return out(ctx.user);
+
+      case "date":
+        return out(new Date().toString());
+
+      case "pwd":
+        return out(pathString(nodes, cwd));
+
+      case "ls": {
+        const targetId = args[0] ? resolvePath(nodes, cwd, args[0]) : cwd;
+        if (targetId === null)
+          return err(`ls: ${args[0]}: no such file or directory`);
+        const target = nodes[targetId];
+        if (target.type === "file")
+          return out(target.name);
+        const kids = childrenOf(nodes, targetId);
+        if (kids.length === 0)
+          return { lines: [] };
+        return out(
+          kids.map(n => (n.type === "folder" ? `${n.name}/` : n.name)).join("\n"),
+        );
+      }
+
+      case "cd": {
+        const dest = args[0] ?? "~";
+        const targetId = resolvePath(nodes, cwd, dest);
+        if (targetId === null)
+          return err(`cd: ${dest}: no such file or directory`);
+        if (nodes[targetId].type !== "folder")
+          return err(`cd: ${dest}: not a directory`);
+        return { lines: [], cwd: targetId };
+      }
+
+      case "cat": {
+        if (!args[0]) {
+          if (stdin === undefined)
+            return err("cat: missing file operand");
+          return out(stdin);
+        }
+        const targetId = resolvePath(nodes, cwd, args[0]);
+        if (targetId === null)
+          return err(`cat: ${args[0]}: no such file or directory`);
+        const target = nodes[targetId];
+        if (target.type === "folder")
+          return err(`cat: ${args[0]}: is a directory`);
+        // Blob-backed files (B1: uploads, oversized text) have no inline
+        // content to print — a size/type notice instead of a blank dump.
+        if (target.contentRef) {
+          const kind = target.mimeType?.startsWith("image/") ? "binary image" : "binary file";
+          return out(`[${target.name}: ${kind}, ${target.mimeType ?? "unknown type"}, ${formatBytes(target.contentRef.size)}]`);
+        }
+        if (target.mimeType?.startsWith("image/"))
+          return out(`[${target.name}: binary image, ${target.mimeType}]`);
+        return out(target.content ?? "");
+      }
+
+      case "mkdir": {
+        if (!args[0])
+          return err("mkdir: missing operand");
+        const resolved = resolveCreateParent(nodes, cwd, "mkdir", args[0]);
+        if ("lines" in resolved)
+          return resolved;
+        if (childByName(nodes, resolved.parentId, resolved.leaf))
+          return err(`mkdir: ${args[0]}: file exists`);
+        ctx.createFolder(resolved.parentId, resolved.leaf);
+        return { lines: [] };
+      }
+
+      case "touch": {
+        if (!args[0])
+          return err("touch: missing file operand");
+        const resolved = resolveCreateParent(nodes, cwd, "touch", args[0]);
+        if ("lines" in resolved)
+          return resolved;
+        const existing = childByName(nodes, resolved.parentId, resolved.leaf);
+        if (existing) {
+          // Refresh the timestamp instead of creating a "name 2" duplicate.
+          // Timestamp only — rewriting the content would drop a blob-backed
+          // file's bytes.
+          if (existing.type === "file")
+            ctx.touchFile(existing.id);
+          return { lines: [] };
+        }
+        ctx.createFile(resolved.parentId, resolved.leaf, "", "text/plain");
+        return { lines: [] };
+      }
+
+      case "echo":
+        return out(args.join(" "));
+
+      case "cp": {
+        if (!args[0] || !args[1])
+          return err("cp: usage: cp <source> <dest>");
+        const srcId = resolvePath(nodes, cwd, args[0]);
+        if (srcId === null)
+          return err(`cp: ${args[0]}: no such file or directory`);
+        const dest = resolveDestination(nodes, cwd, args[1]);
+        if ("error" in dest)
+          return err(`cp: ${dest.error}`);
+        const targetParentId = dest.kind === "dir" ? dest.id : dest.parentId;
+        const copy = ctx.duplicate(srcId, targetParentId);
+        if (!copy)
+          return err(`cp: cannot copy '${args[0]}' into '${args[1]}'`);
+        if (dest.kind === "path" && copy.name !== dest.name)
+          ctx.rename(copy.id, dest.name);
+        return { lines: [] };
+      }
+
+      case "mv": {
+        if (!args[0] || !args[1])
+          return err("mv: usage: mv <source> <dest>");
+        const srcId = resolvePath(nodes, cwd, args[0]);
+        if (srcId === null)
+          return err(`mv: ${args[0]}: no such file or directory`);
+        if (isSystemNode(srcId))
+          return err(`mv: ${args[0]}: cannot move a system folder`);
+        const node = nodes[srcId];
+        const dest = resolveDestination(nodes, cwd, args[1]);
+        if ("error" in dest)
+          return err(`mv: ${dest.error}`);
+        const targetParentId = dest.kind === "dir" ? dest.id : dest.parentId;
+        if (srcId === targetParentId || isDescendantOf(nodes, targetParentId, srcId))
+          return err(`mv: cannot move '${args[0]}' into itself`);
+        if (targetParentId !== node.parentId && !ctx.move(srcId, targetParentId))
+          return err(`mv: cannot move '${args[0]}' into '${args[1]}'`);
+        if (dest.kind === "path" && dest.name !== node.name)
+          ctx.rename(srcId, dest.name);
+        return { lines: [] };
+      }
+
+      case "head": {
+        const { count, rest } = parseCountFlag(args);
+        const linesOrErr = inputLines("head", rest[0], nodes, cwd, stdin);
+        if (!Array.isArray(linesOrErr))
+          return linesOrErr;
+        return out(linesOrErr.slice(0, Math.max(0, count)).join("\n"));
+      }
+
+      case "tail": {
+        const { count, rest } = parseCountFlag(args);
+        const linesOrErr = inputLines("tail", rest[0], nodes, cwd, stdin);
+        if (!Array.isArray(linesOrErr))
+          return linesOrErr;
+        return out((count <= 0 ? [] : linesOrErr.slice(-count)).join("\n"));
+      }
+
+      case "grep": {
+        const ignoreCase = args[0] === "-i";
+        const rest = ignoreCase ? args.slice(1) : args;
+        const pattern = rest[0];
+        if (!pattern)
+          return err("grep: missing pattern");
+        const linesOrErr = inputLines("grep", rest[1], nodes, cwd, stdin);
+        if (!Array.isArray(linesOrErr))
+          return linesOrErr;
+        const needle = ignoreCase ? pattern.toLowerCase() : pattern;
+        const matches = linesOrErr.filter(l => (ignoreCase ? l.toLowerCase() : l).includes(needle));
+        return out(matches.join("\n"));
+      }
+
+      case "open": {
+        if (!args[0])
+          return err("open: missing file operand");
+        const targetId = resolvePath(nodes, cwd, args[0]);
+        if (targetId === null)
+          return err(`open: ${args[0]}: no such file or directory`);
+        const target = nodes[targetId];
+        if (target.type === "folder")
+          return err(`open: ${args[0]}: is a directory`);
+        if (!ctx.openPath(target))
+          return err(`open: ${args[0]}: no app associated with this file`);
+        return { lines: [] };
+      }
+
+      case "rm": {
+        if (!args[0])
+          return err("rm: missing operand");
+        const targetId = resolvePath(nodes, cwd, args[0]);
+        if (targetId === null)
+          return err(`rm: ${args[0]}: no such file or directory`);
+        if (isSystemNode(targetId))
+          return err(`rm: ${args[0]}: cannot remove a system folder`);
+        if (targetId === cwd)
+          return err("rm: cannot remove the current directory");
+        // Trashing an ancestor would silently drag the cwd into the Trash.
+        if (isDescendantOf(nodes, cwd, targetId))
+          return err(`rm: ${args[0]}: contains the current directory`);
+        ctx.moveToTrash(targetId);
+        return { lines: [line("output", `moved '${nodes[targetId].name}' to Trash`)] };
+      }
+
+      case "tree": {
+        const lines = treeLines(nodes, cwd, "");
+        return out([".", ...lines].join("\n"));
+      }
+
+      default:
+        return err(`${command}: command not found (try 'help')`);
+    }
+  })();
+
+  if (!parsed.redirect || result.lines.some(l => l.kind === "error"))
+    return result;
+  return applyRedirect(parsed.redirect, result, ctx);
+}
+
+/** Execute one command line, splitting on `|` and piping output between builtins. */
 export function runCommand(input: string, ctx: ShellContext): ShellResult {
   const trimmed = input.trim();
   if (trimmed === "")
     return { lines: [] };
 
-  const { command, args, redirect } = parse(trimmed);
-  const { nodes, cwd } = ctx;
+  const segments = splitPipeline(trimmed);
+  if (segments.length === 1)
+    return execSingle(segments[0], ctx, undefined);
 
-  switch (command) {
-    case "help":
-      return out(HELP_TEXT);
-
-    case "clear":
-      return { lines: [], clear: true };
-
-    case "whoami":
-      return out(ctx.user);
-
-    case "date":
-      return out(new Date().toString());
-
-    case "pwd":
-      return out(pathString(nodes, cwd));
-
-    case "ls": {
-      const targetId = args[0] ? resolvePath(nodes, cwd, args[0]) : cwd;
-      if (targetId === null)
-        return err(`ls: ${args[0]}: no such file or directory`);
-      const target = nodes[targetId];
-      if (target.type === "file")
-        return out(target.name);
-      const kids = childrenOf(nodes, targetId);
-      if (kids.length === 0)
-        return { lines: [] };
-      return out(
-        kids.map(n => (n.type === "folder" ? `${n.name}/` : n.name)).join("\n"),
-      );
-    }
-
-    case "cd": {
-      const dest = args[0] ?? "~";
-      const targetId = resolvePath(nodes, cwd, dest);
-      if (targetId === null)
-        return err(`cd: ${dest}: no such file or directory`);
-      if (nodes[targetId].type !== "folder")
-        return err(`cd: ${dest}: not a directory`);
-      return { lines: [], cwd: targetId };
-    }
-
-    case "cat": {
-      if (!args[0])
-        return err("cat: missing file operand");
-      const targetId = resolvePath(nodes, cwd, args[0]);
-      if (targetId === null)
-        return err(`cat: ${args[0]}: no such file or directory`);
-      const target = nodes[targetId];
-      if (target.type === "folder")
-        return err(`cat: ${args[0]}: is a directory`);
-      // Blob-backed files (B1: uploads, oversized text) have no inline
-      // content to print — a size/type notice instead of a blank dump.
-      if (target.contentRef) {
-        const kind = target.mimeType?.startsWith("image/") ? "binary image" : "binary file";
-        return out(`[${target.name}: ${kind}, ${target.mimeType ?? "unknown type"}, ${formatBytes(target.contentRef.size)}]`);
-      }
-      if (target.mimeType?.startsWith("image/"))
-        return out(`[${target.name}: binary image, ${target.mimeType}]`);
-      return out(target.content ?? "");
-    }
-
-    case "mkdir": {
-      if (!args[0])
-        return err("mkdir: missing operand");
-      const slashError = slashNameError("mkdir", args[0]);
-      if (slashError)
-        return slashError;
-      if (childByName(nodes, cwd, args[0]))
-        return err(`mkdir: ${args[0]}: file exists`);
-      ctx.createFolder(cwd, args[0]);
-      return { lines: [] };
-    }
-
-    case "touch": {
-      if (!args[0])
-        return err("touch: missing file operand");
-      const slashError = slashNameError("touch", args[0]);
-      if (slashError)
-        return slashError;
-      const existing = childByName(nodes, cwd, args[0]);
-      if (existing) {
-        // Refresh the timestamp instead of creating a "name 2" duplicate.
-        // Timestamp only — rewriting the content would drop a blob-backed
-        // file's bytes.
-        if (existing.type === "file")
-          ctx.touchFile(existing.id);
-        return { lines: [] };
-      }
-      ctx.createFile(cwd, args[0], "", "text/plain");
-      return { lines: [] };
-    }
-
-    case "echo": {
-      const text = args.join(" ");
-      if (redirect) {
-        const slashError = slashNameError("echo", redirect);
-        if (slashError)
-          return slashError;
-        const existing = childByName(nodes, cwd, redirect);
-        if (existing?.type === "folder")
-          return err(`echo: ${redirect}: is a directory`);
-        if (existing)
-          ctx.updateFileContent(existing.id, `${text}\n`);
-        else ctx.createFile(cwd, redirect, `${text}\n`, "text/plain");
-        return { lines: [] };
-      }
-      return out(text);
-    }
-
-    case "rm": {
-      if (!args[0])
-        return err("rm: missing operand");
-      const targetId = resolvePath(nodes, cwd, args[0]);
-      if (targetId === null)
-        return err(`rm: ${args[0]}: no such file or directory`);
-      if (isSystemNode(targetId))
-        return err(`rm: ${args[0]}: cannot remove a system folder`);
-      if (targetId === cwd)
-        return err("rm: cannot remove the current directory");
-      // Trashing an ancestor would silently drag the cwd into the Trash.
-      if (isDescendantOf(nodes, cwd, targetId))
-        return err(`rm: ${args[0]}: contains the current directory`);
-      ctx.moveToTrash(targetId);
-      return { lines: [line("output", `moved '${nodes[targetId].name}' to Trash`)] };
-    }
-
-    case "tree": {
-      const lines = treeLines(nodes, cwd, "");
-      return out([".", ...lines].join("\n"));
-    }
-
-    default:
-      return err(`${command}: command not found (try 'help')`);
+  let stdin: string | undefined;
+  let result: ShellResult = { lines: [] };
+  for (const segment of segments) {
+    result = execSingle(segment, ctx, stdin);
+    if (result.lines.some(l => l.kind === "error"))
+      return result;
+    stdin = result.lines.map(l => l.text).join("\n");
   }
+  return result;
+}
+
+/**
+ * Tab-completion candidates for the token currently being typed: the first
+ * token completes against builtin command names, any later token completes
+ * as a path relative to `cwd` (folders keep their existing `dir/` prefix).
+ */
+export function completeToken(
+  nodes: Record<string, FsNode>,
+  cwd: string,
+  tokens: string[],
+): string[] {
+  const partial = tokens.at(-1) ?? "";
+
+  if (tokens.length <= 1)
+    return COMMAND_NAMES.filter(name => name.startsWith(partial));
+
+  const { dir, leaf } = splitPath(partial);
+  const parentId = dir ? resolvePath(nodes, cwd, dir) : cwd;
+  if (parentId === null || nodes[parentId].type !== "folder")
+    return [];
+  return childrenOf(nodes, parentId)
+    .filter(n => n.name.toLowerCase().startsWith(leaf.toLowerCase()))
+    .map(n => `${dir ? `${dir}/` : ""}${n.name}${n.type === "folder" ? "/" : ""}`);
 }
