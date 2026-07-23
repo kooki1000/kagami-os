@@ -31,7 +31,7 @@ export function stepSibling(
 ): string | null {
   if (siblings.length === 0)
     return null;
-  const idx = currentId ? siblings.findIndex(n => n.id === currentId) : -1;
+  const idx = siblings.findIndex(n => n.id === currentId);
   const next = idx === -1 ? 0 : (idx + delta + siblings.length) % siblings.length;
   return siblings[next].id;
 }

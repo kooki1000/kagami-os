@@ -84,19 +84,25 @@ test.describe("Viewer prev/next + slideshow (D2)", () => {
     return page.locator("[data-window-focused=\"true\"]");
   }
 
-  test("Next/Previous cycle through the folder's images, buttons and arrow keys alike, and wrap around", async ({ page }) => {
+  /** Opens Pictures' first image and returns its window, title locator, and name. */
+  async function openFirstPicture(page: import("@playwright/test").Page) {
     await openFiles(page);
     await page.locator("[data-node-name=\"Pictures\"]").dblclick();
 
     const firstThumb = page.locator("[data-node-id]").first();
-    const firstName = await firstThumb.getAttribute("data-node-name");
+    const firstName = (await firstThumb.getAttribute("data-node-name"))!;
     await firstThumb.dblclick();
 
     const viewer = focusedWindow(page);
     const title = viewer.locator("[data-window-title]");
-    await expect(title).toHaveText(firstName!);
+    await expect(title).toHaveText(firstName);
+    return { viewer, title, firstName };
+  }
 
-    const seen = [firstName!];
+  test("Next/Previous cycle through the folder's images, buttons and arrow keys alike, and wrap around", async ({ page }) => {
+    const { viewer, title, firstName } = await openFirstPicture(page);
+
+    const seen = [firstName];
     await viewer.getByRole("button", { name: "Next image" }).click();
     seen.push((await title.textContent())!);
     await viewer.getByRole("button", { name: "Next image" }).click();
@@ -107,7 +113,7 @@ test.describe("Viewer prev/next + slideshow (D2)", () => {
 
     // A fourth Next wraps back to the first image.
     await viewer.getByRole("button", { name: "Next image" }).click();
-    await expect(title).toHaveText(firstName!);
+    await expect(title).toHaveText(firstName);
 
     // Previous wraps the other way.
     await viewer.getByRole("button", { name: "Previous image" }).click();
@@ -117,22 +123,13 @@ test.describe("Viewer prev/next + slideshow (D2)", () => {
     // the key events target the window rather than the Files list behind it.
     await viewer.locator("img").click();
     await page.keyboard.press("ArrowRight");
-    await expect(title).toHaveText(firstName!);
+    await expect(title).toHaveText(firstName);
     await page.keyboard.press("ArrowLeft");
     await expect(title).toHaveText(seen[2]);
   });
 
   test("slideshow play/pause auto-advances through the folder", async ({ page }) => {
-    await openFiles(page);
-    await page.locator("[data-node-name=\"Pictures\"]").dblclick();
-
-    const firstThumb = page.locator("[data-node-id]").first();
-    const firstName = await firstThumb.getAttribute("data-node-name");
-    await firstThumb.dblclick();
-
-    const viewer = focusedWindow(page);
-    const title = viewer.locator("[data-window-title]");
-    await expect(title).toHaveText(firstName!);
+    const { viewer, title, firstName } = await openFirstPicture(page);
 
     await viewer.getByRole("button", { name: "Play slideshow" }).click();
     await expect(viewer.getByRole("button", { name: "Pause slideshow" })).toBeVisible();

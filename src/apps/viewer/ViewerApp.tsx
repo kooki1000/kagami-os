@@ -13,11 +13,13 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
 import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
+import { isEditableTarget } from "@/system/shortcuts";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { isImageNode } from "../files/fileMeta";
 
@@ -33,12 +35,10 @@ interface NaturalSize {
 }
 
 export default function ViewerApp({ windowId, payload, focused }: AppWindowProps) {
-  // The image cursor (D2): starts at the file that opened the window, but
-  // Next/Previous move it within this same window rather than launching a
-  // new one — same window-reuse caveat as Player's identical pattern (D5):
-  // openFile.ts's "reuse an existing window" match is keyed off the
-  // *opening* payload, so re-opening a since-navigated-to image from Files
-  // will still spawn a second window.
+  // Next/Previous move this cursor within the window rather than opening a
+  // new one — same caveat as Player's identical pattern (D5): openFile.ts's
+  // window-reuse match is keyed off the *opening* payload, so re-opening a
+  // since-navigated-to image from Files still spawns a second window.
   const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
   const nodes = useFsStore(s => s.nodes);
   const node = activeId ? nodes[activeId] : undefined;
@@ -61,11 +61,17 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     [nodes, node],
   );
 
-  function step(delta: number): void {
-    const next = stepSibling(siblings, activeId, delta);
-    if (next)
-      setActiveId(next);
-  }
+  // Read via a ref rather than a closure so `step` has a stable identity —
+  // the slideshow interval and the arrow-key listener below both depend on
+  // it, and re-deriving `siblings` on every unrelated fs write (any rename,
+  // any Notes autosave) would otherwise tear down and rebuild both.
+  const siblingsRef = useRef(siblings);
+  useLayoutEffect(() => {
+    siblingsRef.current = siblings;
+  });
+  const step = useCallback((delta: number): void => {
+    setActiveId(prev => stepSibling(siblingsRef.current, prev, delta) ?? prev);
+  }, []);
 
   // `playing` can stay stale-true once the folder no longer has enough
   // images to cycle through — nothing renders or acts on it directly, only
@@ -75,14 +81,9 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   useEffect(() => {
     if (!playing || siblings.length <= 1)
       return;
-    // Functional update reads the latest activeId at tick time without
-    // needing it in the dependency array — only `siblings` changing (a new
-    // folder listing) should reset the interval, not every image advance.
-    const id = setInterval(() => {
-      setActiveId(prev => stepSibling(siblings, prev, 1) ?? prev);
-    }, SLIDESHOW_INTERVAL_MS);
+    const id = setInterval(step, SLIDESHOW_INTERVAL_MS, 1);
     return () => clearInterval(id);
-  }, [playing, siblings]);
+  }, [playing, siblings.length, step]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<NaturalSize | null>(null);
@@ -90,12 +91,9 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   const [fitted, setFitted] = useState(true);
   const [rotation, setRotation] = useState(0);
 
-  // A newly-navigated-to image shouldn't inherit the previous one's
-  // rotation/zoom. Reset during render (React's "adjusting state when a
-  // prop changes" recipe — same `prev*`-compared-during-render shape as
-  // Notes' payload-identity handling) rather than in an effect, so there's
-  // no extra render between the switch and the reset. `natural`/`zoom`
-  // recompute off the fresh <img>'s own `onLoad` now that `fitted` is true.
+  // Reset rotation/fit during render when the image changes (React's
+  // "adjust state on prop change" recipe, mirroring Notes' payload-identity
+  // handling) rather than in an effect, avoiding an extra stale render.
   const [prevActiveId, setPrevActiveId] = useState(activeId);
   if (activeId !== prevActiveId) {
     setPrevActiveId(activeId);
@@ -190,7 +188,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     const overflowing = body.scrollWidth > body.clientWidth || body.scrollHeight > body.clientHeight;
     if (!overflowing)
       return;
-    body.setPointerCapture(e.pointerId);
+    capturePointer(body, e.pointerId);
     panRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -214,7 +212,8 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     const pan = panRef.current;
     if (!pan || pan.pointerId !== e.pointerId)
       return;
-    bodyRef.current?.releasePointerCapture(e.pointerId);
+    if (bodyRef.current)
+      releasePointer(bodyRef.current, e.pointerId);
     panRef.current = null;
     setIsPanning(false);
   }
@@ -257,27 +256,20 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     }
   });
 
-  // Bare arrow-key prev/next (D2): shortcuts.ts's global handler only
-  // dispatches ⌘-letter chords (symbol/arrow chords stay menu-only there),
-  // so a plain ←/→ needs its own listener. Window-scoped rather than bound
-  // to a DOM container + roving focus (Files' B6 approach) — Viewer has no
-  // focusable list, so gating on the `focused` prop is simpler and doesn't
-  // depend on something inside the window happening to hold DOM focus.
+  // Bare ←/→: shortcuts.ts's global handler only dispatches ⌘-letter chords,
+  // so this needs its own listener. Window-scoped and gated on `focused`
+  // rather than Files' B6 container+DOM-focus approach — Viewer has no
+  // focusable list to anchor to.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent): void {
-      if (!focused || (e.key !== "ArrowLeft" && e.key !== "ArrowRight"))
-        return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable))
+      if (!focused || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || isEditableTarget(e.target))
         return;
       e.preventDefault();
-      // Functional update, same reasoning as the slideshow interval above.
-      const delta = e.key === "ArrowLeft" ? -1 : 1;
-      setActiveId(prev => stepSibling(siblings, prev, delta) ?? prev);
+      step(e.key === "ArrowLeft" ? -1 : 1);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focused, siblings]);
+  }, [focused, step]);
 
   // Blob-backed images resolve their object URL asynchronously; a node with
   // a contentRef but no `src` yet is loading, not missing — don't flash the
