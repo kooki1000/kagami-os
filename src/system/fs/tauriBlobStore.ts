@@ -1,10 +1,10 @@
 import type { BlobStore } from "./types";
-import { BaseDirectory, exists, mkdir, readDir, readFile, readTextFile, remove, writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { BaseDirectory, exists, readDir, readFile, remove, writeFile } from "@tauri-apps/plugin-fs";
+import { createDirEnsurer, createWriteQueue, DISK_DIR, readJsonFile, writeJsonFile } from "./tauriShared";
 
-// A sibling of tauriAdapter.ts's `disk` folder, mirroring the IDB backend's
-// split into two databases (`kagami-fs`/`kagami-blobs`): metadata and bytes
-// are independent, so introducing one never needs a migration of the other.
-const DISK_DIR = "disk";
+// Mirrors the IDB backend's split into two databases (`kagami-fs`/
+// `kagami-blobs`): metadata and bytes are independent, so introducing one
+// never needs a migration of the other.
 const BLOBS_DIR = `${DISK_DIR}/blobs`;
 // Plain files have no type sidecar the way IndexedDB's stored `{buffer,
 // type}` records do (see idbBlobStore.ts), so MIME types live in one small
@@ -29,35 +29,26 @@ export function removeMimeTypes(meta: MimeByHash, hashes: string[]): MimeByHash 
   return result;
 }
 
-async function ensureBlobsDir(): Promise<void> {
-  if (!(await exists(BLOBS_DIR, { baseDir: BaseDirectory.AppData })))
-    await mkdir(BLOBS_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
-}
-
-async function readMeta(): Promise<MimeByHash> {
-  if (!(await exists(META_FILE, { baseDir: BaseDirectory.AppData })))
-    return {};
-  const text = await readTextFile(META_FILE, { baseDir: BaseDirectory.AppData });
-  return JSON.parse(text) as MimeByHash;
-}
-
-async function writeMeta(meta: MimeByHash): Promise<void> {
-  await ensureBlobsDir();
-  await writeTextFile(META_FILE, JSON.stringify(meta), { baseDir: BaseDirectory.AppData });
-}
-
 /**
  * BlobStore backed by one file per hash under `$APPDATA/disk/blobs` (N3).
- * Meta-map writes are serialized through one promise chain, same shape as
- * `tauriAdapter.ts`'s write queue and for the same reason.
+ * Meta-map writes are serialized through the same write-queue shape as
+ * `tauriAdapter.ts`; the meta map is cached in memory after first load,
+ * since this store is its only writer and so can't be made stale by reading
+ * from the cache.
  */
 export function createTauriBlobStore(): BlobStore {
-  let writeQueue = Promise.resolve();
+  const enqueue = createWriteQueue();
+  const ensureBlobsDir = createDirEnsurer(BLOBS_DIR);
+  let metaCache: Promise<MimeByHash> | null = null;
 
-  function enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const result = writeQueue.then(task);
-    writeQueue = result.then(() => undefined, () => undefined);
-    return result;
+  function loadMeta(): Promise<MimeByHash> {
+    return (metaCache ??= readJsonFile<MimeByHash>(META_FILE, {}));
+  }
+
+  async function saveMeta(meta: MimeByHash): Promise<void> {
+    await ensureBlobsDir();
+    await writeJsonFile(META_FILE, meta);
+    metaCache = Promise.resolve(meta);
   }
 
   async function hasBlob(hash: string): Promise<boolean> {
@@ -72,7 +63,7 @@ export function createTauriBlobStore(): BlobStore {
         return null;
       const [bytes, meta] = await Promise.all([
         readFile(blobPath(hash), { baseDir: BaseDirectory.AppData }),
-        readMeta(),
+        loadMeta(),
       ]);
       return new Blob([bytes], { type: meta[hash] ?? "" });
     },
@@ -81,17 +72,17 @@ export function createTauriBlobStore(): BlobStore {
       await ensureBlobsDir();
       const bytes = new Uint8Array(await blob.arrayBuffer());
       await writeFile(blobPath(hash), bytes, { baseDir: BaseDirectory.AppData });
-      await enqueue(async () => writeMeta(setMimeType(await readMeta(), hash, blob.type)));
+      await enqueue(async () => saveMeta(setMimeType(await loadMeta(), hash, blob.type)));
     },
 
     async delete(hashes) {
       if (hashes.length === 0)
         return;
-      for (const hash of hashes) {
+      await Promise.all(hashes.map(async (hash) => {
         if (await hasBlob(hash))
           await remove(blobPath(hash), { baseDir: BaseDirectory.AppData });
-      }
-      await enqueue(async () => writeMeta(removeMimeTypes(await readMeta(), hashes)));
+      }));
+      await enqueue(async () => saveMeta(removeMimeTypes(await loadMeta(), hashes)));
     },
 
     async listHashes() {

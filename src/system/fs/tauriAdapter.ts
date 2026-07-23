@@ -1,17 +1,7 @@
 import type { FsNode, StorageAdapter } from "./types";
-import { BaseDirectory, exists, mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { createDirEnsurer, createWriteQueue, DISK_DIR, readJsonFile, writeJsonFile } from "./tauriShared";
 
-// Both files live under $APPDATA/disk — the "real, isolated file system"
-// pitch (DIRECTION.md §3.1): a real folder on the host machine, sandboxed to
-// Kagami by the OS via the app's bundle identifier, that other apps' file
-// pickers don't wander into.
-const DISK_DIR = "disk";
 const NODES_FILE = `${DISK_DIR}/nodes.json`;
-
-async function ensureDiskDir(): Promise<void> {
-  if (!(await exists(DISK_DIR, { baseDir: BaseDirectory.AppData })))
-    await mkdir(DISK_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
-}
 
 /**
  * Merge a batch of node updates into the existing set, by id. Pure and
@@ -37,31 +27,19 @@ export function removeNodes(existing: FsNode[], ids: string[]): FsNode[] {
  * `$APPDATA/disk` folder (N3). Whole-file read-modify-write on every write —
  * fine at this scale, mirrors treating the whole IDB object store as the
  * source of truth, just as one file instead of a key/value store.
- *
- * Writes are serialized through one promise chain so overlapping
- * `putMany`/`removeMany` calls (fsStore commits fire-and-forget) can't race
- * each other's read-modify-write and clobber one another.
  */
 export function createTauriAdapter(): StorageAdapter {
-  let writeQueue = Promise.resolve();
-
-  function enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const result = writeQueue.then(task);
-    writeQueue = result.then(() => undefined, () => undefined);
-    return result;
-  }
+  const enqueue = createWriteQueue();
+  const ensureDiskDir = createDirEnsurer(DISK_DIR);
 
   async function readNodes(): Promise<FsNode[]> {
     await ensureDiskDir();
-    if (!(await exists(NODES_FILE, { baseDir: BaseDirectory.AppData })))
-      return [];
-    const text = await readTextFile(NODES_FILE, { baseDir: BaseDirectory.AppData });
-    return JSON.parse(text) as FsNode[];
+    return readJsonFile<FsNode[]>(NODES_FILE, []);
   }
 
   async function writeNodes(nodes: FsNode[]): Promise<void> {
     await ensureDiskDir();
-    await writeTextFile(NODES_FILE, JSON.stringify(nodes), { baseDir: BaseDirectory.AppData });
+    await writeJsonFile(NODES_FILE, nodes);
   }
 
   return {
