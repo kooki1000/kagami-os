@@ -3,9 +3,10 @@ import type { ShellContext, ShellLine } from "./shell";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { openFile } from "@/system/apps/openFile";
 import { pathOf, useFsStore } from "@/system/fs/fsStore";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
-import { runCommand } from "./shell";
+import { completeToken, resolveCompletion, runCommand } from "./shell";
 
 const USER = "kagami";
 
@@ -77,7 +78,11 @@ export default function TerminalApp({ focused }: AppWindowProps) {
       createFile: state.createFile,
       updateFileContent: state.updateFileContent,
       touchFile: state.touchFile,
+      rename: state.rename,
+      move: state.move,
+      duplicate: state.duplicate,
       moveToTrash: state.moveToTrash,
+      openPath: openFile,
       user: USER,
     };
 
@@ -127,6 +132,21 @@ export default function TerminalApp({ focused }: AppWindowProps) {
       else {
         setHistoryPos(next);
         setInput(commandHistory[next]);
+      }
+    }
+    else if (e.key === "Tab") {
+      e.preventDefault();
+      const tokens = input.split(/\s+/);
+      const matches = completeToken(nodes, safeCwd, tokens);
+      const completion = resolveCompletion(matches, tokens.at(-1) ?? "");
+      if (!completion)
+        return;
+      if (completion.kind === "replace") {
+        tokens[tokens.length - 1] = completion.text;
+        setInput(tokens.join(" "));
+      }
+      else {
+        appendLines([{ kind: "system", text: completion.matches.join("  ") }]);
       }
     }
   }
