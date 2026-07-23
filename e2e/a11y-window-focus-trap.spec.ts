@@ -17,10 +17,17 @@ test.describe("Window Tab focus trap (H1)", () => {
       els => els.map(el => el.getAttribute("data-window-id")),
     );
     expect(windowIds).toHaveLength(2);
-    const focusedId = await page.locator("[data-window-focused=\"true\"]").getAttribute("data-window-id");
+    const focusedWindow = page.locator("[data-window-focused=\"true\"]");
+    const focusedId = await focusedWindow.getAttribute("data-window-id");
     const backgroundId = windowIds.find(id => id !== focusedId);
     expect(focusedId).toBeTruthy();
     expect(backgroundId).toBeTruthy();
+
+    // Seed focus inside the window first — the trap only contains Tab once
+    // focus has actually entered it (opening a window from the dock doesn't
+    // itself move focus inside), so this stands in for the user having
+    // clicked into the window before tabbing around.
+    await focusedWindow.getByRole("button", { name: "close window" }).focus();
 
     async function activeWindowId(): Promise<string | null> {
       return page.evaluate(() => document.activeElement?.closest("[data-window-id]")?.getAttribute("data-window-id") ?? null);
