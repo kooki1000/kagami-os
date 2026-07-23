@@ -7,7 +7,10 @@ import { useReducedMotion } from "@/system/theme/useReducedMotion";
 import { TITLE_BAR_HEIGHT, useWindowStore, zoneForPointer } from "@/system/windows/windowStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
 
-/** No-op: the trap only wraps Tab here, so there's nothing for Escape to close. */
+/**
+ * No-op: `onClose` is required by `useFocusTrap`'s signature, but with
+ * `closeOnEscape: false` below it's never actually invoked.
+ */
 function noop(): void {}
 
 const MINIMIZE_MS = 240;

@@ -48,10 +48,9 @@ test.describe("MenuBar accessibility", () => {
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
-  // H1 screen-reader label sweep: the menu bar's icon-only system controls
-  // (search/appearance/notifications — no visible text) carry an
-  // `aria-label` rather than relying on their glyph alone. A representative
-  // sample proving that pattern holds and stays queryable by accessible name.
+  // H1: icon-only system controls (search/appearance/notifications) carry
+  // an `aria-label` instead of relying on their glyph; sampled here to
+  // confirm the pattern stays queryable by accessible name.
   test("icon-only system controls expose an accessible name", async ({ page }) => {
     await boot(page);
 

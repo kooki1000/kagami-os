@@ -46,9 +46,14 @@ export interface UseFocusTrapOptions {
 /**
  * Shared focus-management primitive for every shell overlay: focus-on-mount,
  * Escape-to-close, focus-restore-on-unmount, and either a Tab-wrap (modals)
- * or Tab-closes (menus). The element the returned ref attaches to needs
- * `tabIndex={-1}` to stay a valid focus target with no focusable children,
- * unless `autoFocus: false` opts out of the auto-focus/restore pair.
+ * or Tab-closes (menus) — or, with `autoFocus`/`closeOnEscape` both `false`,
+ * just the Tab-wrap for a plain app window. The element the returned ref
+ * attaches to needs `tabIndex={-1}` to stay a valid focus target with no
+ * focusable children, unless `autoFocus: false` opts out of that pair.
+ *
+ * In practice these two options move together: modal-style overlays
+ * (ContextMenu, NotificationCenter, NodeInfoPanel) leave both at their
+ * `true` default, and self-contained windows (Window.tsx) set both `false`.
  */
 export function useFocusTrap<T extends HTMLElement>({
   active,

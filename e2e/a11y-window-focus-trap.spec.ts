@@ -1,12 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { boot, openApp } from "./helpers";
 
-// H1: Tab should stay within the focused window's own controls rather than
-// leaking into a background window or the browser/menu-bar/dock chrome.
-// Two windows are open throughout so a leak has somewhere concrete (the
-// other window) to land in, not just "nowhere" — a stronger repro than a
-// single-window test, which an unbounded Tab leak into the menu bar or dock
-// wouldn't fail either.
+// H1: Tab must stay within the focused window's controls, not leak into a
+// background window or shell chrome. Two windows are kept open so a leak
+// has a background window to land in — a single-window test wouldn't catch
+// a leak into the menu bar or dock either.
 test.describe("Window Tab focus trap (H1)", () => {
   test("Tab and Shift+Tab cycle within the focused window, never landing in the background window or shell chrome", async ({ page }) => {
     await boot(page);
@@ -23,10 +21,9 @@ test.describe("Window Tab focus trap (H1)", () => {
     expect(focusedId).toBeTruthy();
     expect(backgroundId).toBeTruthy();
 
-    // Seed focus inside the window first — the trap only contains Tab once
-    // focus has actually entered it (opening a window from the dock doesn't
-    // itself move focus inside), so this stands in for the user having
-    // clicked into the window before tabbing around.
+    // Seed focus inside the window — the trap only contains Tab once focus
+    // has actually entered (opening from the dock doesn't move focus in
+    // itself), standing in for a user click before tabbing around.
     await focusedWindow.getByRole("button", { name: "close window" }).focus();
 
     async function activeWindowId(): Promise<string | null> {
