@@ -35,6 +35,11 @@ pnpm dev           # http://localhost:5173
 | `pnpm typecheck`                | Type-check only                                  |
 | `pnpm lint` / `pnpm lint:fix`   | ESLint (antfu config)                            |
 | `pnpm test` / `pnpm test:watch` | Vitest unit suites                               |
+| `pnpm tauri dev`                | Boots the native (Tauri) shell against Vite      |
+| `pnpm tauri build`              | Builds the native desktop app                    |
+
+`pnpm tauri dev`/`build` additionally require a Rust toolchain
+([rustup](https://rustup.rs)) — the web scripts above don't.
 
 ## Continuous integration
 

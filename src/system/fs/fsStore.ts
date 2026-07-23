@@ -1,15 +1,17 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
 import { nameStem } from "@/lib/format";
+import { isTauri } from "../platform";
 import { sweepUnreferencedBlobs } from "./blobGc";
 import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
 import { blobStore } from "./blobStore";
 import { createIdbAdapter } from "./idbAdapter";
 import { createSeedNodes } from "./seed";
+import { createTauriAdapter } from "./tauriAdapter";
 import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
 
-const adapter = createIdbAdapter();
+const adapter = isTauri() ? createTauriAdapter() : createIdbAdapter();
 
 function logPersistError(error: unknown): void {
   console.error("[kagami-fs] persistence failed:", error);
