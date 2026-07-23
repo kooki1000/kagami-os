@@ -4,7 +4,8 @@ import { Music, SkipBack, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
-import { childrenOf, useFsStore } from "@/system/fs/fsStore";
+import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
+import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { isAudioNode, isVideoNode } from "../files/fileMeta";
@@ -34,16 +35,13 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
     if (!node)
       return [];
     const wantVideo = isVideoNode(node);
-    return childrenOf(nodes, node.parentId ?? "")
-      .filter(n => (wantVideo ? isVideoNode(n) : isAudioNode(n)));
+    return siblingsOf(nodes, node, n => (wantVideo ? isVideoNode(n) : isAudioNode(n)));
   }, [nodes, node]);
 
   function step(delta: number): void {
-    if (siblings.length === 0)
-      return;
-    const idx = siblings.findIndex(n => n.id === activeId);
-    const next = idx === -1 ? 0 : (idx + delta + siblings.length) % siblings.length;
-    setActiveId(siblings[next].id);
+    const next = stepSibling(siblings, activeId, delta);
+    if (next)
+      setActiveId(next);
   }
 
   useAppCommand(windowId, (command) => {

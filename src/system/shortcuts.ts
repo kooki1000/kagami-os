@@ -37,7 +37,7 @@ function chordFromEvent(e: KeyboardEvent): string | null {
 // ⌘A "Select All" would hijack selecting text in its own Filter field.
 const NATIVE_EDITING_LETTERS = new Set(["A", "C", "X", "V", "Z"]);
 
-function isEditableTarget(target: EventTarget | null): boolean {
+export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement))
     return false;
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;

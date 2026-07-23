@@ -1,48 +1,105 @@
 import type { AppWindowProps } from "@/system/apps/types";
+import type { FsNode } from "@/system/fs/types";
 import {
   Image,
   Maximize,
+  Pause,
+  Play,
   RotateCcw,
   RotateCw,
+  SkipBack,
+  SkipForward,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
+import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
+import { isEditableTarget } from "@/system/shortcuts";
 import { useWindowStore } from "@/system/windows/windowStore";
+import { isImageNode } from "../files/fileMeta";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 1.25;
 const BODY_PADDING = 32;
+const SLIDESHOW_INTERVAL_MS = 3000;
 
 interface NaturalSize {
   width: number;
   height: number;
 }
 
-export default function ViewerApp({ windowId, payload }: AppWindowProps) {
-  const fileId = payloadFileId(payload);
-  const node = useFsStore(s => (fileId ? s.nodes[fileId] : undefined));
+export default function ViewerApp({ windowId, payload, focused }: AppWindowProps) {
+  // Next/Previous move this cursor within the window rather than opening a
+  // new one — same caveat as Player's identical pattern (D5): openFile.ts's
+  // window-reuse match is keyed off the *opening* payload, so re-opening a
+  // since-navigated-to image from Files still spawns a second window.
+  const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
+  const nodes = useFsStore(s => s.nodes);
+  const node = activeId ? nodes[activeId] : undefined;
   const blobUrl = useBlobUrl(node?.contentRef);
   const src = node?.content ?? blobUrl ?? undefined;
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
   // Viewer windows are titled after their file; keep the title bar in step
-  // when the file is renamed elsewhere (Files, Terminal) while it's open.
+  // when the file is renamed elsewhere (Files, Terminal) while it's open,
+  // or when Next/Previous switches images.
   useEffect(() => {
     if (node?.name)
       setWindowTitle(windowId, node.name);
   }, [node?.name, windowId, setWindowTitle]);
+
+  // Every other image in the opened file's folder, in the same order Files
+  // lists them — the slideshow's Next/Previous cursor.
+  const siblings = useMemo<FsNode[]>(
+    () => siblingsOf(nodes, node, isImageNode),
+    [nodes, node],
+  );
+
+  // Read via a ref rather than a closure so `step` has a stable identity —
+  // the slideshow interval and the arrow-key listener below both depend on
+  // it, and re-deriving `siblings` on every unrelated fs write (any rename,
+  // any Notes autosave) would otherwise tear down and rebuild both.
+  const siblingsRef = useRef(siblings);
+  useLayoutEffect(() => {
+    siblingsRef.current = siblings;
+  });
+  const step = useCallback((delta: number): void => {
+    setActiveId(prev => stepSibling(siblingsRef.current, prev, delta) ?? prev);
+  }, []);
+
+  // `playing` can stay stale-true once the folder no longer has enough
+  // images to cycle through — nothing renders or acts on it directly, only
+  // the derived `slideshowPlaying` below (siblings.length is re-checked
+  // wherever that matters), so there's no separate effect to keep it synced.
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!playing || siblings.length <= 1)
+      return;
+    const id = setInterval(step, SLIDESHOW_INTERVAL_MS, 1);
+    return () => clearInterval(id);
+  }, [playing, siblings.length, step]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<NaturalSize | null>(null);
   const [zoom, setZoom] = useState(1);
   const [fitted, setFitted] = useState(true);
   const [rotation, setRotation] = useState(0);
+
+  // Reset rotation/fit during render when the image changes (React's
+  // "adjust state on prop change" recipe, mirroring Notes' payload-identity
+  // handling) rather than in an effect, avoiding an extra stale render.
+  const [prevActiveId, setPrevActiveId] = useState(activeId);
+  if (activeId !== prevActiveId) {
+    setPrevActiveId(activeId);
+    setRotation(0);
+    setFitted(true);
+  }
 
   const sideways = rotation % 180 !== 0;
   const rotatedWidth = natural ? (sideways ? natural.height : natural.width) : 0;
@@ -131,7 +188,7 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
     const overflowing = body.scrollWidth > body.clientWidth || body.scrollHeight > body.clientHeight;
     if (!overflowing)
       return;
-    body.setPointerCapture(e.pointerId);
+    capturePointer(body, e.pointerId);
     panRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -155,7 +212,8 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
     const pan = panRef.current;
     if (!pan || pan.pointerId !== e.pointerId)
       return;
-    bodyRef.current?.releasePointerCapture(e.pointerId);
+    if (bodyRef.current)
+      releasePointer(bodyRef.current, e.pointerId);
     panRef.current = null;
     setIsPanning(false);
   }
@@ -189,8 +247,29 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
       case "viewer.rotateRight":
         rotate(90);
         break;
+      case "viewer.next":
+        step(1);
+        break;
+      case "viewer.previous":
+        step(-1);
+        break;
     }
   });
+
+  // Bare ←/→: shortcuts.ts's global handler only dispatches ⌘-letter chords,
+  // so this needs its own listener. Window-scoped and gated on `focused`
+  // rather than Files' B6 container+DOM-focus approach — Viewer has no
+  // focusable list to anchor to.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (!focused || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || isEditableTarget(e.target))
+        return;
+      e.preventDefault();
+      step(e.key === "ArrowLeft" ? -1 : 1);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focused, step]);
 
   // Blob-backed images resolve their object URL asynchronously; a node with
   // a contentRef but no `src` yet is loading, not missing — don't flash the
@@ -201,7 +280,7 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-2 select-none">
         <Image className="size-7" strokeWidth={1.4} />
         <span className="text-[13px]">
-          {fileId ? "This image is no longer available" : "Open an image from Files"}
+          {activeId ? "This image is no longer available" : "Open an image from Files"}
         </span>
       </div>
     );
@@ -216,7 +295,9 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
   }
 
   const toolButton
-    = "grid size-6 place-items-center rounded-[6px] text-ink-2 hover:bg-ph hover:text-ink";
+    = "grid size-6 place-items-center rounded-[6px] text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
+  const hasSlideshow = siblings.length > 1;
+  const slideshowPlaying = playing && hasSlideshow;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -239,6 +320,22 @@ export default function ViewerApp({ windowId, payload }: AppWindowProps) {
         </button>
         <button type="button" aria-label="Rotate right" className={toolButton} onClick={() => rotate(90)}>
           <RotateCw className="size-4" />
+        </button>
+        <div className="mx-1.5 h-4 w-px bg-hairline" />
+        <button type="button" aria-label="Previous image" disabled={!hasSlideshow} className={toolButton} onClick={() => step(-1)}>
+          <SkipBack className="size-4" />
+        </button>
+        <button
+          type="button"
+          aria-label={slideshowPlaying ? "Pause slideshow" : "Play slideshow"}
+          disabled={!hasSlideshow}
+          className={toolButton}
+          onClick={() => setPlaying(p => !p)}
+        >
+          {slideshowPlaying ? <Pause className="size-4" /> : <Play className="size-4" />}
+        </button>
+        <button type="button" aria-label="Next image" disabled={!hasSlideshow} className={toolButton} onClick={() => step(1)}>
+          <SkipForward className="size-4" />
         </button>
         <span className="ml-auto truncate text-[11.5px] text-ink-2">
           {natural ? `${natural.width} × ${natural.height}` : ""}
