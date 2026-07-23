@@ -202,8 +202,8 @@ with two seams around it:
   persists write-through, fire-and-forget. This seam (and its `BlobStore`
   sibling) is also where the two planned backends plug in: a remote/API
   adapter for the online track (`ROADMAP.md` area A) and a filesystem
-  adapter for the native desktop track (`DIRECTION.md`, area N) — both are
-  just adapters behind the same interface, selected at runtime.
+  adapter for the native desktop track (`DIRECTION.md`, area N) — both
+  selected at runtime behind the same interface.
 - **`FileSystemProvider`** (`provider.ts`, app-facing seam): async
   `readDir/readFile/writeFile/mkdir/move/rename/delete/stat` for external
   consumers that don't need reactivity. UI like Files subscribes to the
@@ -385,8 +385,6 @@ stay lean and stable:
     Tab focus trap, visible focus rings, reduced-motion variants, axe-core
     audit)
 
-**Next (planned, not yet built):** two parallel tracks — the **online**
-desktop (accounts, backend, sync, sharing; `ROADMAP.md` phases 12+) and the
-**native desktop** (a Tauri app with a real isolated filesystem and a
-built-in browser; `DIRECTION.md`). Both plug into the `StorageAdapter` /
-`BlobStore` seams above rather than touching shell or app code.
+**Next (planned, not yet built):** the online track (`ROADMAP.md` phases
+12+) and the native desktop track (`DIRECTION.md`) described under
+`StorageAdapter` above.

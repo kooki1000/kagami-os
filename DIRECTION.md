@@ -6,9 +6,8 @@
 This is the "where is Kagami going and why" document. `ARCHITECTURE.md`
 describes what exists; `ROADMAP.md` enumerates the feature backlog toward a
 full online desktop. This document sits above both: it states the strategic
-shift the project is making, the bets that follow from it, and the
-guardrails that keep those bets from turning a tight, coherent desktop into
-a sprawling one.
+shift, the bets that follow, and the guardrails that keep the project
+coherent (§6).
 
 If you read only one section, read [§2 The shift](#2-the-shift) and
 [§4 The dual-target principle](#4-the-dual-target-principle).
@@ -65,25 +64,22 @@ The web build persists to IndexedDB — durable, but invisible and not "real
 files." The native build gives Kagami a **real folder on the host machine
 that it owns**: an automatic, hidden application-data directory (e.g.
 `~/Library/Application Support/kagami-os/disk/` on macOS, the platform
-equivalent elsewhere). That folder *is* the virtual disk — a real place on
-disk, sandboxed to Kagami, that other apps' file pickers don't wander into.
+equivalent elsewhere). That folder _is_ the virtual disk, sandboxed to
+Kagami, that other apps' file pickers don't wander into.
 
 We chose an **app-owned hidden folder** over asking the user to pick a
 folder on first run: it removes the onboarding step and the persisted-scope
 permission problem, and it matches the current all-in-one VFS model — the
-disk is Kagami's, managed by Kagami, not a corner of the user's `Documents`.
+disk is Kagami's, not a corner of the user's `Documents`.
 
 ### 3.2 A built-in web browser
 
 A "Browser" app that renders arbitrary third-party websites **only works in
-the native build.** In the web build it is effectively impossible: most
-sites send `X-Frame-Options` / `frame-ancestors` headers that forbid being
-embedded in an iframe, and CORS blocks proxying them. In the native build we
-spawn a **native child webview** that can navigate anywhere, and build
-browser chrome (tabs, address bar, history) around it.
-
-This makes the Browser the clearest *showcase* of why native matters — it is
-a capability the web version fundamentally can't have.
+the native build**: most sites send `X-Frame-Options` / `frame-ancestors`
+headers that forbid iframe embedding, and CORS blocks proxying them. The
+native build sidesteps this with a **native child webview** that can
+navigate anywhere, with browser chrome (tabs, address bar, history) built
+around it.
 
 ### 3.3 Safer, richer third-party apps
 
@@ -119,7 +115,7 @@ get death by a thousand conditionals — the thing that makes people hate
 dual-target codebases.
 
 The strict CSP is **kept in both builds.** It is a security boundary, not a
-web-only tax — it matters *more* in the native build, sitting next to
+web-only tax — it matters _more_ in the native build, sitting next to
 filesystem access.
 
 ## 5. The three bets, sequenced
@@ -127,7 +123,7 @@ filesystem access.
 Each bet is independently shippable. They are ordered so the contained,
 high-confidence work comes first and each unlocks the next.
 
-### 5.1 Bet 1 — Native shell + isolated filesystem *(do first)*
+### 5.1 Bet 1 — Native shell + isolated filesystem _(do first)_
 
 Wrap the existing web app in a Tauri window and back the VFS with the hidden
 app-data folder (§3.1). New `StorageAdapter` + `BlobStore` implementations
@@ -135,27 +131,27 @@ behind the existing seam; a runtime `isTauri()` switch at the two singleton
 construction points (`fsStore.ts`, `blobStore.ts`). No shell or app code
 changes.
 
-This is the contained, high-confidence step and the **foundation** the other
-two bets sit on. It proves the packaging, the seam swap, and the CSP
-reconciliation with the least surface area.
+This is the **foundation** the other two bets sit on — it proves the
+packaging, the seam swap, and the CSP reconciliation with the least surface
+area.
 
-### 5.2 Bet 2 — Built-in Browser *(second)*
+### 5.2 Bet 2 — Built-in Browser _(second)_
 
 A generic "Browser" app over a native child webview (§3.2): tabs, address
 bar, history, back/forward. Desktop-only; the web build shows it as
 unavailable. Medium lift, low architectural risk — and the feature that best
 demonstrates why the native tier is worth installing.
 
-### 5.3 Bet 3 — Third-party app ecosystem *(a deliberate platform decision)*
+### 5.3 Bet 3 — Third-party app ecosystem _(a deliberate platform decision)_
 
-The biggest lift, and a genuine fork in what Kagami *is*. Third-party apps
+The biggest lift, and a genuine fork in what Kagami _is_. Third-party apps
 cannot be bundled TypeScript loaded into our own React tree — they must be
 **web apps in sandboxed iframes**, talking to the OS through a **capability-
 scoped postMessage bridge**, gated by a permission model (this app may read
 the VFS; that one may not). This is exactly the `G2` sandbox model and `D8`
 third-party-app SDK already in `ROADMAP.md`, now with a native angle.
 
-What it forces, and why it is a *decision* rather than just a feature:
+What it forces, and why it is a _decision_ rather than just a feature:
 
 - The strict CSP has to **open up** for a `frame-src` of foreign origins and
   a sandboxed-iframe host — a real change to the security posture (§4 keeps
@@ -178,7 +174,7 @@ as it grows.
   square dock tiles without magnification, Inter / JetBrains Mono, generic
   app names, palettes only from the documented directions. **No Apple or
   Puter naming or assets** — Puter (the open-source "internet OS") is a
-  *reference we studied* for the third-party-app model, not a source of
+  _reference we studied_ for the third-party-app model, not a source of
   branding or code.
 - **Local-first.** Both builds boot and work with no network. Persistence
   degrades gracefully — if the native disk folder or IndexedDB is
@@ -201,7 +197,7 @@ tracks are independent and share the same seams:
 
 - Both swap the **same `StorageAdapter`/`BlobStore`** interface — the online
   track for a remote/API adapter, the native track for a filesystem adapter.
-  A device could eventually be *both* (native app with an account that syncs)
+  A device could eventually be _both_ (native app with an account that syncs)
   because both are just adapters behind one seam.
 - The third-party sandbox (§5.3) is the same `G2`/`D8` work already planned.
 
@@ -212,7 +208,7 @@ dependency. Neither blocks the other.
 
 Design-sketch altitude only — a full design note (in `docs/`, following the
 `docs/blob-architecture.md` precedent) and an implementation plan come when
-Bet 1 actually starts.
+Bet 1 starts.
 
 - **Scaffold:** add Tauri v2 to the existing frontend (not a fresh
   `create-tauri-app` scaffold). `@tauri-apps/cli` + the `fs` plugin; a
@@ -227,8 +223,7 @@ Bet 1 actually starts.
   so they unit-test against a fake fs — mirroring how the IDB backend is
   exercised in Playwright, not vitest's `node` environment.
 - **Seam wiring:** `isTauri() ? createTauriAdapter() : createIdbAdapter()`
-  at `fsStore.ts` and the equivalent in `blobStore.ts`. Everything above the
-  seam is untouched.
+  at `fsStore.ts` and the equivalent in `blobStore.ts`.
 - **CSP:** the build-time meta-tag CSP (`vite.config.ts`) still applies
   inside the webview; Tauri plugin calls go over IPC, not `fetch`, so this
   likely needs no change — verify empirically in `tauri dev` and add only
@@ -255,7 +250,6 @@ Revisit these before the affected bet, not now:
 3. **Tauri v2 plugin specifics.** Confirm current plugin APIs (fs scope,
    dialog, store) against Tauri v2 docs at implementation time — plugin
    surfaces shift between versions; don't assume from memory.
-4. **Distribution burden.** Native means owning installers, code signing,
-   Apple notarization, per-OS builds, and auto-update — a real ongoing cost
-   the web build gives for free. Budget for it before promising installable
-   releases.
+4. **Distribution burden.** The desktop build/release pipeline (§8) is a
+   real ongoing cost the web build gives for free — budget for it before
+   promising installable releases.

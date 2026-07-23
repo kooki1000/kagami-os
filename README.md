@@ -43,9 +43,8 @@ Node 22.23.1 (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Project docs
 
-- [`DIRECTION.md`](DIRECTION.md) — where the project is going and why: the
-  native desktop (Tauri) direction, the dual-runtime principle, and the
-  guardrails that keep it coherent.
+- [`DIRECTION.md`](DIRECTION.md) — the dual-runtime principle and the
+  guardrails that keep the native-desktop track coherent.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the shell's moving parts and the two
   seams (app manifest pattern, storage adapter) that future features hook into.
 - [`ROADMAP.md`](ROADMAP.md) — feature backlog and the phased plan toward a
