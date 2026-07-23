@@ -282,6 +282,9 @@ export function FilesView(props: FilesViewProps) {
     "ref": registerContainer,
     "role": "listbox" as const,
     "aria-multiselectable": "true" as const,
+    // axe's aria-input-field-name rule flags roving-tabindex listboxes with
+    // no accessible name (H1 a11y audit).
+    "aria-label": "Files",
     ...backgroundProps,
   };
 
