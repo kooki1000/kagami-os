@@ -1,4 +1,5 @@
 import type { AppManifest } from "./types";
+import { browserApp } from "@/apps/browser";
 import { devCrashApp } from "@/apps/devcrash";
 import { filesApp } from "@/apps/files";
 import { notesApp } from "@/apps/notes";
@@ -21,6 +22,10 @@ export const apps: AppManifest[] = [
   terminalApp,
   welcomeApp,
   settingsApp,
+  // Always registered, even on the web build — native-only features present
+  // a clean "available in the desktop app" state rather than vanishing
+  // (DIRECTION.md §4); BrowserApp itself branches on isTauri().
+  browserApp,
   // Dev-only crash trigger for E2E coverage of the per-window error
   // boundary; excluded from the array entirely unless the `e2e_crash` flag
   // is on, so a default build's `apps` is byte-for-byte what it was before.

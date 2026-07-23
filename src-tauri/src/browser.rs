@@ -22,6 +22,14 @@ fn parse_url(url: String) -> Result<tauri::Url, String> {
     url.parse::<tauri::Url>().map_err(|error| error.to_string())
 }
 
+// The frontend's create/reposition/hide/close calls are React-effect-driven,
+// not user-gated, so they can legitimately fire before `browser_open`'s
+// (async) webview creation has landed, or land twice for the same id (React
+// StrictMode double-invokes effects in dev). Every command below is
+// idempotent against that — "ensure open"/"no-op if not open" — rather than
+// erroring on a benign ordering race, so the frontend doesn't need its own
+// cancellation bookkeeping to paper over it.
+
 #[tauri::command]
 pub async fn browser_open(
     app: AppHandle,
@@ -36,24 +44,29 @@ pub async fn browser_open(
         .get_window(HOST_WINDOW)
         .ok_or_else(|| "main window not found".to_string())?;
     let builder = WebviewBuilder::new(webview_label(&id), WebviewUrl::External(parse_url(url)?));
-    window
-        .add_child(
-            builder,
-            LogicalPosition::new(x, y),
-            LogicalSize::new(width, height),
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn get_browser_webview(app: &AppHandle, id: &str) -> Result<tauri::Webview, String> {
-    app.get_webview(&webview_label(id))
-        .ok_or_else(|| format!("no browser webview open for {id}"))
+    match window.add_child(
+        builder,
+        LogicalPosition::new(x, y),
+        LogicalSize::new(width, height),
+    ) {
+        Ok(_) => Ok(()),
+        // Tauri dispatches async commands onto its multi-thread runtime, so
+        // two near-simultaneous `browser_open` calls for the same id (React
+        // StrictMode's dev-only double-effect-invoke) can both pass a
+        // pre-check before either finishes creating — the loser lands here,
+        // not in a real failure. A pre-check-then-create would still race;
+        // catching this specific error after attempting creation doesn't.
+        Err(tauri::Error::WebviewLabelAlreadyExists(_)) => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 #[tauri::command]
 pub fn browser_navigate(app: AppHandle, id: String, url: String) -> Result<(), String> {
-    get_browser_webview(&app, &id)?
+    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+        return Err(format!("no browser webview open for {id}"));
+    };
+    webview
         .navigate(parse_url(url)?)
         .map_err(|error| error.to_string())
 }
@@ -67,7 +80,9 @@ pub fn browser_set_bounds(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let webview = get_browser_webview(&app, &id)?;
+    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+        return Ok(());
+    };
     webview
         .set_position(LogicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
@@ -78,7 +93,9 @@ pub fn browser_set_bounds(
 
 #[tauri::command]
 pub fn browser_set_visible(app: AppHandle, id: String, visible: bool) -> Result<(), String> {
-    let webview = get_browser_webview(&app, &id)?;
+    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+        return Ok(());
+    };
     let result = if visible {
         webview.show()
     } else {
@@ -89,7 +106,8 @@ pub fn browser_set_visible(app: AppHandle, id: String, visible: bool) -> Result<
 
 #[tauri::command]
 pub fn browser_close(app: AppHandle, id: String) -> Result<(), String> {
-    get_browser_webview(&app, &id)?
-        .close()
-        .map_err(|error| error.to_string())
+    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+        return Ok(());
+    };
+    webview.close().map_err(|error| error.to_string())
 }
