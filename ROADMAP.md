@@ -1,13 +1,21 @@
-# Kagami OS — Feature Backlog & Roadmap to a Full Online Desktop
+# Kagami OS — Feature Backlog & Roadmap
 
 **Status:** draft for review · July 2026
-**Baseline:** v0.6 "Lagoon" — phases 1–8 complete (see `ARCHITECTURE.md`)
+**Baseline:** phases 1–11 complete (see `ARCHITECTURE.md` § Phase status)
 
 This document defines what "a fully functioning online desktop client" means
 for Kagami, enumerates every feature gap between that target and today's
 codebase, and sequences the work into milestones with acceptance criteria.
 Feature items carry stable IDs (`A1`, `B4`, …) so milestones, issues, and
 commits can reference them.
+
+> **Two tracks.** This roadmap is the **online** track (accounts, backend,
+> sync, sharing). A parallel **native desktop** track — packaging Kagami as
+> a Tauri app with a real isolated filesystem, a built-in browser, and a
+> third-party-app ecosystem — is set out in [`DIRECTION.md`](DIRECTION.md)
+> and summarized as backlog area **N** (§3) and the Native desktop track
+> (§4) below. The two tracks share the `StorageAdapter`/`BlobStore` seams
+> and are sequenced independently.
 
 **Sizing legend:** `S` ≈ half a day · `M` ≈ 1–3 days · `L` ≈ 1–2 weeks ·
 `XL` ≈ multi-week, needs its own design doc.
@@ -81,8 +89,11 @@ The target product, stated as user-visible capabilities:
    way to add apps without touching the shell.
 6. **Trustworthy.** Authenticated, authorized, rate-limited, encrypted in
    transit; third-party code is sandboxed; accessible; tested end-to-end.
+7. **Runs everywhere.** The same desktop is available as a website and as a
+   native desktop app that adds what the browser sandbox can't. See
+   [`DIRECTION.md`](DIRECTION.md) §3.
 
-Everything in section 3 traces back to one of these six statements.
+Statements 1–6 map to sections 3.A–3.H; statement 7 maps to area 3.N.
 
 ---
 
@@ -186,6 +197,26 @@ device-local. This area needs its own design doc before implementation
 | H4  | **Observability** — error boundary per window (one crashing app must not take down the shell), client error reporting, opt-in usage telemetry                                                                                                    | M    | Error boundaries are S and should happen immediately                                                   |
 | H5  | **E2E test rig** — Playwright suite covering: boot, open/move/snap/close windows, Files trash/restore round-trip, Notes edit persistence across reload, Terminal session, theme switching                                                        | L    | The unit suites are strong; integration coverage is zero. Prerequisite for confident backend refactors |
 | H6  | **CI/CD** — lint + typecheck + unit + E2E on every PR; preview deploys; versioned releases with changelog; fix the `engines` field vs. dev-Node mismatch (`package.json` pins 22.23.1; local dev uses 24)                                        | M    | First infrastructure item to do — everything else lands safer with it                                  |
+
+### N. Native desktop (Tauri) _(the "runs everywhere" track)_
+
+Packaging Kagami as a native app while keeping the website as the baseline —
+progressive enhancement, one codebase, two runtimes. Rationale, sequencing,
+and guardrails are in [`DIRECTION.md`](DIRECTION.md); this table is the
+backlog view.
+
+| ID  | Feature                                                                                                                                                                                                                                                                                 | Size | Notes                                                                                                                                      |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| N1  | **Tauri shell** — wrap the existing frontend in a Tauri v2 window; `src-tauri/` Rust crate; dev points at the Vite server, build at `dist/`; reconcile the meta-tag CSP with the webview                                                                                                | M    | No shell/app code changes; `pnpm tauri dev`/`build` alongside the unchanged `pnpm dev`/`build`                                             |
+| N2  | **Platform detection** — `src/system/platform.ts` `isTauri()`; the single gate every native-only branch routes through (never scatter `if (native)`)                                                                                                                                    | S    | Runtime detection, not a build-time flag or opt-in setting                                                                                 |
+| N3  | **Native filesystem backend** — `tauriAdapter.ts` (StorageAdapter) + `tauriBlobStore.ts` (BlobStore) writing under an app-owned hidden folder (`~/Library/Application Support/kagami-os/disk/` & platform equivalents); wired via the `isTauri()` switch at `fsStore.ts`/`blobStore.ts` | L    | The "isolated file system." Injectable root so both unit-test against a fake fs; degrades to in-memory like the IDB adapter if unavailable |
+| N4  | **Built-in Browser app** — a generic "Browser" over a native child webview (tabs, address bar, history, back/forward); desktop-only, shows unavailable on web                                                                                                                           | L    | Desktop-only — see `DIRECTION.md` §3.2 for why this can't work on the web                                                                  |
+| N5  | **Desktop build & release pipeline** — `tauri-action` in CI over `os: [ubuntu, macos, windows]`, code signing, notarization, auto-update; `tauri-driver` desktop e2e                                                                                                                    | XL   | Deferred until the local dev loop (N1–N3) works; `ci.yml` has no build/artifact job or OS matrix today                                     |
+
+Native third-party apps are a separate go/no-go decision — see §6 item 7
+and `DIRECTION.md` §5.3 — not part of this track.
+
+**Dependency chain:** N1 → N2 → N3 → (N4, N5).
 
 ---
 
@@ -300,13 +331,35 @@ Notes markdown preview (in the sandbox) · D4 code editor · E3 presence →
 co-editing · C3 window overview · C7 multi-monitor · F3 mobile layout ·
 G3 E2EE decision.
 
+### Native desktop track (parallel — see `DIRECTION.md`)
+
+Runs alongside the numbered online phases, not inside them (see the
+two-tracks note above). Each milestone is independently shippable.
+
+- **N-1 — Native shell + isolated filesystem** _(≈ 2–3 weeks)_ — N1 (Tauri
+  shell) · N2 (`isTauri()`) · N3 (native fs/blob backend under the hidden
+  app-data folder). **Exit:** `pnpm tauri dev` boots the shell; files
+  created in Files/Terminal persist under the app-owned folder and survive
+  relaunch; `pnpm dev`/`build` (the website) provably unaffected; no CSP
+  violations in the webview console.
+- **N-2 — Built-in Browser** _(≈ 2 weeks)_ — N4. **Exit:** the Browser app
+  opens arbitrary sites in a native child webview with working tabs/address
+  bar/history; the web build shows it as desktop-only.
+- **N-3 — Distribution** _(XL, deferred)_ — N5 (signed, notarized, per-OS
+  installers + auto-update in CI; `tauri-driver` e2e).
+
+Native third-party apps are not a track milestone — see §6 item 7 and
+`DIRECTION.md` §5.3.
+
 ### Dependency snapshot
 
 ```
 H6 CI ──► everything
 B1 blobs ──► B2/B3 upload/download ──► D5/D6 media/PDF
 A1 api ──► A2 auth ──► A3 adapter ──► A4 sync ──► A5/A6/A7 · E1 sharing ──► E3 collab
-G2 sandbox ──► D8 SDK · D1 preview
+G2 sandbox ──► D8 SDK · D1 preview   (native build strengthens the sandbox floor)
+N1 tauri shell ──► N2 isTauri ──► N3 native fs ──► N4 browser · N5 release
+StorageAdapter/BlobStore seam ◄── A3 remote adapter · N3 native adapter (siblings)
 H1 a11y before Phase 12+ surface growth
 C1 session restore ──► (better with A6, works locally without)
 ```
@@ -352,6 +405,12 @@ Known issues to schedule (none block daily use today):
    dock skeleton intentionally follows the macOS layout convention; (b) the
    coral+teal duotone window-control colors. Both are binding constraints
    from the Lagoon prototype — this roadmap assumes they stand.
+6. **Web-target longevity** (native track): keep the website as the
+   permanent baseline, or deprecate it once native is primary? **Current
+   answer: keep the link** — see `DIRECTION.md` §9.1 for the full tradeoff.
+7. **Third-party-app go/no-go** (before `G2`/`D8`): a deliberate
+   "become a platform" decision made after the native Bets 1–2 ship — see
+   `DIRECTION.md` §5.3, §9.2.
 
 **Design guardrails carried through all phases:** monochrome-at-rest
 window controls with the duotone focus tint (never a traffic-light triad),
@@ -365,16 +424,18 @@ documented prototype directions.
 
 Ordered by (likelihood × impact). Review at the start of every phase.
 
-| #   | Risk                                                                                                                                                                                                                 | L    | I    | Mitigation                                                                                                                                                                                                                                                                     |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| R1  | **Browser evicts local data.** Safari caps IndexedDB for non-installed sites and evicts after ~7 days of disuse; a local-only user could lose everything                                                             | High | High | Call `navigator.storage.persist()` at boot and surface the result; prominent export-to-zip (G4) shipped _before_ GA marketing; PWA install prompt (F1) raises the storage tier; accounts (A2) are the real fix — this risk is a reason not to delay Phase 13                   |
-| R2  | **Sync engine is harder than estimated.** Distributed-state bugs are subtle and erode trust permanently if user data diverges or vanishes                                                                            | Med  | High | Design doc + review checkpoint before code (Phase 13 gate); property-based fuzzer as an exit criterion, not an afterthought; feature flag with local-only fallback; server keeps an append-only op log so any client state can be rebuilt; staged rollout (alpha cohort first) |
-| R3  | **Dependency policy blocks a needed library.** `minimumReleaseAge: 10080` + `blockExoticSubdeps` already blocked `idb`; Playwright, pdf.js, CodeMirror, a zip library, and a WebSocket client are all upcoming wants | Med  | Med  | Evaluate installability in the _first week_ of any phase that needs a new dependency; prefer zero-dep or vendorable options; budget time for hand-rolling thin layers (the raw-IDB adapter proves this is viable)                                                              |
-| R4  | **Phase slip through underestimation.** Solo/small-team bandwidth; Phase 13 alone is 6–8 optimistic weeks                                                                                                            | High | Med  | Every phase ends releasable, so slipping delays value but never strands broken work; cut scope (move items right) rather than skipping exit criteria; re-estimate the remaining plan at each phase boundary                                                                    |
-| R5  | **Backend cost & abuse.** Public share links + uploads invite abuse (piracy, malware hosting) and surprise storage bills                                                                                             | Med  | Med  | Quotas (A7) server-enforced from day one; rate limits in A1's skeleton, not retrofitted; share links get abuse-report + revocation (E1); egress-heavy features (public viewer) behind sensible limits                                                                          |
-| R6  | **Design drift toward macOS trade dress.** As features approach OS parity, each small decision pulls toward the familiar                                                                                             | Med  | Med  | The guardrails block in §6 is binding; any new shell surface (switcher, overview, lock screen) gets a design pass against the Lagoon prototype before merge                                                                                                                    |
-| R7  | **Sandbox escape / injected content** once markdown preview (D1), PDF (D6), or third-party apps (D8) render untrusted content                                                                                        | Low  | High | G2's sandbox model is a prerequisite for those features, enforced in the dependency graph; CSP from Phase 9 means a slip fails closed                                                                                                                                          |
-| R8  | **Test suite becomes flaky and gets ignored**                                                                                                                                                                        | Med  | Med  | Flake budget in §9; quarantine-and-fix policy; E2E kept lean (happy paths + data-loss paths), breadth lives in unit tests                                                                                                                                                      |
+| #   | Risk                                                                                                                                                                                                                                        | L    | I    | Mitigation                                                                                                                                                                                                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R1  | **Browser evicts local data.** Safari caps IndexedDB for non-installed sites and evicts after ~7 days of disuse; a local-only user could lose everything                                                                                    | High | High | Call `navigator.storage.persist()` at boot and surface the result; prominent export-to-zip (G4) shipped _before_ GA marketing; PWA install prompt (F1) raises the storage tier; accounts (A2) are the real fix — this risk is a reason not to delay Phase 13                   |
+| R2  | **Sync engine is harder than estimated.** Distributed-state bugs are subtle and erode trust permanently if user data diverges or vanishes                                                                                                   | Med  | High | Design doc + review checkpoint before code (Phase 13 gate); property-based fuzzer as an exit criterion, not an afterthought; feature flag with local-only fallback; server keeps an append-only op log so any client state can be rebuilt; staged rollout (alpha cohort first) |
+| R3  | **Dependency policy blocks a needed library.** `minimumReleaseAge: 10080` + `blockExoticSubdeps` already blocked `idb`; Playwright, pdf.js, CodeMirror, a zip library, and a WebSocket client are all upcoming wants                        | Med  | Med  | Evaluate installability in the _first week_ of any phase that needs a new dependency; prefer zero-dep or vendorable options; budget time for hand-rolling thin layers (the raw-IDB adapter proves this is viable)                                                              |
+| R4  | **Phase slip through underestimation.** Solo/small-team bandwidth; Phase 13 alone is 6–8 optimistic weeks                                                                                                                                   | High | Med  | Every phase ends releasable, so slipping delays value but never strands broken work; cut scope (move items right) rather than skipping exit criteria; re-estimate the remaining plan at each phase boundary                                                                    |
+| R5  | **Backend cost & abuse.** Public share links + uploads invite abuse (piracy, malware hosting) and surprise storage bills                                                                                                                    | Med  | Med  | Quotas (A7) server-enforced from day one; rate limits in A1's skeleton, not retrofitted; share links get abuse-report + revocation (E1); egress-heavy features (public viewer) behind sensible limits                                                                          |
+| R6  | **Design drift toward macOS trade dress.** As features approach OS parity, each small decision pulls toward the familiar                                                                                                                    | Med  | Med  | The guardrails block in §6 is binding; any new shell surface (switcher, overview, lock screen) gets a design pass against the Lagoon prototype before merge                                                                                                                    |
+| R7  | **Sandbox escape / injected content** once markdown preview (D1), PDF (D6), or third-party apps (D8) render untrusted content                                                                                                               | Low  | High | G2's sandbox model is a prerequisite for those features, enforced in the dependency graph; CSP from Phase 9 means a slip fails closed                                                                                                                                          |
+| R8  | **Test suite becomes flaky and gets ignored**                                                                                                                                                                                               | Med  | Med  | Flake budget in §9; quarantine-and-fix policy; E2E kept lean (happy paths + data-loss paths), breadth lives in unit tests                                                                                                                                                      |
+| R9  | **Native distribution burden** (N track) — code signing, notarization, per-OS builds, and auto-update are real ongoing costs the web build gives for free (`DIRECTION.md` §9.4); the built-in browser (N4) also enlarges the attack surface | Med  | Med  | Keep the website as the shippable baseline so native slipping never strands users; defer N5 until N1–N3 prove out; keep the strict CSP in the native build too                                                                                                                 |
+| R10 | **Dual-target rot** (N track) — scattered `if (native)` conditionals make the shared codebase two divergent apps in practice                                                                                                                | Med  | Med  | Route every native branch through one `isTauri()` gate, in one place (N2) — `DIRECTION.md` §4                                                                                                                                                                                  |
 
 ## 8. Success metrics per milestone
 

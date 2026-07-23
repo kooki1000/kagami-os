@@ -199,7 +199,11 @@ with two seams around it:
   (`idbAdapter.ts`) — the `idb` convenience library is currently blocked
   by the workspace's `minimumReleaseAge` pnpm policy; swapping it (or a
   real server backend) in touches only this file. Every store mutation
-  persists write-through, fire-and-forget.
+  persists write-through, fire-and-forget. This seam (and its `BlobStore`
+  sibling) is also where the two planned backends plug in: a remote/API
+  adapter for the online track (`ROADMAP.md` area A) and a filesystem
+  adapter for the native desktop track (`DIRECTION.md`, area N) — both
+  selected at runtime behind the same interface.
 - **`FileSystemProvider`** (`provider.ts`, app-facing seam): async
   `readDir/readFile/writeFile/mkdir/move/rename/delete/stat` for external
   consumers that don't need reactivity. UI like Files subscribes to the
@@ -380,3 +384,7 @@ stay lean and stable:
     v2, accessibility pass (ARIA menu roles + arrow-key traversal, per-window
     Tab focus trap, visible focus rings, reduced-motion variants, axe-core
     audit)
+
+**Next (planned, not yet built):** the online track (`ROADMAP.md` phases
+12+) and the native desktop track (`DIRECTION.md`) described under
+`StorageAdapter` above.

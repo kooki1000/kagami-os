@@ -6,6 +6,11 @@ A browser-based desktop environment — windowing shell, virtual file system,
 and a suite of built-in apps, all client-side. Built with React, TypeScript,
 Vite, Zustand, and Tailwind v4.
 
+The website is the zero-install baseline. A **native desktop app** (Tauri)
+is the next direction: the same codebase, packaged natively, with a real
+isolated filesystem and a built-in browser — progressive enhancement, not a
+pivot away from the web. See [`DIRECTION.md`](DIRECTION.md).
+
 ## Getting started
 
 Requires **Node 22.23.1** (LTS "jod") and **pnpm**. With
@@ -38,10 +43,12 @@ Node 22.23.1 (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Project docs
 
+- [`DIRECTION.md`](DIRECTION.md) — the dual-runtime principle and the
+  guardrails that keep the native-desktop track coherent.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the shell's moving parts and the two
   seams (app manifest pattern, storage adapter) that future features hook into.
 - [`ROADMAP.md`](ROADMAP.md) — feature backlog and the phased plan toward a
-  full online desktop.
+  full online desktop, plus the parallel native desktop track.
 
 ## Feature flags
 
