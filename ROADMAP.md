@@ -148,7 +148,8 @@ device-local. This area needs its own design doc before implementation
 | D5  | **Media player app** — audio/video playback for uploaded files (post-B1), playlist from a folder                                                                                                    | M        | `<audio>/<video>` over Blob URLs; add mime associations                                                                     |
 | D6  | **PDF viewing** — render uploaded PDFs (pdf.js) in Viewer or a dedicated app                                                                                                                        | M        | Dependency-policy check needed                                                                                              |
 | D7  | **Small utilities** — Calculator, Clock/timer, Paint-style canvas                                                                                                                                   | S–M each | Cheap wins that exercise the manifest pattern; good first-contribution targets                                              |
-| D8  | **Third-party app SDK** — apps as sandboxed iframes with a postMessage bridge exposing a _capability-scoped_ API (fs scopes, windowing, notifications); manifest install/uninstall UI               | XL       | The long-term platform play; requires G2's sandbox model first. Everything before it should keep the manifest pattern clean |
+| D8  | **Third-party app SDK** — apps as sandboxed iframes with a postMessage bridge exposing a _capability-scoped_ API (fs scopes, windowing, notifications); manifest install/uninstall UI               | XL       | The long-term platform play; requires G2's sandbox model first. Everything before it should keep the manifest pattern clean. Full design: [`docs/third-party-apps-and-browser.md`](docs/third-party-apps-and-browser.md) |
+| D9  | **Browser app** — a window that visits real websites in an iframe; v1 scoped to sites that allow framing, with an "open externally" fallback for sites that don't                                    | M        | Backend-independent, no A1 dependency. Bare-iframe only for v1 — a header-stripping proxy for blocked sites is a deliberate later decision (legal/security review), not part of this item. Full design: [`docs/third-party-apps-and-browser.md`](docs/third-party-apps-and-browser.md) |
 
 ### E. Sharing & collaboration _(post-backend)_
 
@@ -172,7 +173,7 @@ device-local. This area needs its own design doc before implementation
 | ID  | Feature                                                                                                                                                                        | Size | Notes                                                                           |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------- |
 | G1  | **Security baseline** — strict CSP, no `dangerouslySetInnerHTML` anywhere (audit D1's markdown renderer), dependency audit in CI, rate limiting + input validation server-side | M    | Do alongside A1, not after                                                      |
-| G2  | **App sandboxing model** — iframe + capability bridge design (prerequisite for D8); even first-party "risky" renderers (markdown preview, PDF) should render in the sandbox    | L    |                                                                                 |
+| G2  | **App sandboxing model** — iframe + capability bridge design (prerequisite for D8); even first-party "risky" renderers (markdown preview, PDF) should render in the sandbox    | L    | Full design: [`docs/third-party-apps-and-browser.md`](docs/third-party-apps-and-browser.md) |
 | G3  | **Encryption** — TLS everywhere (table stakes); evaluate optional client-side encryption for file content at rest                                                              | M/XL | E2EE conflicts with server-side search/preview — decide explicitly, don't drift |
 | G4  | **Privacy posture** — no third-party trackers; opt-in only, anonymized telemetry (H4); data export (full account → zip) and account deletion                                   | M    | Data export doubles as the backup story                                         |
 
@@ -295,7 +296,8 @@ data with them.
 
 ### Phase 15+ — Platform & collaboration _(post-1.0, re-plan at GA)_
 
-In rough priority order: G2 sandbox model → D8 third-party app SDK · D1
+In rough priority order: G2 sandbox model → D8 third-party app SDK · D9
+Browser (bare-iframe v1, independent of G2/D8 and of the backend) · D1
 Notes markdown preview (in the sandbox) · D4 code editor · E3 presence →
 co-editing · C3 window overview · C7 multi-monitor · F3 mobile layout ·
 G3 E2EE decision.
@@ -307,6 +309,7 @@ H6 CI ──► everything
 B1 blobs ──► B2/B3 upload/download ──► D5/D6 media/PDF
 A1 api ──► A2 auth ──► A3 adapter ──► A4 sync ──► A5/A6/A7 · E1 sharing ──► E3 collab
 G2 sandbox ──► D8 SDK · D1 preview
+D9 Browser ──► (independent; no A1/backend dependency)
 H1 a11y before Phase 12+ surface growth
 C1 session restore ──► (better with A6, works locally without)
 ```
@@ -352,6 +355,20 @@ Known issues to schedule (none block daily use today):
    dock skeleton intentionally follows the macOS layout convention; (b) the
    coral+teal duotone window-control colors. Both are binding constraints
    from the Lagoon prototype — this roadmap assumes they stand.
+6. **Browser proxy path** (D9, post-Phase-13 addendum): whether a
+   header-stripping proxy for frame-blocking sites is built at all, given
+   it deliberately overrides sites' `X-Frame-Options`/`frame-ancestors`
+   directives and relays third-party script into infra we control —
+   real legal/abuse exposure, not just an implementation detail. See
+   `docs/third-party-apps-and-browser.md` §B.3 for the tradeoffs and the
+   dedicated-origin/script-stripped containment options if it proceeds.
+7. **D9 Browser v1 CSP breadth**: `frame-src https:` (any site — simplest,
+   "it's a browser") vs. a user-managed origin allow-list (safer, more
+   friction). Design doc leans `https:` behind the `browser` flag.
+8. **D8 remote app distribution**: manifest-URL install (Puter-style) vs. a
+   curated registry only — determines whether `frame-src` ever admits
+   arbitrary external app origins. Design doc proposes bundled/curated-only
+   for v1, remote install as v2.
 
 **Design guardrails carried through all phases:** monochrome-at-rest
 window controls with the duotone focus tint (never a traffic-light triad),
