@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { openFile } from "@/system/apps/openFile";
 import { pathOf, useFsStore } from "@/system/fs/fsStore";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
-import { completeToken, runCommand } from "./shell";
+import { completeToken, resolveCompletion, runCommand } from "./shell";
 
 const USER = "kagami";
 
@@ -23,15 +23,6 @@ function promptPath(nodes: NodeMap, cwd: string): string {
   if (parts.length >= home.length && home.every((p, i) => p === parts[i]))
     return `~/${parts.slice(home.length).join("/")}`;
   return `/${parts.join("/")}`;
-}
-
-/** Longest string all `candidates` start with. */
-function commonPrefix(candidates: string[]): string {
-  return candidates.reduce((a, b) => {
-    let i = 0;
-    while (i < a.length && i < b.length && a[i] === b[i]) i++;
-    return a.slice(0, i);
-  });
 }
 
 let lineCounter = 0;
@@ -147,20 +138,15 @@ export default function TerminalApp({ focused }: AppWindowProps) {
       e.preventDefault();
       const tokens = input.split(/\s+/);
       const matches = completeToken(nodes, safeCwd, tokens);
-      if (matches.length === 0)
+      const completion = resolveCompletion(matches, tokens.at(-1) ?? "");
+      if (!completion)
         return;
-      if (matches.length === 1) {
-        tokens[tokens.length - 1] = matches[0];
-        setInput(tokens.join(" "));
-        return;
-      }
-      const prefix = commonPrefix(matches);
-      if (prefix.length > (tokens.at(-1)?.length ?? 0)) {
-        tokens[tokens.length - 1] = prefix;
+      if (completion.kind === "replace") {
+        tokens[tokens.length - 1] = completion.text;
         setInput(tokens.join(" "));
       }
       else {
-        appendLines([{ kind: "system", text: matches.join("  ") }]);
+        appendLines([{ kind: "system", text: completion.matches.join("  ") }]);
       }
     }
   }

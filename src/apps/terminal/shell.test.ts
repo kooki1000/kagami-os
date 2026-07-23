@@ -3,7 +3,7 @@ import type { FsNode } from "@/system/fs/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { indexNodes, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, HOME_ID, ROOT_ID, TRASH_ID } from "@/system/fs/types";
-import { completeToken, resolvePath, runCommand } from "./shell";
+import { completeToken, resolveCompletion, resolvePath, runCommand } from "./shell";
 
 let openedNodes: FsNode[] = [];
 let openPathResult = true;
@@ -298,6 +298,27 @@ describe("completeToken", () => {
 
   it("returns nothing for an unresolvable parent path", () => {
     expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cd", "nope/x"])).toEqual([]);
+  });
+});
+
+describe("resolveCompletion", () => {
+  it("replaces the token when there's exactly one match", () => {
+    expect(resolveCompletion(["mkdir"], "mk")).toEqual({ kind: "replace", text: "mkdir" });
+  });
+
+  it("extends to a shared prefix longer than what's already typed", () => {
+    expect(resolveCompletion(["head", "help"], "h")).toEqual({ kind: "replace", text: "he" });
+  });
+
+  it("lists the candidates once the shared prefix stops making progress", () => {
+    expect(resolveCompletion(["Documents/", "Downloads/"], "Do")).toEqual({
+      kind: "list",
+      matches: ["Documents/", "Downloads/"],
+    });
+  });
+
+  it("returns null for no candidates", () => {
+    expect(resolveCompletion([], "xyz")).toBeNull();
   });
 });
 
