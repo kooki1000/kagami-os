@@ -11,7 +11,10 @@ export default antfu(
       semi: true,
       quotes: "double",
     },
-    ignores: ["dist", "node_modules"],
+    // Cargo.toml/.lock are Rust-ecosystem files reformatted by `cargo fmt`/
+    // `cargo add`/`tauri add` on every change — leave them to that tooling
+    // rather than fighting it with this JS project's ESLint style.
+    ignores: ["dist", "node_modules", "src-tauri/target", "src-tauri/gen", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock"],
   },
   {
     files: ["**/*.{ts,tsx}"],
