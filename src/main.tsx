@@ -11,3 +11,12 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </StrictMode>,
 );
+
+// Production-build only: the dev server's HMR and a caching service worker
+// don't mix, and there's nothing meaningful to cache before a real build
+// exists anyway.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js");
+  });
+}
