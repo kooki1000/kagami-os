@@ -8,11 +8,11 @@ Chromium/Firefox/Safari" half of F4 was met before this phase started.
 
 ## Officially supported
 
-| Engine   | Playwright project | Represents            |
-| -------- | ------------------- | ---------------------- |
-| Chromium | `chromium`           | Chrome, Edge, Brave, … |
-| Firefox  | `firefox`            | Firefox                |
-| WebKit   | `webkit`             | Safari (macOS/iOS)     |
+| Engine   | Playwright project | Represents             |
+| -------- | ------------------ | ---------------------- |
+| Chromium | `chromium`         | Chrome, Edge, Brave, … |
+| Firefox  | `firefox`          | Firefox                |
+| WebKit   | `webkit`           | Safari (macOS/iOS)     |
 
 All three run the full E2E suite on every PR. A change that only passes on
 one or two engines is a regression, not a platform quirk, unless it's
