@@ -41,8 +41,11 @@ pub struct Bounds {
 }
 
 impl Bounds {
-    fn position(&self) -> LogicalPosition<f64> {
-        LogicalPosition::new(self.x, self.y)
+    /// `inset_y` converts the frontend's DOM-viewport y into the host window's
+    /// content-view coordinate space, which child webviews are positioned in.
+    /// See [`content_inset_y`].
+    fn position(&self, inset_y: f64) -> LogicalPosition<f64> {
+        LogicalPosition::new(self.x, self.y + inset_y)
     }
 
     fn size(&self) -> LogicalSize<f64> {
@@ -57,6 +60,73 @@ struct NavChanged {
     id: String,
     url: String,
     title: String,
+}
+
+/// Full-size content view: the native title bar overlaps the web content, so
+/// the main webview's DOM viewport sits a title-bar-height below the content
+/// view's top. The frontend sends child bounds in DOM coordinates, but wry
+/// positions children in content-view space, so without this shift the child
+/// lands that far too high and hides the address bar (full rationale:
+/// `docs/browser-webview-offset.md`). Measured as the content view minus its
+/// title-bar-excluded safe area (`NSWindow.contentLayoutRect`): zero for
+/// normal/borderless windows, so a no-op unless the inset exists. Computed once
+/// on the main thread (AppKit reads aren't thread-safe) and cached.
+static CONTENT_INSET_Y: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+
+/// Cached content-view inset; computes it on first use (from `browser_open`,
+/// which runs off the main thread so the main-thread round-trip can't deadlock).
+fn content_inset_y(window: &tauri::Window) -> f64 {
+    *CONTENT_INSET_Y.get_or_init(|| compute_content_inset_y(window))
+}
+
+/// Cached inset without triggering computation — for callers that may run on
+/// the main thread (`browser_set_bounds`). `browser_open` always populates the
+/// cache first, so this returns the real value in practice.
+fn cached_content_inset_y() -> f64 {
+    CONTENT_INSET_Y.get().copied().unwrap_or(0.0)
+}
+
+#[cfg(target_os = "macos")]
+fn compute_content_inset_y(window: &tauri::Window) -> f64 {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let window_for_closure = window.clone();
+    if window
+        .run_on_main_thread(move || {
+            let _ = tx.send(macos_content_inset_y(&window_for_closure));
+        })
+        .is_err()
+    {
+        return 0.0;
+    }
+    rx.recv().unwrap_or(0.0)
+}
+
+/// Reads the host window's content-view height minus its title-bar-excluded
+/// safe-area height. Must run on the main thread.
+#[cfg(target_os = "macos")]
+fn macos_content_inset_y(window: &tauri::Window) -> f64 {
+    use objc2_app_kit::NSView;
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let Ok(handle) = window.window_handle() else {
+        return 0.0;
+    };
+    let RawWindowHandle::AppKit(h) = handle.as_raw() else {
+        return 0.0;
+    };
+    // The handle's `ns_view` is the window's current content view.
+    let content: &NSView = unsafe { &*(h.ns_view.as_ptr() as *const NSView) };
+    let Some(ns_window) = content.window() else {
+        return 0.0;
+    };
+    let content_height = content.frame().size.height;
+    let safe_height = ns_window.contentLayoutRect().size.height;
+    (content_height - safe_height).max(0.0)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn compute_content_inset_y(_window: &tauri::Window) -> f64 {
+    0.0
 }
 
 fn webview_label(id: &str) -> String {
@@ -107,13 +177,15 @@ pub async fn browser_open(
         .get_window(HOST_WINDOW)
         .ok_or_else(|| "main window not found".to_string())?;
     let nav_id = id.clone();
+    let inset_y = content_inset_y(&window);
+
     let builder = WebviewBuilder::new(webview_label(&id), WebviewUrl::External(parse_url(url)?))
         .on_page_load(move |webview, payload| {
             if payload.event() == PageLoadEvent::Finished {
                 emit_nav_changed(&webview, nav_id.clone(), payload.url().to_string());
             }
         });
-    let webview = match window.add_child(builder, bounds.position(), bounds.size()) {
+    let webview = match window.add_child(builder, bounds.position(inset_y), bounds.size()) {
         Ok(webview) => webview,
         // Loser of a create race (see module doc) — already open, not a failure.
         Err(tauri::Error::WebviewLabelAlreadyExists(_)) => return Ok(()),
@@ -151,7 +223,7 @@ pub fn browser_set_bounds(app: AppHandle, id: String, bounds: Bounds) -> Result<
         return Ok(());
     };
     webview
-        .set_position(bounds.position())
+        .set_position(bounds.position(cached_content_inset_y()))
         .map_err(|error| error.to_string())?;
     webview
         .set_size(bounds.size())

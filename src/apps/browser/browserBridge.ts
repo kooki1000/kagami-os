@@ -10,16 +10,6 @@ export interface BrowserBounds {
   height: number;
 }
 
-/**
- * `DOMRect`'s `x`/`y`/`width`/`height` are getters on its prototype, not own
- * enumerable properties, so passing one to `invoke()` directly serializes to
- * `{}`. Always go through this to get a plain object instead.
- */
-export function contentBounds(el: HTMLElement): BrowserBounds {
-  const { x, y, width, height } = el.getBoundingClientRect();
-  return { x, y, width, height };
-}
-
 // A window's own React effects (create/bounds-sync/visibility-sync) fire
 // independently and unawaited, and React StrictMode's dev-only double-invoke
 // can interleave a stale close() between two opens. One queue per windowId
