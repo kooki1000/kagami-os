@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import type { BrowserBounds } from "./browserBridge";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { WindowRect } from "@/system/windows/windowStore";
 import { ChevronLeft, ChevronRight, Globe, RotateCw } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { isTauri } from "@/system/platform";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
@@ -20,6 +21,19 @@ const CHROME_HEIGHT = TITLE_BAR_HEIGHT + ADDRESS_BAR_HEIGHT;
 
 function logBridgeError(action: string): (error: unknown) => void {
   return error => console.error(`[kagami-browser] ${action} failed:`, error);
+}
+
+/**
+ * Bare host for the address, for the standby state below. Falls back to the
+ * raw string for anything that isn't a parseable absolute URL.
+ */
+function hostnameOf(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname || rawUrl;
+  }
+  catch {
+    return rawUrl;
+  }
 }
 
 /**
@@ -49,6 +63,9 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   // browserHistory.ts) rather than tracked optimistically from `go()`.
   const [history, setHistory] = useState(() => initialHistory(HOME_URL));
   const url = history.entries[history.index];
+  // Parsed per navigation, not per render — `rect` re-renders this on every
+  // drag/resize frame, and the standby host line rarely changes.
+  const host = useMemo(() => hostnameOf(url), [url]);
   const [addressInput, setAddressInput] = useState(url);
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
   // Drag/resize/snap/maximize all mutate a window's `rect` (a fresh object
@@ -106,13 +123,11 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
     };
   }, [windowId]);
 
-  // The sync effects below re-send on every run, including their first —
-  // which duplicates what open() just applied, but the redundant idempotent
-  // round-trip is cheaper than the bug the old "skip the first run" guard
-  // caused: a change landing between the open render and the effect's first
-  // run (e.g. focus shifting across several Browser windows mounting during
-  // session restore) was swallowed by the skip, leaving a stale webview
-  // visible on top of whichever window ended up focused.
+  // Both sync effects re-send on every run, including the first. The mount-time
+  // send duplicates what open() applied, but both commands are idempotent, and
+  // this avoids dropping a change that lands between the open render and the
+  // effect's first run — during session restore that left a stale webview
+  // visible over whichever window ended up focused.
   useEffect(() => {
     if (!rect)
       return;
@@ -171,10 +186,25 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
           className="min-w-0 flex-1 rounded-btn bg-ph px-2.5 py-1 text-[12px] text-ink outline-none placeholder:text-ink-2"
         />
       </form>
-      {/* Reserves the content region the native child webview is layered over
-          (positioned from the window's rect, not this element); renders
-          nothing itself. */}
-      <div className="min-h-0 flex-1" />
+      {/* The native child webview is layered over this region by the Rust
+          side while the window is focused. The OS webview paints on top, so
+          this standby state shows through only while it's hidden (window in
+          the background, or a shell overlay open) — no black gap, and a cue
+          that the page is paused rather than broken. */}
+      <BrowserEmptyState className="min-h-0 flex-1">
+        <Globe className="size-7 opacity-80" strokeWidth={1.4} />
+        <span className="font-mono text-[13px] text-ink">{host}</span>
+        <span className="text-[11.5px] opacity-70">Select this window to keep browsing</span>
+      </BrowserEmptyState>
+    </div>
+  );
+}
+
+/** Centered icon-over-text shell shared by the standby and web-unavailable states. */
+function BrowserEmptyState({ className, children }: { className: string; children: ReactNode }) {
+  return (
+    <div className={`grid place-items-center px-6 text-center text-ink-2 select-none ${className}`}>
+      <div className="flex flex-col items-center gap-2">{children}</div>
     </div>
   );
 }
@@ -182,16 +212,14 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
 /** Shown on the web build — native-only, per DIRECTION.md's "present a clean unavailable state" rule. */
 function UnavailableOnWeb() {
   return (
-    <div className="grid h-full place-items-center px-6 text-center text-ink-2 select-none">
-      <div className="flex flex-col items-center gap-2">
-        <Globe className="size-7" strokeWidth={1.4} />
-        <span className="text-[13px]">Browser is available in the desktop app</span>
-        <span className="max-w-[280px] text-[11.5px] opacity-70">
-          Third-party sites can't be embedded in a browser tab — install the
-          Kagami desktop app for a real built-in browser.
-        </span>
-      </div>
-    </div>
+    <BrowserEmptyState className="h-full">
+      <Globe className="size-7" strokeWidth={1.4} />
+      <span className="text-[13px]">Browser is available in the desktop app</span>
+      <span className="max-w-[280px] text-[11.5px] opacity-70">
+        Third-party sites can't be embedded in a browser tab — install the
+        Kagami desktop app for a real built-in browser.
+      </span>
+    </BrowserEmptyState>
   );
 }
 
