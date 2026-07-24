@@ -56,8 +56,11 @@ non-trivial change; update it when a change alters one of the seams below.
 `ROADMAP.md` tracks the phased feature backlog, and
 `docs/review-backlog.md` holds known open bugs from the last review pass
 (with repros and proposed fixes) — check it before touching the shell's
-menus, the Files view, or the persisted stores. The summary here is a map,
-not a substitute for those.
+menus, the Files view, or the persisted stores. `docs/security-advisories.md`
+records dependency vulnerability alerts that were investigated and
+deliberately left open (with the reasoning and a revisit condition) — check
+it before re-dismissing or "fixing" an alert someone already triaged. The
+summary here is a map, not a substitute for those.
 
 ### The two seams new features hook into
 
