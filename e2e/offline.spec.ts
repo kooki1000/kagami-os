@@ -30,7 +30,15 @@ test.describe("offline", () => {
     expect(errors).toEqual([]);
   });
 
-  test("boots fully from cache with no network at all (airplane-mode boot)", async ({ page, context }) => {
+  test("boots fully from cache with no network at all (airplane-mode boot)", async ({ page, context, browserName }) => {
+    // Chromium/Firefox only: reloading with context.setOffline(true) against
+    // an active service worker reliably throws "WebKit encountered an
+    // internal error" in Playwright's WebKit driver — a driver limitation,
+    // not an app bug (the mid-session offline test above passes on WebKit
+    // fine). Same flakiness class this repo already tags Chromium/Firefox-
+    // only elsewhere (files.spec.ts's DnD, a11y-reduced-motion.spec.ts).
+    test.skip(browserName === "webkit", "reload+setOffline(true) against an active SW throws in Playwright's WebKit driver");
+
     const errors = collectErrors(page);
 
     // First visit, online: registers the service worker (F1). A page's own
