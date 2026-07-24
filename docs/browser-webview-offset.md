@@ -58,9 +58,9 @@ window. Present on macOS 15 (Darwin 25.5.0), retina display (`scale_factor
 
 ## Suspected cause
 
-Tauri's `Window::add_child` / `Webview::set_position` on macOS resolving `y`
+Tauri's `Window::add_child` / `Webview::set_position` on macOS resolves `y`
 against the wrong parent extent. wry's placement math for an **unflipped**
-parent `NSView` is `y_bottom_left = parent_frame.height − y − height`; if the
+parent `NSView` is `y_bottom_left = parent_frame.height - y - height`; if the
 `parent_frame` it reads includes the native title bar (window frame / root
 view) while our coordinates are relative to the content view below it, the
 webview lands exactly one title-bar-height (~28pt) too high — matching the
@@ -79,7 +79,7 @@ The two commits above (`9298823`, `ea31c79`) fixed adjacent bugs, not the
 offset. The one attempt aimed at the offset itself:
 
 **Rust-side decoration compensation** — add
-`(outer_size.height − inner_size.height) / scale_factor` (≈ native title bar
+`(outer_size.height - inner_size.height) / scale_factor` (≈ native title bar
 height, macOS-gated, zero elsewhere) to `y` in `browser_open` /
 `browser_set_bounds`. Implemented in `src-tauri/src/browser.rs`
 (`decoration_offset`) as commit `76266ff`, now **reverted (reflog only)**. A
