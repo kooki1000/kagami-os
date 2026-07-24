@@ -1,5 +1,6 @@
 import type { FsNode, StorageAdapter } from "./types";
-import { createDirEnsurer, createWriteQueue, DISK_DIR, readJsonFile, writeJsonFile } from "./tauriShared";
+import { createWriteQueue } from "@/lib/asyncQueue";
+import { createDirEnsurer, DISK_DIR, readJsonFile, writeJsonFile } from "./tauriShared";
 
 const NODES_FILE = `${DISK_DIR}/nodes.json`;
 

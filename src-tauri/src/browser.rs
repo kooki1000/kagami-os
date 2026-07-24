@@ -9,61 +9,75 @@
 //! the frontend only shows this webview while its window is focused,
 //! unminimized, and no shell overlay (menu, search, notification center) is
 //! open, so it never needs to render "behind" anything.
+//!
+//! Call ordering for a given id is the frontend's job (a per-id queue in
+//! `browserBridge.ts`); each command here is still idempotent against a
+//! benign ordering slip — "ensure open"/"no-op if not open" — as cheap
+//! insurance, not as the primary fix.
 
+use serde::Deserialize;
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl};
 
 const HOST_WINDOW: &str = "main";
 
+/// Content-area bounds in logical (CSS) pixels — mirrors `BrowserBounds` in `browserBridge.ts`.
+#[derive(Deserialize)]
+pub struct Bounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl Bounds {
+    fn position(&self) -> LogicalPosition<f64> {
+        LogicalPosition::new(self.x, self.y)
+    }
+
+    fn size(&self) -> LogicalSize<f64> {
+        LogicalSize::new(self.width, self.height)
+    }
+}
+
 fn webview_label(id: &str) -> String {
     format!("browser-{id}")
+}
+
+fn find_webview(app: &AppHandle, id: &str) -> Option<tauri::Webview> {
+    app.get_webview(&webview_label(id))
 }
 
 fn parse_url(url: String) -> Result<tauri::Url, String> {
     url.parse::<tauri::Url>().map_err(|error| error.to_string())
 }
 
-// The frontend's create/reposition/hide/close calls are React-effect-driven,
-// not user-gated, so they can legitimately fire before `browser_open`'s
-// (async) webview creation has landed, or land twice for the same id (React
-// StrictMode double-invokes effects in dev). Every command below is
-// idempotent against that — "ensure open"/"no-op if not open" — rather than
-// erroring on a benign ordering race, so the frontend doesn't need its own
-// cancellation bookkeeping to paper over it.
-
 #[tauri::command]
 pub async fn browser_open(
     app: AppHandle,
     id: String,
     url: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    bounds: Bounds,
+    visible: bool,
 ) -> Result<(), String> {
     let window = app
         .get_window(HOST_WINDOW)
         .ok_or_else(|| "main window not found".to_string())?;
     let builder = WebviewBuilder::new(webview_label(&id), WebviewUrl::External(parse_url(url)?));
-    match window.add_child(
-        builder,
-        LogicalPosition::new(x, y),
-        LogicalSize::new(width, height),
-    ) {
-        Ok(_) => Ok(()),
-        // Tauri dispatches async commands onto its multi-thread runtime, so
-        // two near-simultaneous `browser_open` calls for the same id (React
-        // StrictMode's dev-only double-effect-invoke) can both pass a
-        // pre-check before either finishes creating — the loser lands here,
-        // not in a real failure. A pre-check-then-create would still race;
-        // catching this specific error after attempting creation doesn't.
-        Err(tauri::Error::WebviewLabelAlreadyExists(_)) => Ok(()),
-        Err(error) => Err(error.to_string()),
+    let webview = match window.add_child(builder, bounds.position(), bounds.size()) {
+        Ok(webview) => webview,
+        // Loser of a create race (see module doc) — already open, not a failure.
+        Err(tauri::Error::WebviewLabelAlreadyExists(_)) => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    if !visible {
+        webview.hide().map_err(|error| error.to_string())?;
     }
+    Ok(())
 }
 
 #[tauri::command]
 pub fn browser_navigate(app: AppHandle, id: String, url: String) -> Result<(), String> {
-    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+    let Some(webview) = find_webview(&app, &id) else {
         return Err(format!("no browser webview open for {id}"));
     };
     webview
@@ -72,28 +86,21 @@ pub fn browser_navigate(app: AppHandle, id: String, url: String) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn browser_set_bounds(
-    app: AppHandle,
-    id: String,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+pub fn browser_set_bounds(app: AppHandle, id: String, bounds: Bounds) -> Result<(), String> {
+    let Some(webview) = find_webview(&app, &id) else {
         return Ok(());
     };
     webview
-        .set_position(LogicalPosition::new(x, y))
+        .set_position(bounds.position())
         .map_err(|error| error.to_string())?;
     webview
-        .set_size(LogicalSize::new(width, height))
+        .set_size(bounds.size())
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn browser_set_visible(app: AppHandle, id: String, visible: bool) -> Result<(), String> {
-    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+    let Some(webview) = find_webview(&app, &id) else {
         return Ok(());
     };
     let result = if visible {
@@ -106,7 +113,7 @@ pub fn browser_set_visible(app: AppHandle, id: String, visible: bool) -> Result<
 
 #[tauri::command]
 pub fn browser_close(app: AppHandle, id: String) -> Result<(), String> {
-    let Some(webview) = app.get_webview(&webview_label(&id)) else {
+    let Some(webview) = find_webview(&app, &id) else {
         return Ok(());
     };
     webview.close().map_err(|error| error.to_string())

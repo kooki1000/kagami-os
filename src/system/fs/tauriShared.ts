@@ -10,20 +10,6 @@ import { BaseDirectory, exists, mkdir, readTextFile, writeTextFile } from "@taur
 export const DISK_DIR = "disk";
 
 /**
- * Serializes async tasks onto one promise chain, so overlapping writes to
- * the same file (fsStore commits fire-and-forget) can't race each other's
- * read-modify-write and clobber one another.
- */
-export function createWriteQueue() {
-  let queue = Promise.resolve();
-  return function enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const result = queue.then(task);
-    queue = result.then(() => undefined, () => undefined);
-    return result;
-  };
-}
-
-/**
  * Ensures `dir` exists under `$APPDATA`, memoized so only one `mkdir` IPC
  * call is ever made per store instance (`recursive: true` already no-ops if
  * the directory exists — this just avoids repeating the round-trip).

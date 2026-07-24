@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createWriteQueue } from "./tauriShared";
+import { createWriteQueue } from "./asyncQueue";
 
 describe("createWriteQueue", () => {
   it("runs tasks in the order they were enqueued, not the order they resolve", async () => {

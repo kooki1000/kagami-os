@@ -9,7 +9,7 @@ import { browserBridge, contentBounds } from "./browserBridge";
 const HOME_URL = "https://example.com";
 
 function logBridgeError(action: string): (error: unknown) => void {
-  return error => console.error(`[browser] ${action} failed:`, error);
+  return error => console.error(`[kagami-browser] ${action} failed:`, error);
 }
 
 /** The desktop-only chrome + native child webview (N4). */
@@ -23,31 +23,47 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   const rect = useWindowStore(s => s.windows.find(w => w.id === windowId)?.rect);
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
   const visible = focused && !overlayOpen;
+  const initialVisibleRef = useRef(visible);
 
-  // One child webview per Browser window instance; closed on unmount, which
+  // One child webview per Browser window instance, created with its
+  // mount-time bounds/visibility already baked in so the sync effects below
+  // only need to handle *changes*, not mount. Closed on unmount, which
   // covers both closing the window and minimizing it (WindowLayer unmounts
-  // minimized windows rather than just hiding them).
-  // Opens with HOME_URL (not the `url` state) so this effect only depends on
-  // `windowId` and runs exactly once per window instance; later navigation
-  // goes through the `navigate` command instead of recreating the webview.
+  // minimized windows rather than just hiding them). Opens with HOME_URL
+  // (not the `url` state) so this only depends on `windowId` and runs
+  // exactly once per window instance; later navigation goes through the
+  // `navigate` command instead of recreating the webview.
   useEffect(() => {
     const el = contentRef.current;
     if (!el)
       return;
-    browserBridge.open(windowId, HOME_URL, contentBounds(el)).catch(logBridgeError("open"));
+    browserBridge.open(windowId, HOME_URL, contentBounds(el), initialVisibleRef.current).catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));
     };
   }, [windowId]);
 
+  // Skip each sync effect's first run — `open()` above already applied the
+  // mount-time bounds/visibility, so re-sending them would be a redundant
+  // round-trip.
+  const boundsMountedRef = useRef(false);
   useEffect(() => {
+    if (!boundsMountedRef.current) {
+      boundsMountedRef.current = true;
+      return;
+    }
     const el = contentRef.current;
     if (!el)
       return;
     browserBridge.setBounds(windowId, contentBounds(el)).catch(logBridgeError("set_bounds"));
   }, [windowId, rect]);
 
+  const visibleMountedRef = useRef(false);
   useEffect(() => {
+    if (!visibleMountedRef.current) {
+      visibleMountedRef.current = true;
+      return;
+    }
     browserBridge.setVisible(windowId, visible).catch(logBridgeError("set_visible"));
   }, [windowId, visible]);
 
