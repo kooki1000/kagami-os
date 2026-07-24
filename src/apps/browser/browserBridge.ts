@@ -65,10 +65,9 @@ export interface BrowserNavChanged {
 }
 
 /**
- * Subscribes to real navigation changes (fired on every full page load,
- * including ones triggered by `back`/`forward`/in-page link clicks — not
- * just calls made through this bridge). Returns an unsubscribe function;
- * safe to call immediately even though `listen()` itself is async.
+ * Subscribes to real navigation changes, including ones from `back`/
+ * `forward`/in-page link clicks, not just calls made through this bridge.
+ * Returns an unsubscribe function, safe to call immediately.
  */
 export function onNavChanged(handler: (event: BrowserNavChanged) => void): () => void {
   let cancelled = false;

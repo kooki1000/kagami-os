@@ -13,13 +13,11 @@ export function initialHistory(url: string): BrowserHistoryState {
 }
 
 /**
- * Folds a real navigation (from `nav-changed`) into the stack. A `url`
- * matching the entry immediately behind/ahead of the current one is treated
- * as a back/forward move (index shifts, stack untouched); anything else is a
- * forward navigation to a new page (truncates any redo entries, then
- * pushes). This needs no explicit "was this triggered by back()?" flag —
- * comparing against neighbors is enough to stay correct regardless of what
- * triggered the navigation (address bar, an in-page link, or back/forward).
+ * Folds a real navigation into the stack. A `url` matching the neighboring
+ * entry is treated as a back/forward move (index shifts only); anything else
+ * pushes a new entry, truncating any redo entries — no explicit "was this
+ * triggered by back()?" flag needed, since comparing against neighbors is
+ * enough regardless of what triggered the navigation.
  */
 export function applyNavigation(state: BrowserHistoryState, url: string): BrowserHistoryState {
   if (state.entries[state.index] === url)

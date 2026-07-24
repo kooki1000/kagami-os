@@ -16,10 +16,8 @@ function logBridgeError(action: string): (error: unknown) => void {
 /** The desktop-only chrome + native child webview (N4). */
 function NativeBrowser({ windowId, focused }: AppWindowProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-  // The webview's own navigation (address bar, in-page links, back/forward)
-  // is the only source of truth for the current URL — `history` is rebuilt
-  // from the `nav-changed` events it emits (see browserHistory.ts), rather
-  // than tracked optimistically from `go()`.
+  // `history` is rebuilt from the webview's own `nav-changed` events (see
+  // browserHistory.ts) rather than tracked optimistically from `go()`.
   const [history, setHistory] = useState(() => initialHistory(HOME_URL));
   const url = history.entries[history.index];
   const [addressInput, setAddressInput] = useState(url);
@@ -32,11 +30,9 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   const visible = focused && !overlayOpen;
   const initialVisibleRef = useRef(visible);
 
-  // A real navigation always wins over whatever's mid-edit in the address
-  // bar (mirrors how a real browser's address bar snaps to the current URL).
-  // Adjusted during render — React's documented pattern for state derived
-  // from another state value — rather than an effect, since the latter is
-  // flagged as a needless-effect anti-pattern here (react-hooks/set-state-in-effect).
+  // A real navigation snaps the address bar to the new URL, discarding any
+  // mid-edit — adjusted during render (React's pattern for state derived
+  // from other state) since an effect here trips react-hooks/set-state-in-effect.
   const [syncedUrl, setSyncedUrl] = useState(url);
   if (syncedUrl !== url) {
     setSyncedUrl(url);

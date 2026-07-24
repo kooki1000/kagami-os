@@ -16,12 +16,11 @@
 //! insurance, not as the primary fix.
 //!
 //! Navigation state (current URL/title) is pushed to the frontend via the
-//! `browser://nav-changed` event, fired from `on_page_load` — the only
-//! reliable cross-platform navigation signal wry exposes (it does not fire
-//! for in-page SPA `pushState`/hash navigation). There is no native
-//! back/forward API in Tauri/wry, so `browser_back`/`browser_forward` fall
-//! back to `history.back()`/`history.forward()` via `eval` — the frontend
-//! then learns the result the same way, through the next `on_page_load`.
+//! `browser://nav-changed` event, fired from `on_page_load` — wry's only
+//! reliable navigation signal (it doesn't fire for SPA `pushState`/hash
+//! navigation). There's no native back/forward API, so `browser_back`/
+//! `browser_forward` just `eval` `history.back()`/`history.forward()` and
+//! let the resulting `on_page_load` report the outcome.
 
 use serde::{Deserialize, Serialize};
 use tauri::webview::PageLoadEvent;
@@ -70,6 +69,13 @@ fn find_webview(app: &AppHandle, id: &str) -> Option<Webview> {
 
 fn parse_url(url: String) -> Result<tauri::Url, String> {
     url.parse::<tauri::Url>().map_err(|error| error.to_string())
+}
+
+fn eval_on_webview(app: &AppHandle, id: &str, js: &str) -> Result<(), String> {
+    let Some(webview) = find_webview(app, id) else {
+        return Ok(());
+    };
+    webview.eval(js).map_err(|error| error.to_string())
 }
 
 fn emit_nav_changed(webview: &Webview, id: String, url: String) {
@@ -131,22 +137,12 @@ pub fn browser_navigate(app: AppHandle, id: String, url: String) -> Result<(), S
 
 #[tauri::command]
 pub fn browser_back(app: AppHandle, id: String) -> Result<(), String> {
-    let Some(webview) = find_webview(&app, &id) else {
-        return Ok(());
-    };
-    webview
-        .eval("history.back()")
-        .map_err(|error| error.to_string())
+    eval_on_webview(&app, &id, "history.back()")
 }
 
 #[tauri::command]
 pub fn browser_forward(app: AppHandle, id: String) -> Result<(), String> {
-    let Some(webview) = find_webview(&app, &id) else {
-        return Ok(());
-    };
-    webview
-        .eval("history.forward()")
-        .map_err(|error| error.to_string())
+    eval_on_webview(&app, &id, "history.forward()")
 }
 
 #[tauri::command]
