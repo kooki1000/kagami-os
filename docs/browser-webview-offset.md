@@ -67,9 +67,9 @@ webview lands exactly one title-bar-height (~28pt) too high — matching the
 observed direction and rough magnitude.
 
 **Unconfirmed alternative:** screenshot measurements of the shift ranged
-~26–40px, and 40 happens to equal the *DOM* `TITLE_BAR_HEIGHT`. If the true
+~26–40px, and 40 happens to equal the _DOM_ `TITLE_BAR_HEIGHT`. If the true
 shift is exactly 40, the frontend's chrome accounting would be suspect
-instead (e.g. the webview being placed relative to the window's *content*
+instead (e.g. the webview being placed relative to the window's _content_
 element rather than the viewport). The measurements were eyeballed from
 retina screenshots with ±10px slop, so 28-vs-40 was never settled.
 
@@ -104,12 +104,12 @@ remains the leading candidate — never tested under controlled conditions.
 3. **A diagnostic that removes screenshot ambiguity:** temporarily navigate
    the child webview to a `data:` URL that renders a red top-anchored ruler,
    and compare its origin against the address bar on screen. Note that
-   logging `webview.position()` read-back is *not* decisive — it may invert
+   logging `webview.position()` read-back is _not_ decisive — it may invert
    the same (possibly wrong) transform and read back clean.
 4. **Check upstream:** search tauri/wry issues for child-webview y-offset on
    decorated macOS windows (`add_child` + title bar). If it's a known bug,
    pin the workaround to the affected versions in a comment; a version bump
    may also simply fix it.
-5. If the offset turns out to be the *DOM* 40px instead: audit where the
+5. If the offset turns out to be the _DOM_ 40px instead: audit where the
    Browser app's content actually renders relative to `rect` (`Window.tsx`
    title bar composition) before touching native code.
