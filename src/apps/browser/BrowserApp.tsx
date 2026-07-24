@@ -1,21 +1,50 @@
+import type { BrowserBounds } from "./browserBridge";
 import type { AppWindowProps } from "@/system/apps/types";
+import type { WindowRect } from "@/system/windows/windowStore";
 import { ChevronLeft, ChevronRight, Globe, RotateCw } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { isTauri } from "@/system/platform";
-import { useWindowStore } from "@/system/windows/windowStore";
-import { browserBridge, contentBounds, onNavChanged } from "./browserBridge";
+import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
+import { browserBridge, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
 
 const HOME_URL = "https://example.com";
+
+// Address bar height. Kept as a constant (applied to the <form> via inline
+// style below) so it and the bounds math can't drift apart.
+const ADDRESS_BAR_HEIGHT = 40;
+// Everything stacked above the content region: the window's title bar plus
+// this app's address bar.
+const CHROME_HEIGHT = TITLE_BAR_HEIGHT + ADDRESS_BAR_HEIGHT;
 
 function logBridgeError(action: string): (error: unknown) => void {
   return error => console.error(`[kagami-browser] ${action} failed:`, error);
 }
 
+/**
+ * Content-region bounds for the native child webview, derived from the
+ * window's `rect` — the store's untransformed logical geometry.
+ *
+ * We deliberately do *not* read `getBoundingClientRect()` off the content
+ * element: while a window's open/minimize animation runs it carries a CSS
+ * `transform: scale()`, which `getBoundingClientRect()` folds into its result.
+ * Measuring mid-animation would place the webview at scaled bounds (address
+ * bar covered, a strip of dead space at the bottom), and nothing re-measures
+ * once the transform settles. `rect` is transform-immune and is already the
+ * exact re-sync signal (drag/resize/snap/maximize all mutate it).
+ */
+function webviewBounds(rect: WindowRect): BrowserBounds {
+  return {
+    x: rect.x,
+    y: rect.y + CHROME_HEIGHT,
+    width: rect.width,
+    height: rect.height - CHROME_HEIGHT,
+  };
+}
+
 /** The desktop-only chrome + native child webview (N4). */
 function NativeBrowser({ windowId, focused }: AppWindowProps) {
-  const contentRef = useRef<HTMLDivElement>(null);
   // `history` is rebuilt from the webview's own `nav-changed` events (see
   // browserHistory.ts) rather than tracked optimistically from `go()`.
   const [history, setHistory] = useState(() => initialHistory(HOME_URL));
@@ -23,8 +52,9 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   const [addressInput, setAddressInput] = useState(url);
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
   // Drag/resize/snap/maximize all mutate a window's `rect` (a fresh object
-  // only when geometry actually changes — see windowStore.ts) — a cheap,
-  // exact signal for "re-measure the content area," no ResizeObserver needed.
+  // only when geometry actually changes — see windowStore.ts), so it's the
+  // exact signal for re-syncing the webview's bounds — no ResizeObserver
+  // needed. `webviewBounds` derives the child-webview rect from it directly.
   const rect = useWindowStore(s => s.windows.find(w => w.id === windowId)?.rect);
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
   const visible = focused && !overlayOpen;
@@ -57,10 +87,13 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   // exactly once per window instance; later navigation goes through the
   // `navigate` command instead of recreating the webview.
   useEffect(() => {
-    const el = contentRef.current;
-    if (!el)
+    // Read the current rect straight from the store rather than depending on
+    // it, so this stays a once-per-window-instance open (later geometry
+    // changes are the bounds-sync effect's job).
+    const openRect = useWindowStore.getState().windows.find(w => w.id === windowId)?.rect;
+    if (!openRect)
       return;
-    browserBridge.open(windowId, HOME_URL, contentBounds(el), initialVisibleRef.current).catch(logBridgeError("open"));
+    browserBridge.open(windowId, HOME_URL, webviewBounds(openRect), initialVisibleRef.current).catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));
     };
@@ -75,10 +108,9 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
       boundsMountedRef.current = true;
       return;
     }
-    const el = contentRef.current;
-    if (!el)
+    if (!rect)
       return;
-    browserBridge.setBounds(windowId, contentBounds(el)).catch(logBridgeError("set_bounds"));
+    browserBridge.setBounds(windowId, webviewBounds(rect)).catch(logBridgeError("set_bounds"));
   }, [windowId, rect]);
 
   const visibleMountedRef = useRef(false);
@@ -98,7 +130,8 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   return (
     <div className="flex h-full flex-col">
       <form
-        className="flex h-[40px] flex-none items-center gap-2 px-3 hairline-b"
+        className="flex flex-none items-center gap-2 px-3 hairline-b"
+        style={{ height: ADDRESS_BAR_HEIGHT }}
         onSubmit={(e) => {
           e.preventDefault();
           go(addressInput);
@@ -137,9 +170,10 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
           className="min-w-0 flex-1 rounded-btn bg-ph px-2.5 py-1 text-[12px] text-ink outline-none placeholder:text-ink-2"
         />
       </form>
-      {/* The native child webview is layered over this element by the Rust
-          side; it renders nothing itself. */}
-      <div ref={contentRef} className="min-h-0 flex-1" />
+      {/* Reserves the content region the native child webview is layered over
+          (positioned from the window's rect, not this element); renders
+          nothing itself. */}
+      <div className="min-h-0 flex-1" />
     </div>
   );
 }
