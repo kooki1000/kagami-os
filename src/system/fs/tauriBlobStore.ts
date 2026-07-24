@@ -1,6 +1,7 @@
 import type { BlobStore } from "./types";
 import { BaseDirectory, exists, readDir, readFile, remove, writeFile } from "@tauri-apps/plugin-fs";
-import { createDirEnsurer, createWriteQueue, DISK_DIR, readJsonFile, writeJsonFile } from "./tauriShared";
+import { createWriteQueue } from "@/lib/asyncQueue";
+import { createDirEnsurer, DISK_DIR, readJsonFile, writeJsonFile } from "./tauriShared";
 
 // Mirrors the IDB backend's split into two databases (`kagami-fs`/
 // `kagami-blobs`): metadata and bytes are independent, so introducing one
