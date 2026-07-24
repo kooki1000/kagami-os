@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { createWriteQueue } from "@/lib/asyncQueue";
 
 /** Content-area bounds in logical (CSS) pixels — matches Tauri's LogicalPosition/LogicalSize. */
@@ -44,6 +45,10 @@ export const browserBridge = {
     queueFor(id)(() => invoke<void>("browser_open", { id, url, bounds, visible })),
   navigate: (id: string, url: string) =>
     queueFor(id)(() => invoke<void>("browser_navigate", { id, url })),
+  back: (id: string) =>
+    queueFor(id)(() => invoke<void>("browser_back", { id })),
+  forward: (id: string) =>
+    queueFor(id)(() => invoke<void>("browser_forward", { id })),
   setBounds: (id: string, bounds: BrowserBounds) =>
     queueFor(id)(() => invoke<void>("browser_set_bounds", { id, bounds })),
   setVisible: (id: string, visible: boolean) =>
@@ -51,3 +56,31 @@ export const browserBridge = {
   close: (id: string) =>
     queueFor(id)(() => invoke<void>("browser_close", { id })).finally(() => queues.delete(id)),
 };
+
+/** Payload of the Rust side's `browser://nav-changed` event (see `browser.rs`). */
+export interface BrowserNavChanged {
+  id: string;
+  url: string;
+  title: string;
+}
+
+/**
+ * Subscribes to real navigation changes (fired on every full page load,
+ * including ones triggered by `back`/`forward`/in-page link clicks — not
+ * just calls made through this bridge). Returns an unsubscribe function;
+ * safe to call immediately even though `listen()` itself is async.
+ */
+export function onNavChanged(handler: (event: BrowserNavChanged) => void): () => void {
+  let cancelled = false;
+  let unlisten: (() => void) | null = null;
+  listen<BrowserNavChanged>("browser://nav-changed", event => handler(event.payload)).then((fn) => {
+    if (cancelled)
+      fn();
+    else
+      unlisten = fn;
+  });
+  return () => {
+    cancelled = true;
+    unlisten?.();
+  };
+}
