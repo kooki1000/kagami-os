@@ -1,115 +1,100 @@
-# Known issue: Browser child webview lands too high (N4, macOS)
+# Resolved: Browser child webview landed too high (N4, macOS)
 
-**Status: open (2026-07-24).** Investigated this session, then reverted:
-`fix/browser-webview-bounds` is back at `main`, so the three commits referenced
-below (`9298823`, `ea31c79`, `76266ff`) survive only in the reflog — use
-`git show <sha>` to read them. Two fixed adjacent bugs; the third is the
-unverified offset compensation. The vertical offset itself remains unresolved.
-This doc records the evidence, suspected cause, and what was tried so the next
-attempt doesn't start from zero.
+**Status: fixed (2026-07-24).** The vertical offset is resolved on
+`fix/browser-webview-offset`. Root cause and fix are below; the original
+investigation notes follow for context.
 
-## Symptom
+## Symptom (as reported)
 
-With a Browser window focused, the native child webview renders ~28–40 logical
-px higher than its intended slot:
+With a Browser window focused, the native child webview rendered ~32px higher
+than its slot: it covered the 40px address bar (which "disappeared" the moment
+the window was focused), and a dead band of the same height showed between the
+page's bottom edge and the window's bottom edge. Width, height, and x were
+correct — a pure vertical translation. Unfocused windows looked correct because
+the child webview is hidden then, exposing the DOM's own (correctly placed)
+address bar.
 
-- it covers most or all of the 40px address bar (back/forward/reload + URL
-  input), so the bar "disappears" the moment the window is focused (the
-  webview is only shown while focused — by design, see the module doc in
-  `src-tauri/src/browser.rs`);
-- a dead band of the same height shows between the page's bottom edge and the
-  window's bottom edge.
+## Root cause (settled from AppKit, not screenshots)
 
-Width, height, and x placement are all correct — the error is a pure vertical
-translation.
+The host (`main`) window renders with a **full-size content view** — the native
+title bar overlaps the web content rather than sitting above it. Measured live
+via `NSView`/`NSWindow` frame introspection:
 
-## Repro
+- content view (wry's `WryWebViewParent`) frame = 1280×**800**;
+- the main webview fills it exactly (1280×800 `NSView`);
+- but the main webview's **DOM viewport is 1280×768** — WebKit insets the DOM
+  downward by the title-bar height (~32px), so **DOM `(0,0)` sits ~32px below
+  the content view's top**.
 
-`pnpm tauri dev` (needs Rust; web-only `pnpm dev` is unaffected — the DOM
-fallback browser has no child webview), open Browser from the dock, focus the
-window. Present on macOS 15 (Darwin 25.5.0), retina display (`scale_factor
-= 2`), Tauri 2.11.3 / tao 0.35.3 / wry 0.55.1.
+The frontend measures child-webview bounds in **DOM** coordinates, while wry
+positions child webviews in the **content view's** coordinate space
+(`window_position` flips `y` against `WryWebViewParent.frame().height`, which is
+unflipped — confirmed in `wry-0.55.1/src/wkwebview/mod.rs`). Those two spaces
+differ by the title-bar inset, so a child sent at DOM `y=122` was placed at
+content-view `y=122` — ~32px too high.
 
-## What is verified (don't re-litigate these)
+This also explains two earlier red herrings:
 
-1. **The frontend sends correct bounds.** Confirmed by temporary Rust-side
-   logging: for a 900×640 window at rect `(158, 52)` the frontend sends
-   `(x=158, y=132, w=900, h=560)` — exactly `rect` plus the 40px window title
-   bar and 40px address bar (`CHROME_HEIGHT` in
-   `src/apps/browser/BrowserApp.tsx`). Main window `inner_size` was
-   1280×800 logical at the time.
-2. **Store `rect` is true DOM viewport coordinates.** `WindowLayer` is
-   `absolute inset-0`; windows position with `left/top = rect.x/y`. The shell
-   menu bar is a `fixed` overlay, not a layout offset.
-3. **Two other bugs produced overlapping symptoms and were fixed this session
-   (reverted with the rest — see Status; SHAs are in the reflog):**
-   - `9298823` — bounds were measured via `getBoundingClientRect()` during the
-     window enter animation (`transform: scale(0.96)` gets folded into the
-     measurement, ~4% shrunken bounds, never re-measured). Bounds now derive
-     from the store rect.
-   - `ea31c79` — the visibility/bounds sync effects skipped their first run,
-     dropping any change that landed between the open render and the first
-     effect execution. During session restore this reliably left a stale
-     webview visible over the focused window (offset by the 28px cascade
-     step, which mimicked this offset bug). Effects now re-send every run.
+- `inner_position == outer_position` (so "native title bar = 0"): a full-size
+  content view spans the whole window, so Tauri reports equal inner/outer
+  positions on macOS (cf. tauri-apps/tauri#10021). There _is_ a native title
+  bar (the standard traffic lights are visible); the API just doesn't reflect
+  it.
+- The reverted `decoration_offset` (`outer_size − inner_size`) was a **no-op**
+  here — with a full-size content view, outer == inner — which is why the one
+  prior attempt "still showed the offset."
 
-   After both fixes, unfocused windows correctly show no webview and sizes
-   are exact — but the focused window's webview still sits high.
+All read-back paths were confounded and should not be trusted for this:
+`window.screenX/Y` from a child webview reports the shared `NSWindow`'s position
+(identical for every webview in the window), and wry's `webview.bounds()`
+inverts the same transform it set. The decisive measurements were the raw
+`NSView` frames plus the main webview's DOM `innerHeight`.
 
-## Suspected cause
+## Fix
 
-Tauri's `Window::add_child` / `Webview::set_position` on macOS resolves `y`
-against the wrong parent extent. wry's placement math for an **unflipped**
-parent `NSView` is `y_bottom_left = parent_frame.height - y - height`; if the
-`parent_frame` it reads includes the native title bar (window frame / root
-view) while our coordinates are relative to the content view below it, the
-webview lands exactly one title-bar-height (~28pt) too high — matching the
-observed direction and rough magnitude.
+`src-tauri/src/browser.rs` shifts the child's `y` down by the content-view
+inset before positioning:
 
-**Unconfirmed alternative:** screenshot measurements of the shift ranged
-~26–40px, and 40 happens to equal the _DOM_ `TITLE_BAR_HEIGHT`. If the true
-shift is exactly 40, the frontend's chrome accounting would be suspect
-instead (e.g. the webview being placed relative to the window's _content_
-element rather than the viewport). The measurements were eyeballed from
-retina screenshots with ±10px slop, so 28-vs-40 was never settled.
+```
+inset = contentView.frame.height − NSWindow.contentLayoutRect.height
+```
 
-## Tried and failed (or unverified)
+`contentLayoutRect` is the title-bar-excluded safe area, so this equals the
+inset exactly, and is **0 for normal and borderless windows** — the
+compensation is a no-op except precisely when the inset exists. The value never
+changes for a given window chrome, so it's read once on the main thread (AppKit
+frame reads are not thread-safe; computed from `browser_open`, which runs off
+the main thread, so the round-trip can't deadlock) and cached in a `OnceLock`.
+Applied in both `browser_open` and `browser_set_bounds`.
 
-The two commits above (`9298823`, `ea31c79`) fixed adjacent bugs, not the
-offset. The one attempt aimed at the offset itself:
+Deps added (macOS only, pinned to the versions wry/tao already pull in to avoid
+a duplicate `objc2` in the tree): `raw-window-handle`, `objc2-app-kit`,
+`objc2-foundation`.
 
-**Rust-side decoration compensation** — add
-`(outer_size.height - inner_size.height) / scale_factor` (≈ native title bar
-height, macOS-gated, zero elsewhere) to `y` in `browser_open` /
-`browser_set_bounds`. Implemented in `src-tauri/src/browser.rs`
-(`decoration_offset`) as commit `76266ff`, now **reverted (reflog only)**. A
-post-change test still showed the offset, **but the test is not trustworthy**:
-the screenshot was taken ~2 minutes after the edit and the binary may never
-have rebuilt (no `Compiling app` was confirmed, and a rebuild takes ~45s). It
-remains the leading candidate — never tested under controlled conditions.
+### Verified
 
-## Next steps
+`pnpm tauri dev`, Browser focused: address bar visible, page starts directly
+below it, no bottom dead band; drag/resize keeps the webview aligned (exercises
+`browser_set_bounds`).
 
-1. **Retest the compensation properly.** Restore it (`git cherry-pick 76266ff`
-   or reapply `decoration_offset`), kill any running `pnpm tauri dev`, start it
-   fresh, wait for `Compiling app ...` then `Running target/debug/app` in the
-   output, open a single Browser window, screenshot. If the bar shows and the
-   bottom band is gone, keep the commit and close this.
-2. **Settle 28 vs 40 from source, not screenshots.** Read the pinned sources
-   (`~/.cargo/registry/src/index.crates.io-*/tao-0.35.3`, `wry-0.55.1`):
-   does tao's content `NSView` override `isFlipped` (flipped ⇒ wry uses
-   top-left `y` directly ⇒ no decoration offset possible, look at the
-   frontend instead), and which view does Tauri pass as the child's parent?
-   This was started but not finished.
-3. **A diagnostic that removes screenshot ambiguity:** temporarily navigate
-   the child webview to a `data:` URL that renders a red top-anchored ruler,
-   and compare its origin against the address bar on screen. Note that
-   logging `webview.position()` read-back is _not_ decisive — it may invert
-   the same (possibly wrong) transform and read back clean.
-4. **Check upstream:** search tauri/wry issues for child-webview y-offset on
-   decorated macOS windows (`add_child` + title bar). If it's a known bug,
-   pin the workaround to the affected versions in a comment; a version bump
-   may also simply fix it.
-5. If the offset turns out to be the _DOM_ 40px instead: audit where the
-   Browser app's content actually renders relative to `rect` (`Window.tsx`
-   title bar composition) before touching native code.
+## Two adjacent bugs fixed alongside (were live on `main`)
+
+Both were reverted with the earlier attempt and are restored on this branch;
+they produced overlapping symptoms and are correct independent of the offset:
+
+- `9298823` — bounds were measured via `getBoundingClientRect()` during the
+  window enter animation (`transform: scale(0.96)` folded into the measurement,
+  never re-measured). Bounds now derive from the store rect plus the
+  title-bar/address-bar chrome (`CHROME_HEIGHT` in `BrowserApp.tsx`).
+- `ea31c79` — the visibility/bounds sync effects skipped their first run,
+  dropping any change between the open render and the first effect execution.
+  Effects now re-send every run (both Rust commands are idempotent).
+
+## If it regresses
+
+The inset is cached once and does not track chrome changes at runtime (e.g.
+entering native fullscreen removes the title bar → inset should become 0 but the
+cache holds the old value). This is out of scope for the reported bug; if a
+fullscreen child-browser case ever matters, recompute per call (guard against
+`browser_set_bounds` running on the main thread to avoid a `run_on_main_thread`
+deadlock) or invalidate the cache on the relevant window events.

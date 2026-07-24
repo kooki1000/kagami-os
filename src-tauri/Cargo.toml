@@ -27,3 +27,12 @@ log = "0.4"
 tauri = { version = "2.11.3", features = ["unstable"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
+
+# AppKit introspection for the Browser child-webview placement fix: the host
+# window's content-view inset (`content_inset_y` in `src/browser.rs`) is read
+# from `NSWindow.contentLayoutRect`. Versions pinned to what wry/tao already
+# pull in (see Cargo.lock) to avoid duplicate objc2 in the tree.
+[target.'cfg(target_os = "macos")'.dependencies]
+raw-window-handle = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
