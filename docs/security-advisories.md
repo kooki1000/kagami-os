@@ -19,7 +19,7 @@ null-pointer dereference. Fixed upstream in `gtk-rs-core` v0.20.0
 **Why it's not patched:**
 
 - `glib` isn't a direct dependency. It's pulled in transitively by `gtk
-  0.18.2`, which `wry 0.55.1` (Tauri's webview crate) requires for its Linux
+0.18.2`, which `wry 0.55.1` (Tauri's webview crate) requires for its Linux
   backend (`webkit2gtk`). The whole `gtk-rs-core` family (`glib`, `gio`,
   `gdk`, `gtk`, `cairo-rs`, `pango`) is released in lockstep, so getting
   `glib >= 0.20` means the entire stack has to move together.
