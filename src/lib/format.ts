@@ -1,8 +1,18 @@
+/**
+ * Locale for `Intl`/`toLocaleString` calls — the runtime's own language when
+ * known (e.g. the browser's `navigator.language`), or `undefined` so the API
+ * falls back to its own runtime default instead of a hardcoded locale (H2:
+ * this repo has no translated content, just a locale-aware *format*).
+ */
+export function currentLocale(): string | undefined {
+  return typeof navigator === "undefined" ? undefined : navigator.language;
+}
+
 /** Short human date for file listings ("Jul 4", "Dec 12 2025"). */
 export function formatModified(timestamp: number): string {
   const date = new Date(timestamp);
   const sameYear = date.getFullYear() === new Date().getFullYear();
-  return date.toLocaleDateString("en-US", {
+  return date.toLocaleDateString(currentLocale(), {
     month: "short",
     day: "numeric",
     year: sameYear ? undefined : "numeric",

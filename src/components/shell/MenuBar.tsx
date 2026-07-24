@@ -3,7 +3,7 @@ import type { MenuItem, MenuSection } from "@/system/apps/types";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Bell, Moon, Search, Sun, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { formatShortcut } from "@/lib/format";
+import { currentLocale, formatShortcut } from "@/lib/format";
 import { emitAppCommand } from "@/system/appCommands";
 import { getApp } from "@/system/apps/registry";
 import { executeCommand } from "@/system/commands";
@@ -93,7 +93,7 @@ function Clock() {
     const t = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(t);
   }, []);
-  const weekday = now.toLocaleDateString("en-US", { weekday: "short" });
+  const weekday = now.toLocaleDateString(currentLocale(), { weekday: "short" });
   const hours = ((now.getHours() + 11) % 12) + 1;
   const minutes = now.getMinutes().toString().padStart(2, "0");
   return (
