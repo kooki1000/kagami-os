@@ -58,7 +58,14 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   const rect = useWindowStore(s => s.windows.find(w => w.id === windowId)?.rect);
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
   const visible = focused && !overlayOpen;
-  const initialVisibleRef = useRef(visible);
+  // Latest visibility, readable from the open effect without depending on it.
+  // Kept fresh by a deps-less effect (runs every commit, before the effects
+  // below it in declaration order) rather than a render-time write, which
+  // react-hooks/refs forbids.
+  const visibleRef = useRef(visible);
+  useEffect(() => {
+    visibleRef.current = visible;
+  });
 
   // A real navigation snaps the address bar to the new URL, discarding any
   // mid-edit — adjusted during render (React's pattern for state derived
@@ -93,32 +100,26 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
     const openRect = useWindowStore.getState().windows.find(w => w.id === windowId)?.rect;
     if (!openRect)
       return;
-    browserBridge.open(windowId, HOME_URL, webviewBounds(openRect), initialVisibleRef.current).catch(logBridgeError("open"));
+    browserBridge.open(windowId, HOME_URL, webviewBounds(openRect), visibleRef.current).catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));
     };
   }, [windowId]);
 
-  // Skip each sync effect's first run — `open()` above already applied the
-  // mount-time bounds/visibility, so re-sending them would be a redundant
-  // round-trip.
-  const boundsMountedRef = useRef(false);
+  // The sync effects below re-send on every run, including their first —
+  // which duplicates what open() just applied, but the redundant idempotent
+  // round-trip is cheaper than the bug the old "skip the first run" guard
+  // caused: a change landing between the open render and the effect's first
+  // run (e.g. focus shifting across several Browser windows mounting during
+  // session restore) was swallowed by the skip, leaving a stale webview
+  // visible on top of whichever window ended up focused.
   useEffect(() => {
-    if (!boundsMountedRef.current) {
-      boundsMountedRef.current = true;
-      return;
-    }
     if (!rect)
       return;
     browserBridge.setBounds(windowId, webviewBounds(rect)).catch(logBridgeError("set_bounds"));
   }, [windowId, rect]);
 
-  const visibleMountedRef = useRef(false);
   useEffect(() => {
-    if (!visibleMountedRef.current) {
-      visibleMountedRef.current = true;
-      return;
-    }
     browserBridge.setVisible(windowId, visible).catch(logBridgeError("set_visible"));
   }, [windowId, visible]);
 
