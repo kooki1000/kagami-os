@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDockStore } from "@/system/dock/dockStore";
 import { FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import {
@@ -11,6 +11,7 @@ import {
   WALLPAPERS,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
+import { getPersistedStorageStatus, requestPersistentStorage } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
 
 type Section = "appearance" | "dock" | "general" | "about";
@@ -281,11 +282,20 @@ function FlagsDebug() {
 }
 
 function AboutSection() {
+  const [persisted, setPersisted] = useState(() => getPersistedStorageStatus());
+  useEffect(() => {
+    requestPersistentStorage().then(setPersisted);
+  }, []);
+
+  const storageLabel = persisted === null
+    ? "Virtual file system (IndexedDB)"
+    : `Virtual file system (IndexedDB, ${persisted ? "persistent" : "best-effort"})`;
+
   const facts: Array<[string, string]> = [
     ["Version", "0.6.0 — “Lagoon”"],
     ["Build", "Phase 6 · Settings"],
     ["Engine", "React + TypeScript · Vite"],
-    ["Storage", "Virtual file system (IndexedDB)"],
+    ["Storage", storageLabel],
   ];
   return (
     <div className="flex flex-col items-center px-6 py-8 text-center">
