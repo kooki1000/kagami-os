@@ -67,16 +67,12 @@ function launchFileInApp(node: FsNode, appId: string): boolean {
       w => w.appId === app.id && payloadFileId(w.payload) === node.id,
     );
     if (existing) {
-      // Refresh the payload before focusing (mirrors the singleInstance
-      // branch of `openWindow` below) — a fresh payload object, even with
-      // the same fileId, is what lets the app notice a re-launch during
-      // render (review-backlog #7: Player's `activeId` only re-syncs when
-      // `payload` changes identity, not when the window is merely focused).
+      // A fresh payload object, even with the same fileId, is what lets the
+      // app notice a re-launch during render (review-backlog #7: Player's
+      // `activeId` only re-syncs when `payload` changes identity, not when
+      // the window is merely focused).
       const refreshedPayload: FilePayload = { fileId: node.id };
-      store.setWindowPayload(existing.id, refreshedPayload);
-      if (existing.minimized)
-        store.restoreWindow(existing.id);
-      else store.focusWindow(existing.id);
+      store.reuseWindow(existing.id, refreshedPayload);
       return true;
     }
   }
