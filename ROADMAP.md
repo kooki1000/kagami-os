@@ -293,6 +293,15 @@ matrix in CI) · H2 (i18n scaffolding while strings are still few).
 **Exit criteria:** installable PWA; airplane-mode boot to a fully working
 local desktop; CI runs the matrix.
 
+**H2 deferred at phase close:** i18n scaffolding isn't part of the exit
+criteria above, and there's no committed decision anywhere in this document
+that a second locale is actually happening — scaffolding it now would be
+speculative infrastructure for a requirement that doesn't exist yet.
+Revisit when a second locale is actually committed to; at that point,
+`i18next`/`react-i18next` were confirmed installable under the workspace's
+`minimumReleaseAge` pnpm policy (resolves a patch behind latest, same
+pattern as other deps here), so that evaluation doesn't need repeating.
+
 ### Phase 13 — The backend: accounts & sync → v1.0-alpha _(≈ 6–8 weeks, the big one)_
 
 Runs behind a feature flag; local-only mode remains the default until GA.
