@@ -28,21 +28,21 @@ const POSITION: Record<DockPosition, {
     hover: "hover:-translate-y-3.25",
     tooltip: "-top-8.5 left-1/2 -translate-x-1/2",
     dot: "-bottom-1.5 left-1/2 -translate-x-1/2",
-    separator: "h-8.5 w-px",
+    separator: "h-[calc(34px*var(--ui-scale))] w-px",
   },
   left: {
     container: "left-3.5 top-1/2 -translate-y-1/2 flex-col items-start",
     hover: "hover:translate-x-3.25",
     tooltip: "left-full top-1/2 ml-2.5 -translate-y-1/2",
     dot: "-left-1.5 top-1/2 -translate-y-1/2",
-    separator: "w-8.5 h-px",
+    separator: "w-[calc(34px*var(--ui-scale))] h-px",
   },
   right: {
     container: "right-3.5 top-1/2 -translate-y-1/2 flex-col items-end",
     hover: "hover:-translate-x-3.25",
     tooltip: "right-full top-1/2 mr-2.5 -translate-y-1/2",
     dot: "-right-1.5 top-1/2 -translate-y-1/2",
-    separator: "w-8.5 h-px",
+    separator: "w-[calc(34px*var(--ui-scale))] h-px",
   },
 };
 
@@ -125,7 +125,7 @@ export function Dock() {
       >
         <Icon size={iconPx} strokeWidth={1.8} />
         <span
-          className={`pointer-events-none absolute z-10 rounded-btn bg-[rgba(20,18,15,.92)] px-2.25 py-0.75 text-[11px] font-medium whitespace-nowrap text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 ${layout.tooltip}`}
+          className={`pointer-events-none absolute z-10 rounded-btn bg-[rgba(20,18,15,.92)] px-[calc(9px*var(--ui-scale))] py-[calc(3px*var(--ui-scale))] text-11 font-medium whitespace-nowrap text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 ${layout.tooltip}`}
         >
           {app.name}
         </span>
@@ -148,7 +148,7 @@ export function Dock() {
         />
       )}
       <div
-        className={`fixed z-30 flex gap-2.75 rounded-[19px] px-3 py-2.25 shadow-[0_12px_34px_-10px_rgba(0,0,0,.4)] chrome-2 select-none hairline ${layout.container}`}
+        className={`fixed z-30 flex gap-[calc(11px*var(--ui-scale))] rounded-[19px] px-3 py-[calc(9px*var(--ui-scale))] shadow-[0_12px_34px_-10px_rgba(0,0,0,.4)] chrome-2 select-none hairline ${layout.container}`}
       >
         {appZone.map(renderTile)}
         {appZone.length > 0 && systemZone.length > 0 && (

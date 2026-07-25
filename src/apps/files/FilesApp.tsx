@@ -732,7 +732,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   if (!ready) {
     return (
       <div className="grid h-full place-items-center">
-        <span className="size-2.5 animate-pulse rounded-full bg-accent" />
+        <span className="size-[calc(10px*var(--ui-scale))] animate-pulse rounded-full bg-accent" />
       </div>
     );
   }
@@ -773,7 +773,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
         onDropNode={handleDrop}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-[38px] flex-none items-center gap-2 px-3 text-[12px] text-ink-2 select-none hairline-b">
+        <div className="flex h-[38px] flex-none items-center gap-2 px-3 text-12 text-ink-2 select-none hairline-b">
           <button
             type="button"
             aria-label="Back"
@@ -798,7 +798,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                 {i > 0 && <span className="opacity-50">›</span>}
                 <button
                   type="button"
-                  className={`max-w-32 truncate rounded-[5px] px-1 py-0.5 ${
+                  className={`max-w-32 truncate rounded-[5px] px-1 py-[calc(2px*var(--ui-scale))] ${
                     i === crumbs.length - 1
                       ? "font-semibold text-ink"
                       : "hover:bg-ph"
@@ -814,7 +814,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             {inTrash && trashCount > 0 && (
               <button
                 type="button"
-                className={`rounded-btn px-2 py-1 text-[11.5px] font-medium ${
+                className={`rounded-btn px-2 py-1 text-11.5 font-medium ${
                   confirmEmpty
                     ? "bg-accent-2 text-white"
                     : "bg-ph text-ink hover:bg-ph-2"
@@ -839,12 +839,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                 {confirmEmpty ? "Click again to confirm" : "Empty Trash"}
               </button>
             )}
-            <div className="flex items-center gap-1.5 rounded-btn bg-ph px-2 py-1">
+            <div className="flex items-center gap-[calc(6px*var(--ui-scale))] rounded-btn bg-ph px-2 py-1">
               <Search className="size-3 opacity-60" />
               <input
                 value={query}
                 placeholder="Filter"
-                className="w-24 bg-transparent text-[11.5px] text-ink outline-none placeholder:text-ink-2"
+                className="w-24 bg-transparent text-11.5 text-ink outline-none placeholder:text-ink-2"
                 onChange={e => setQuery(e.target.value)}
               />
             </div>
@@ -879,7 +879,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                 <FolderPlus className="size-4" />
               </button>
             )}
-            <div className="flex gap-0.5 rounded-btn bg-ph p-0.5">
+            <div className="flex gap-[calc(2px*var(--ui-scale))] rounded-btn bg-ph p-0.5">
               {(["grid", "list"] as const).map((mode) => {
                 const Icon = mode === "grid" ? LayoutGrid : List;
                 return (
@@ -937,7 +937,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           registerContainer={setContainer}
         />
 
-        <div className="flex h-6 flex-none items-center px-3 text-[11px] text-ink-2 select-none hairline-t">
+        <div className="flex h-6 flex-none items-center px-3 text-11 text-ink-2 select-none hairline-t">
           {visible.length}
           {" "}
           {visible.length === 1 ? "item" : "items"}

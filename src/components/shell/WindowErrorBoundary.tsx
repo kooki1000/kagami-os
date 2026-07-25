@@ -49,32 +49,32 @@ export class WindowErrorBoundary extends Component<Props, State> {
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-surface px-8 text-center select-none">
         <AlertTriangle className="size-7 text-(--ctl1)" strokeWidth={1.6} />
         <div className="space-y-1">
-          <div className="text-[13.5px] font-semibold text-ink">
+          <div className="text-[calc(13.5px*var(--ui-scale))] font-semibold text-ink">
             {this.props.appName}
             {" "}
             stopped working
           </div>
-          <p className="max-w-64 text-[12px] leading-relaxed text-ink-2">
+          <p className="max-w-64 text-12/relaxed text-ink-2">
             The app hit an unexpected error. Reloading it usually clears things up;
             the rest of your desktop is unaffected.
           </p>
         </div>
         {error.message && (
-          <code className="max-w-72 truncate rounded-btn bg-ph px-2 py-1 font-mono text-[11px] text-ink-2">
+          <code className="max-w-72 truncate rounded-btn bg-ph px-2 py-1 font-mono text-11 text-ink-2">
             {error.message}
           </code>
         )}
         <div className="mt-1 flex gap-2">
           <button
             type="button"
-            className="rounded-btn bg-accent px-3 py-1.5 text-[12px] font-semibold text-white"
+            className="rounded-btn bg-accent px-3 py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-white"
             onClick={this.reload}
           >
             Reload app
           </button>
           <button
             type="button"
-            className="rounded-btn bg-ph px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-surface-2"
+            className="rounded-btn bg-ph px-3 py-[calc(6px*var(--ui-scale))] text-12 font-medium text-ink hover:bg-surface-2"
             onClick={this.props.onClose}
           >
             Close window

@@ -49,10 +49,10 @@ function NoteEditor({ doc }: { doc: FsNode }) {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex h-[34px] flex-none items-center gap-2 px-4 text-[12px] select-none hairline-b">
+      <div className="flex h-[34px] flex-none items-center gap-2 px-4 text-12 select-none hairline-b">
         <span className="truncate font-semibold text-ink">{nameStem(doc.name)}</span>
         {folderName && <span className="truncate text-ink-2">{folderName}</span>}
-        <span className={`ml-auto flex-none text-[11px] ${saved || external ? "text-ink-2" : "text-accent"}`}>
+        <span className={`ml-auto flex-none text-11 ${saved || external ? "text-ink-2" : "text-accent"}`}>
           {external ? "Read-only" : saved ? "Saved" : "Editing…"}
         </span>
       </div>
@@ -60,8 +60,8 @@ function NoteEditor({ doc }: { doc: FsNode }) {
         ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-ink-2 select-none">
               <NotebookPen className="size-7" strokeWidth={1.4} />
-              <span className="text-[13px]">This file is too large to edit in Notes</span>
-              <span className="text-[11.5px] opacity-70">
+              <span className="text-13">This file is too large to edit in Notes</span>
+              <span className="text-11.5 opacity-70">
                 Download it from Files to read the full contents.
               </span>
             </div>
@@ -70,7 +70,7 @@ function NoteEditor({ doc }: { doc: FsNode }) {
             <textarea
               value={draft}
               placeholder="Start writing…"
-              className="min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-2"
+              className="min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono text-13/relaxed text-ink outline-none placeholder:text-ink-2"
               onChange={e => setDraft(e.target.value)}
             />
           )}
@@ -141,7 +141,7 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
   if (!ready) {
     return (
       <div className="grid h-full place-items-center">
-        <span className="size-2.5 animate-pulse rounded-full bg-accent" />
+        <span className="size-[calc(10px*var(--ui-scale))] animate-pulse rounded-full bg-accent" />
       </div>
     );
   }
@@ -162,7 +162,7 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
 
       <div className="flex w-[168px] flex-none flex-col bg-surface-2 select-none hairline-r">
         <div className="flex h-[34px] flex-none items-center justify-between pr-1.5 pl-3 hairline-b">
-          <span className="font-mono text-[9.5px] font-semibold tracking-[0.5px] text-ink-2 uppercase opacity-70">
+          <span className="font-mono text-[calc(9.5px*var(--ui-scale))] font-semibold tracking-[0.5px] text-ink-2 uppercase opacity-70">
             Notes
           </span>
           <button
@@ -179,7 +179,7 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
             <button
               key={d.id}
               type="button"
-              className={`block w-full rounded-[8px] px-2.5 py-1.5 text-left ${
+              className={`block w-full rounded-[8px] px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-left ${
                 doc?.id === d.id
                   ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)]"
                   : "hover:bg-ph"
@@ -205,13 +205,13 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
                 : (
                     <>
                       <span
-                        className={`block truncate text-[12.5px] font-medium ${
+                        className={`block truncate text-12.5 font-medium ${
                           doc?.id === d.id ? "text-accent" : "text-ink"
                         }`}
                       >
                         {nameStem(d.name)}
                       </span>
-                      <span className="block truncate text-[10.5px] text-ink-2">
+                      <span className="block truncate text-[calc(10.5px*var(--ui-scale))] text-ink-2">
                         {d.parentId ? nodes[d.parentId]?.name : ""}
                         {" · "}
                         {formatModified(d.modifiedAt)}
@@ -221,7 +221,7 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
             </button>
           ))}
           {docs.length === 0 && (
-            <div className="px-2.5 py-3 text-[11.5px] text-ink-2">
+            <div className="px-[calc(10px*var(--ui-scale))] py-3 text-11.5 text-ink-2">
               No notes yet
             </div>
           )}
@@ -235,10 +235,10 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
         : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-ink-2">
               <NotebookPen className="size-7" strokeWidth={1.4} />
-              <span className="text-[13px]">Create your first note</span>
+              <span className="text-13">Create your first note</span>
               <button
                 type="button"
-                className="mt-1 rounded-btn bg-accent px-3 py-1 text-[12px] font-medium text-white"
+                className="mt-1 rounded-btn bg-accent px-3 py-1 text-12 font-medium text-white"
                 onClick={newNote}
               >
                 New Note

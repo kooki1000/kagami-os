@@ -160,16 +160,16 @@ export default function TerminalApp({ focused }: AppWindowProps) {
 
   return (
     <div
-      className="flex h-full flex-col bg-(--surface) font-mono text-[12.5px] leading-relaxed"
+      className="flex h-full flex-col bg-(--surface) font-mono text-12.5/relaxed"
       onClick={() => inputRef.current?.focus()}
     >
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-3.5 py-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-[calc(14px*var(--ui-scale))] py-3">
         {entries.map(entry => (
           <div key={entry.id} className={`wrap-break-word whitespace-pre-wrap ${lineColor[entry.kind]}`}>
             {entry.text}
           </div>
         ))}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-[calc(6px*var(--ui-scale))]">
           <span className="flex-none whitespace-pre text-accent">
             {prompt}
             {" "}

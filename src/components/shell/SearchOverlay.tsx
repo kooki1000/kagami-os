@@ -76,30 +76,30 @@ export function SearchOverlay() {
         className="fixed left-1/2 z-50 flex max-h-[60vh] w-120 -translate-x-1/2 animate-flyout-in flex-col overflow-hidden rounded-[15px] shadow-(--shadow-deep) chrome hairline"
         style={{ top: MENU_BAR_HEIGHT + 80 }}
       >
-        <div className="flex flex-none items-center gap-2 px-3.5 py-2.5 hairline-b">
-          <SearchIcon className="size-3.5 flex-none opacity-55" aria-hidden />
+        <div className="flex flex-none items-center gap-2 px-[calc(14px*var(--ui-scale))] py-[calc(10px*var(--ui-scale))] hairline-b">
+          <SearchIcon className="size-[calc(14px*var(--ui-scale))] flex-none opacity-55" aria-hidden />
           <input
             type="text"
             autoFocus
             value={query}
             placeholder="Search files and folders"
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-2"
+            className="min-w-0 flex-1 bg-transparent text-13 text-ink outline-none placeholder:text-ink-2"
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
           />
           {!query && (
-            <span className="flex-none text-[11px] text-ink-2">{formatShortcut("⌘K")}</span>
+            <span className="flex-none text-11 text-ink-2">{formatShortcut("⌘K")}</span>
           )}
         </div>
 
         {!query && (
-          <div className="px-3.5 py-6 text-center text-[12.5px] text-ink-2">
+          <div className="px-[calc(14px*var(--ui-scale))] py-6 text-center text-12.5 text-ink-2">
             Type to search files and folders.
           </div>
         )}
 
         {query && results.length === 0 && (
-          <div className="px-3.5 py-6 text-center text-[12.5px] text-ink-2">
+          <div className="px-[calc(14px*var(--ui-scale))] py-6 text-center text-12.5 text-ink-2">
             No results for "
             {query}
             "
@@ -112,20 +112,20 @@ export function SearchOverlay() {
               <button
                 type="button"
                 key={result.node.id}
-                className={`flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-1.5 text-left ${
+                className={`flex w-full items-center gap-[calc(10px*var(--ui-scale))] rounded-[11px] px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-left ${
                   i === highlighted ? "bg-accent text-white" : "hover:bg-ph"
                 }`}
                 onPointerEnter={() => setHighlighted(i)}
                 onClick={() => openResult(i)}
               >
                 {result.node.type === "folder"
-                  ? <Folder className="size-3.75 flex-none" aria-hidden />
-                  : <File className="size-3.75 flex-none" aria-hidden />}
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
+                  ? <Folder className="size-[calc(15px*var(--ui-scale))] flex-none" aria-hidden />
+                  : <File className="size-[calc(15px*var(--ui-scale))] flex-none" aria-hidden />}
+                <span className="min-w-0 flex-1 truncate text-12.5 font-medium">
                   {result.node.name}
                 </span>
                 {result.path && (
-                  <span className={`flex-none truncate text-[11px] ${i === highlighted ? "text-white/70" : "text-ink-2"}`}>
+                  <span className={`flex-none truncate text-11 ${i === highlighted ? "text-white/70" : "text-ink-2"}`}>
                     {result.path}
                   </span>
                 )}

@@ -249,7 +249,7 @@ export function MenuBar() {
         <div className="fixed inset-0 z-30" onPointerDown={() => setOpenKey(null)} />
       )}
       <div
-        className="fixed inset-x-0 top-0 z-40 flex items-center px-3.75 text-[13px] text-ink chrome select-none hairline-b"
+        className="fixed inset-x-0 top-0 z-40 flex items-center px-[calc(15px*var(--ui-scale))] text-13 text-ink chrome select-none hairline-b"
         style={{ height: MENU_BAR_HEIGHT }}
       >
         <div className="flex items-center">
@@ -265,7 +265,7 @@ export function MenuBar() {
                     ? `menuitem-${menu.items[highlighted]?.id}`
                     : undefined
                 }
-                className={`flex items-center gap-1.75 rounded-btn px-2 py-0.5 ${
+                className={`flex items-center gap-[calc(7px*var(--ui-scale))] rounded-btn px-2 py-[calc(2px*var(--ui-scale))] ${
                   menu.bold ? "font-semibold" : "opacity-80"
                 } ${openKey === menu.key ? "bg-ph-2" : "hover:bg-ph"}`}
                 onPointerDown={(e) => {
@@ -342,7 +342,7 @@ export function MenuBar() {
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-3.5 text-[12.5px] opacity-80">
+        <div className="ml-auto flex items-center gap-[calc(14px*var(--ui-scale))] text-12.5 opacity-80">
           <OfflineIndicator />
           <button
             type="button"
@@ -350,7 +350,7 @@ export function MenuBar() {
             className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
             onClick={openSearch}
           >
-            <Search className="size-3.25" />
+            <Search className="size-[calc(13px*var(--ui-scale))]" />
           </button>
           <button
             type="button"
@@ -360,10 +360,10 @@ export function MenuBar() {
           >
             {resolved === "dark"
               ? (
-                  <Sun className="size-3.25" />
+                  <Sun className="size-[calc(13px*var(--ui-scale))]" />
                 )
               : (
-                  <Moon className="size-3.25" />
+                  <Moon className="size-[calc(13px*var(--ui-scale))]" />
                 )}
           </button>
           <button
@@ -372,9 +372,9 @@ export function MenuBar() {
             className="relative grid place-items-center rounded-md p-0.5 hover:bg-ph"
             onClick={() => (centerOpen ? closeCenter() : openCenter())}
           >
-            <Bell className="size-3.25" />
+            <Bell className="size-[calc(13px*var(--ui-scale))]" />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-3 rounded-full bg-accent-2 px-0.75 text-center text-[8px]/3 font-bold text-white tabular-nums">
+              <span className="absolute -top-0.5 -right-0.5 min-w-3 rounded-full bg-accent-2 px-[calc(3px*var(--ui-scale))] text-center text-[calc(8px*var(--ui-scale))]/3 font-bold text-white tabular-nums">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
@@ -412,7 +412,7 @@ function DropMenu({
             tabIndex={-1}
             disabled={item.disabled}
             data-highlighted={i === highlighted ? "true" : undefined}
-            className={`flex w-full items-center justify-between gap-6 rounded-btn px-2.5 py-1 text-left text-[13px] ${
+            className={`flex w-full items-center justify-between gap-6 rounded-btn px-[calc(10px*var(--ui-scale))] py-1 text-left text-13 ${
               item.disabled
                 ? "text-ink-2 opacity-50"
                 : i === highlighted
@@ -430,16 +430,16 @@ function DropMenu({
               onClose();
             }}
           >
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-[calc(6px*var(--ui-scale))]">
               {item.checked !== undefined && (
-                <span className={`w-3 text-[11px] ${item.checked ? "" : "invisible"}`}>
+                <span className={`w-3 text-11 ${item.checked ? "" : "invisible"}`}>
                   ✓
                 </span>
               )}
               {item.label}
             </span>
             {item.shortcut && (
-              <span className="text-[11.5px] opacity-55">{formatShortcut(item.shortcut)}</span>
+              <span className="text-11.5 opacity-55">{formatShortcut(item.shortcut)}</span>
             )}
           </button>
           {item.dividerAfter && <div className="mx-2 my-1 hairline-b" />}

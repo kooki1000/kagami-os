@@ -283,7 +283,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-2 select-none">
         <Image className="size-7" strokeWidth={1.4} />
-        <span className="text-[13px]">
+        <span className="text-13">
           {activeId ? "This image is no longer available" : "Open an image from Files"}
         </span>
       </div>
@@ -293,7 +293,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   if (!src) {
     return (
       <div className="grid h-full place-items-center">
-        <span className="size-2.5 animate-pulse rounded-full bg-accent" />
+        <span className="size-[calc(10px*var(--ui-scale))] animate-pulse rounded-full bg-accent" />
       </div>
     );
   }
@@ -309,7 +309,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
         <button type="button" aria-label="Zoom out" className={toolButton} onClick={() => zoomBy(1 / ZOOM_STEP)}>
           <ZoomOut className="size-4" />
         </button>
-        <span className="w-12 text-center font-mono text-[11px] text-ink-2 tabular-nums">
+        <span className="w-12 text-center font-mono text-11 text-ink-2 tabular-nums">
           {fitted ? "Fit" : `${Math.round(zoom * 100)}%`}
         </span>
         <button type="button" aria-label="Zoom in" className={toolButton} onClick={() => zoomBy(ZOOM_STEP)}>
@@ -341,7 +341,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
         <button type="button" aria-label="Next image" disabled={!hasSlideshow} className={toolButton} onClick={() => step(1)}>
           <SkipForward className="size-4" />
         </button>
-        <span className="ml-auto truncate text-[11.5px] text-ink-2">
+        <span className="ml-auto truncate text-11.5 text-ink-2">
           {natural ? `${natural.width} × ${natural.height}` : ""}
         </span>
       </div>

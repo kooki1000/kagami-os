@@ -26,7 +26,7 @@ export function AppSwitcherOverlay() {
       role="dialog"
       aria-modal="true"
       aria-label="App switcher"
-      className="fixed left-1/2 z-50 flex -translate-x-1/2 animate-flyout-in items-center gap-2.5 rounded-[15px] p-3 shadow-(--shadow-deep) chrome hairline"
+      className="fixed left-1/2 z-50 flex -translate-x-1/2 animate-flyout-in items-center gap-[calc(10px*var(--ui-scale))] rounded-[15px] p-3 shadow-(--shadow-deep) chrome hairline"
       style={{ top: MENU_BAR_HEIGHT + 80 }}
     >
       {order.map((appId, i) => {
