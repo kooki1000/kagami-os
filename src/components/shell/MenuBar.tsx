@@ -1,15 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { MenuItem, MenuSection } from "@/system/apps/types";
 import type { ThemePreference } from "@/system/theme/themeStore";
-import { Bell, Moon, Search, Sun, WifiOff } from "lucide-react";
+import { Bell, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { currentLocale, formatShortcut } from "@/lib/format";
 import { emitAppCommand } from "@/system/appCommands";
 import { getApp } from "@/system/apps/registry";
 import { executeCommand } from "@/system/commands";
-import { useOnlineStatus } from "@/system/network/useOnlineStatus";
 import {
-  notify,
   selectUnreadCount,
   useNotificationStore,
 } from "@/system/notifications/notificationStore";
@@ -17,6 +15,7 @@ import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { useSearchStore } from "@/system/search/searchStore";
 import { useThemeStore } from "@/system/theme/themeStore";
 import { MENU_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
+import { OfflineIndicator } from "./OfflineIndicator";
 
 interface BarMenuItem {
   /** Stable per-position id — not the label, which apps aren't guaranteed to keep unique. */
@@ -107,24 +106,7 @@ function Clock() {
   );
 }
 
-/** Fires a one-line toast on each online/offline transition — not on mount. */
-function useOfflineToast(online: boolean): void {
-  const lastRef = useRef(online);
-  useEffect(() => {
-    if (lastRef.current === online)
-      return;
-    lastRef.current = online;
-    notify(
-      online
-        ? { title: "Back online", body: "Reconnected." }
-        : { title: "You're offline", body: "Kagami keeps working locally." },
-    );
-  }, [online]);
-}
-
 export function MenuBar() {
-  const online = useOnlineStatus();
-  useOfflineToast(online);
   const focusedId = useWindowStore(s => s.focusedId);
   // Select just the appId (a primitive), not the window object — the menu
   // bar only needs to know *which app* is focused, so it shouldn't
@@ -361,16 +343,7 @@ export function MenuBar() {
         </div>
 
         <div className="ml-auto flex items-center gap-3.5 text-[12.5px] opacity-80">
-          {!online && (
-            <span
-              role="status"
-              aria-label="Offline"
-              className="flex items-center gap-1 rounded-full bg-ph px-2 py-0.5 text-[11px] font-medium text-ink-2"
-            >
-              <WifiOff className="size-3" />
-              Offline
-            </span>
-          )}
+          <OfflineIndicator />
           <button
             type="button"
             aria-label="Search"
