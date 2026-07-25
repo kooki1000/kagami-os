@@ -25,10 +25,10 @@ import { blobStore } from "@/system/fs/blobStore";
 import {
   childrenOf,
   isSystemNode,
-  isValidNodeName,
   pathOf,
   useFsStore,
 } from "@/system/fs/fsStore";
+import { isCommittableRename } from "@/system/fs/renameCommit";
 import {
   DOCUMENTS_ID,
   HOME_ID,
@@ -39,7 +39,7 @@ import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
-import { nodeSize } from "./fileMeta";
+import { folderSizes, nodeSize } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { NodeInfoPanel } from "./NodeInfoPanel";
@@ -127,9 +127,19 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // listener needs to re-attach to whichever is current.
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const typeAheadRef = useRef({ text: "", at: 0 });
+  const confirmEmptyTimerRef = useRef<number | null>(null);
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
   useEffect(() => {
     folderInputRef.current?.setAttribute("webkitdirectory", "");
+  }, []);
+
+  // The "Empty Trash" confirm-arm timer (review-backlog #18) is never
+  // cleared on unmount otherwise — harmless in itself (it only calls
+  // `setConfirmEmpty` on a state hook React already no-ops for an unmounted
+  // component), but it's a needless pending timer outliving the window.
+  useEffect(() => () => {
+    if (confirmEmptyTimerRef.current !== null)
+      window.clearTimeout(confirmEmptyTimerRef.current);
   }, []);
 
   const cwd = history[historyIndex] ?? HOME_ID;
@@ -151,7 +161,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   }
 
   // If the current folder vanished (trashed/deleted elsewhere), go home.
-  if (ready && !nodes[cwd]) {
+  // Guarded explicitly on `cwd !== HOME_ID` (review-backlog #18) rather than
+  // relying on HOME_ID always existing to make this converge — without it,
+  // a store somehow missing HOME_ID too would render-loop resetting `cwd`
+  // to a still-missing HOME_ID forever. With the guard it just settles on
+  // `cwd === HOME_ID` and renders through the empty `visible` list.
+  if (ready && cwd !== HOME_ID && !nodes[cwd]) {
     setHistory([HOME_ID]);
     setHistoryIndex(0);
     if (selectedIds.size > 0)
@@ -333,6 +348,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     else openFile(node);
   }
 
+  // One linear pass over the whole tree (review-backlog #5), reused by
+  // every row in FilesView's list view instead of each row recursing/
+  // rescanning `nodes` for its own folder size.
+  const sizes = useMemo(() => folderSizes(nodes), [nodes]);
   const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -453,6 +472,21 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     }
     setSelectedIds(new Set([node.id]));
     setAnchorId(node.id);
+  }
+
+  // A marquee drag (FilesView) reports its live hit set; route it through
+  // the same anchor/cursor update handleSelectNode does instead of just
+  // `setSelectedIds` (review-backlog #18) — otherwise anchorId/cursorId
+  // stay wherever a previous click left them, so an arrow key right after
+  // marqueeing a range collapses the selection to a neighbor of that stale
+  // cursor rather than continuing from the marquee. `ids` preserves
+  // FilesView's insertion order (visible-list order), so the last id is the
+  // marquee's bottom/right-most hit — a reasonable cursor to land on.
+  function handleMarqueeSelect(ids: Set<string>): void {
+    setSelectedIds(ids);
+    const last = [...ids].at(-1) ?? null;
+    setAnchorId(last);
+    setCursorId(last);
   }
 
   // Live grid column count (B6), read from the actual laid-out CSS grid
@@ -811,7 +845,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                   }
                   else {
                     setConfirmEmpty(true);
-                    window.setTimeout(setConfirmEmpty, EMPTY_TRASH_CONFIRM_MS, false);
+                    confirmEmptyTimerRef.current = window.setTimeout(setConfirmEmpty, EMPTY_TRASH_CONFIRM_MS, false);
                   }
                 }}
               >
@@ -883,7 +917,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
         <FilesView
           items={visible}
-          nodes={nodes}
+          folderSizes={sizes}
           view={view}
           selectedIds={selectedIds}
           cursorId={cursorId}
@@ -898,21 +932,16 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           }
           onSelectNode={handleSelectNode}
           onClearSelection={() => setSelectedIds(new Set())}
-          onMarqueeSelect={setSelectedIds}
+          onMarqueeSelect={handleMarqueeSelect}
           onOpen={openNode}
           onItemContextMenu={onItemContextMenu}
           onBackgroundContextMenu={onBackgroundContextMenu}
           onRenameCommit={(id, name) => {
-            if (name.trim() && !isValidNodeName(name)) {
-              notify({
-                title: "Can’t rename",
-                body: "Names can’t contain a slash (/).",
-                tone: "danger",
-              });
-              return;
-            }
+            if (!isCommittableRename(name))
+              return false;
             rename(id, name);
             setRenamingId(null);
+            return true;
           }}
           onRenameCancel={() => setRenamingId(null)}
           onDropInto={handleDrop}

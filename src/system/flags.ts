@@ -69,6 +69,17 @@ export function isFlagEnabled(id: FlagId): boolean {
   return overrideValue(id) ?? envValue(id) ?? FLAG_BY_ID[id].default;
 }
 
+/**
+ * What a flag would resolve to with no per-device override — env, else the
+ * registered default (review-backlog #14). Lets the UI tell "this override
+ * merely restates the underlying value" from "this override actually
+ * changes something", so toggling a flag back to its effective default can
+ * clear the override instead of pinning it.
+ */
+export function effectiveDefault(id: FlagId): boolean {
+  return envValue(id) ?? FLAG_BY_ID[id].default;
+}
+
 /** Pin a per-device override; pass `null` to clear it and fall back. */
 export function setFlagOverride(id: FlagId, value: boolean | null): void {
   try {

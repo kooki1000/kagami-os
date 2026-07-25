@@ -114,6 +114,16 @@ describe("navigation + read commands", () => {
     expect(out).toContain("deep.txt");
     expect(out).toContain("note.md");
   });
+
+  it("ls/cd error rather than throw when `cwd` itself doesn't exist in nodes (review-backlog #18)", () => {
+    // `resolvePath` hands back `cwd` unchecked when there's no real path
+    // segment to resolve (`ls`'s own bare-cwd case, `cd .`) — a
+    // corrupted/vanished cwd shouldn't crash the engine.
+    expect(() => run("ls", "ghost-cwd")).not.toThrow();
+    expect(run("ls", "ghost-cwd").lines[0]).toMatchObject({ kind: "error" });
+    expect(() => run("cd .", "ghost-cwd")).not.toThrow();
+    expect(run("cd .", "ghost-cwd").lines[0]).toMatchObject({ kind: "error" });
+  });
 });
 
 describe("mutating commands", () => {

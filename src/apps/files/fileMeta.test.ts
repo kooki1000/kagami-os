@@ -1,7 +1,7 @@
 import type { FsNode } from "@/system/fs/types";
 import { describe, expect, it } from "vitest";
 import { indexNodes } from "@/system/fs/fsStore";
-import { isAudioNode, isVideoNode, nodeKind, nodeSize } from "./fileMeta";
+import { folderSizes, isAudioNode, isVideoNode, nodeKind, nodeSize } from "./fileMeta";
 
 function node(partial: Partial<FsNode> & Pick<FsNode, "id" | "parentId" | "name" | "type">): FsNode {
   return { createdAt: 0, modifiedAt: 0, ...partial };
@@ -83,5 +83,39 @@ describe("nodeSize (B8)", () => {
       node({ id: "box", parentId: "home", name: "Box", type: "folder" }),
     ]);
     expect(nodeSize(nodes, nodes.box)).toBe(0);
+  });
+});
+
+describe("folderSizes (review-backlog #5)", () => {
+  it("computes every folder's rolled-up size in one pass, matching nodeSize per folder", () => {
+    const nodes = indexNodes([
+      node({ id: "box", parentId: "home", name: "Box", type: "folder" }),
+      node({ id: "a", parentId: "box", name: "a.txt", type: "file", content: "12345" }), // 5 bytes
+      node({ id: "sub", parentId: "box", name: "Sub", type: "folder" }),
+      node({ id: "b", parentId: "sub", name: "b.png", type: "file", contentRef: { hash: "h", size: 100 } }),
+      node({ id: "c", parentId: "sub", name: "c.txt", type: "file", content: "12" }), // 2 bytes
+      node({ id: "empty", parentId: "home", name: "Empty", type: "folder" }),
+    ]);
+    const sizes = folderSizes(nodes);
+    expect(sizes.get("box")).toBe(5 + 100 + 2);
+    expect(sizes.get("sub")).toBe(100 + 2);
+    expect(sizes.get("empty")).toBe(0);
+    // Agrees with the single-node lookup for the same tree.
+    expect(sizes.get("box")).toBe(nodeSize(nodes, nodes.box));
+    expect(sizes.get("sub")).toBe(nodeSize(nodes, nodes.sub));
+  });
+
+  it("terminates on a corrupt parentId cycle instead of recursing forever", () => {
+    // `a` and `b` are each other's parent — a corrupted tree that would
+    // stack-overflow a naive recursive implementation.
+    const nodes = indexNodes([
+      node({ id: "a", parentId: "b", name: "A", type: "folder" }),
+      node({ id: "b", parentId: "a", name: "B", type: "folder" }),
+    ]);
+    expect(() => folderSizes(nodes)).not.toThrow();
+  });
+
+  it("returns an empty map for an empty node set", () => {
+    expect(folderSizes({}).size).toBe(0);
   });
 });

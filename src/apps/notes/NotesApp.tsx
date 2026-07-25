@@ -8,9 +8,9 @@ import { RenameInput } from "@/components/ui/RenameInput";
 import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId } from "@/system/apps/openFile";
-import { isDescendantOf, isValidNodeName, useFsStore } from "@/system/fs/fsStore";
+import { isDescendantOf, useFsStore } from "@/system/fs/fsStore";
+import { isCommittableRename } from "@/system/fs/renameCommit";
 import { DOCUMENTS_ID, TRASH_ID } from "@/system/fs/types";
-import { notify } from "@/system/notifications/notificationStore";
 import { useWindowStore } from "@/system/windows/windowStore";
 
 const AUTOSAVE_MS = 600;
@@ -113,6 +113,10 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
   }, [windowId, selectedId]);
 
   // Every text document on the drive (not in the Trash), newest first.
+  // `isDescendantOf` alone covers a direct child of Trash too (its own
+  // `parentId === TRASH_ID` check is the loop's first iteration), so a
+  // separate `n.parentId !== TRASH_ID` here would be redundant
+  // (review-backlog #18).
   const docs = useMemo(
     () =>
       Object.values(nodes)
@@ -120,7 +124,6 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
           n =>
             n.type === "file"
             && (n.mimeType?.startsWith("text/") ?? false)
-            && n.parentId !== TRASH_ID
             && !isDescendantOf(nodes, n.id, TRASH_ID),
         )
         .sort((a, b) => b.modifiedAt - a.modifiedAt),
@@ -202,16 +205,11 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
                       value={d.name}
                       selectStem
                       onCommit={(name) => {
-                        if (name.trim() && !isValidNodeName(name)) {
-                          notify({
-                            title: "Can’t rename",
-                            body: "Names can’t contain a slash (/).",
-                            tone: "danger",
-                          });
-                          return;
-                        }
+                        if (!isCommittableRename(name))
+                          return false;
                         rename(d.id, name);
                         setRenamingId(null);
+                        return true;
                       }}
                       onCancel={() => setRenamingId(null)}
                     />

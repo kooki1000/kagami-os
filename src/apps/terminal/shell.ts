@@ -408,6 +408,12 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       if (targetId === null)
         return err(`ls: ${args[0]}: no such file or directory`);
       const target = nodes[targetId];
+      // Defensive (review-backlog #18): resolvePath can hand back `cwd`
+      // unchecked (an empty `rest`), so a caller whose `cwd` no longer
+      // exists in `nodes` would otherwise crash here rather than the
+      // engine handling it itself.
+      if (!target)
+        return err(`ls: ${args[0]}: no such file or directory`);
       if (target.type === "file")
         return out(target.name);
       const kids = childrenOf(nodes, targetId);
@@ -423,7 +429,11 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       const targetId = resolvePath(nodes, cwd, dest);
       if (targetId === null)
         return err(`cd: ${dest}: no such file or directory`);
-      if (nodes[targetId].type !== "folder")
+      // Defensive (review-backlog #18) — same unguarded-lookup risk as `ls`.
+      const target = nodes[targetId];
+      if (!target)
+        return err(`cd: ${dest}: no such file or directory`);
+      if (target.type !== "folder")
         return err(`cd: ${dest}: not a directory`);
       return { lines: [], cwd: targetId };
     }

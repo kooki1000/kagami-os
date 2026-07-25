@@ -461,7 +461,11 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
           rect.height < w.minSize.height ? w.rect.y : rect.y,
           MENU_BAR_HEIGHT,
         );
-        return { ...w, rect: { x, y, width, height }, mode: "normal" };
+        // A manual resize always lands in "normal" mode (review-backlog
+        // #18) — clear `restoreRect` along with it so a later maximize/snap
+        // doesn't "restore" back to a pre-resize rect the window never
+        // actually returns to.
+        return { ...w, rect: { x, y, width, height }, mode: "normal", restoreRect: null };
       }),
     });
   },

@@ -4,7 +4,7 @@ import type { ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { useDockStore } from "@/system/dock/dockStore";
-import { FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
+import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import {
   ACCENTS,
   accentSwatch,
@@ -264,14 +264,34 @@ function FlagsDebug() {
                 </div>
                 <div className="truncate text-[11px] text-ink-2">{flag.description}</div>
               </div>
-              <Switch
-                checked={on}
-                label={`Toggle ${flag.label}`}
-                onChange={(value) => {
-                  setFlagOverride(flag.id, value);
-                  setTick(n => n + 1);
-                }}
-              />
+              <div className="flex flex-none items-center gap-2">
+                {hasFlagOverride(flag.id) && (
+                  <button
+                    type="button"
+                    className="rounded-btn px-1.5 py-0.5 text-[10.5px] font-medium text-ink-2 hover:bg-ph hover:text-ink"
+                    onClick={() => {
+                      setFlagOverride(flag.id, null);
+                      setTick(n => n + 1);
+                    }}
+                  >
+                    Reset to default
+                  </button>
+                )}
+                <Switch
+                  checked={on}
+                  label={`Toggle ${flag.label}`}
+                  onChange={(value) => {
+                    // Toggling back to whatever the flag would resolve to
+                    // anyway (review-backlog #14) clears the override
+                    // instead of pinning a value that merely restates it —
+                    // otherwise a flag toggled on then off stays pinned off
+                    // per device forever, ignoring any future default/env
+                    // change.
+                    setFlagOverride(flag.id, value === effectiveDefault(flag.id) ? null : value);
+                    setTick(n => n + 1);
+                  }}
+                />
+              </div>
             </div>
           );
         })}
@@ -289,8 +309,7 @@ function AboutSection() {
     : `Virtual file system (IndexedDB, ${persisted ? "persistent" : "best-effort"})`;
 
   const facts: Array<[string, string]> = [
-    ["Version", "0.6.0 — “Lagoon”"],
-    ["Build", "Phase 6 · Settings"],
+    ["Version", __APP_VERSION__],
     ["Engine", "React + TypeScript · Vite"],
     ["Storage", storageLabel],
   ];
