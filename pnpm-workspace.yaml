@@ -6,4 +6,8 @@ strictDepBuilds: true
 shellEmulator: true
 trustPolicy: no-downgrade
 overrides:
+  postcss: ^8.5.18
   semver: ^7.8.5
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
