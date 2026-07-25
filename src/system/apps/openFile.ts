@@ -59,14 +59,21 @@ function launchFileInApp(node: FsNode, appId: string): boolean {
     return false;
   }
 
-  // Multi-instance apps (e.g. the image viewer) get one window per file;
-  // focus an existing one instead of opening a duplicate.
+  // Multi-instance apps (e.g. the image viewer, the player) get one window
+  // per file; focus an existing one instead of opening a duplicate.
   if (!app.singleInstance) {
     const store = useWindowStore.getState();
     const existing = store.windows.find(
       w => w.appId === app.id && payloadFileId(w.payload) === node.id,
     );
     if (existing) {
+      // Refresh the payload before focusing (mirrors the singleInstance
+      // branch of `openWindow` below) — a fresh payload object, even with
+      // the same fileId, is what lets the app notice a re-launch during
+      // render (review-backlog #7: Player's `activeId` only re-syncs when
+      // `payload` changes identity, not when the window is merely focused).
+      const refreshedPayload: FilePayload = { fileId: node.id };
+      store.setWindowPayload(existing.id, refreshedPayload);
       if (existing.minimized)
         store.restoreWindow(existing.id);
       else store.focusWindow(existing.id);
@@ -97,8 +104,14 @@ export function openFile(node: FsNode): boolean {
  * the "always open with" behavior users expect from a desktop file manager.
  */
 export function openFileWithApp(node: FsNode, appId: string): boolean {
-  const mime = node.mimeType ?? "";
-  if (mime)
-    useSettingsStore.getState().setFileAssociation(mime, appId);
-  return launchFileInApp(node, appId);
+  const ok = launchFileInApp(node, appId);
+  // Persist only once the launch actually succeeded (review-backlog #18) —
+  // otherwise a bad/unregistered appId still overwrites the association,
+  // silently breaking every future plain `openFile()` for this mime type.
+  if (ok) {
+    const mime = node.mimeType ?? "";
+    if (mime)
+      useSettingsStore.getState().setFileAssociation(mime, appId);
+  }
+  return ok;
 }

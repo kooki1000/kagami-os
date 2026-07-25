@@ -13,13 +13,28 @@ import { isAudioNode, isVideoNode } from "../files/fileMeta";
 export default function PlayerApp({ windowId, payload }: AppWindowProps) {
   // The playlist cursor (D5): starts at the file that opened the window, but
   // Next/Previous move it within this same window rather than launching a
-  // new one — openFile.ts's "reuse an existing window" match is keyed off
-  // the *opening* payload, so re-opening a since-selected track from Files
-  // will still spawn a second window. An acceptable gap for a first pass.
+  // new one.
   const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
+
+  // A re-launch ("open this track in Player") replaces the window payload
+  // with a fresh object; adopt its file as the selection (state adjustment
+  // during render) — otherwise `activeId` only ever seeds from the
+  // *opening* payload, so re-opening a since-skipped-to track re-focuses
+  // this window without switching what it plays (review-backlog #7).
+  // Compared by identity, not fileId, so re-opening the same track after
+  // skipping elsewhere still re-selects it. Mirrors NotesApp's identical
+  // pattern.
+  const [lastPayload, setLastPayload] = useState(payload);
+  if (payload !== lastPayload) {
+    setLastPayload(payload);
+    const payloadId = payloadFileId(payload);
+    if (payloadId)
+      setActiveId(payloadId);
+  }
+
   const nodes = useFsStore(s => s.nodes);
   const node = activeId ? nodes[activeId] : undefined;
-  const blobUrl = useBlobUrl(node?.contentRef);
+  const { url: blobUrl } = useBlobUrl(node?.contentRef);
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
   // Player windows are titled after the current track; keep the title bar in
