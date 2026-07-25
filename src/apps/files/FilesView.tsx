@@ -162,15 +162,12 @@ export function FilesView(props: FilesViewProps) {
       document.removeEventListener("mouseup", onUp);
       dragCleanupRef.current = null;
       setMarquee(null);
-      // If the drag ended over this container, the click that immediately
-      // follows this mouseup still needs to see `suppressClickRef` as true
-      // so it can swallow itself (the container's onClick clears the flag
-      // when it does). Ending the drag *outside* the container (the
-      // sidebar, another window, off-browser) means no click ever reaches
-      // it to consume the flag, so it would otherwise stick and silently
-      // eat the next, unrelated background click (review-backlog #18) —
-      // clear it here on a fresh tick either way, after any same-gesture
-      // click already had its turn.
+      // Clear on a fresh tick regardless of where the drag ended
+      // (review-backlog #18): if it ended outside this container, no click
+      // ever arrives here to consume the flag, which would otherwise stick
+      // and eat the next unrelated click. The `setTimeout` still lets a
+      // same-container click see the flag as true first, so it can swallow
+      // itself.
       window.setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
