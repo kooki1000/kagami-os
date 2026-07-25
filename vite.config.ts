@@ -1,9 +1,17 @@
 import type { Plugin } from "vite";
+import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+
+// Read at config-eval time rather than a JSON import assertion, so this
+// stays agnostic of the Node/TS import-attributes syntax churn — this file
+// only ever needs the one field.
+const pkgVersion = (
+  JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")) as { version: string }
+).version;
 
 /**
  * Content-Security-Policy for the static build. The app is fully
@@ -55,6 +63,12 @@ function cspMeta(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), cspMeta()],
+  // Injected build-time so About (SettingsApp) shows the real package
+  // version instead of a string that only ever gets more stale
+  // (review-backlog #15).
+  define: {
+    __APP_VERSION__: JSON.stringify(pkgVersion),
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
