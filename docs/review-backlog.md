@@ -1,8 +1,32 @@
 # Review backlog
 
-Open findings from the full-scale review on `review/full-audit` (2026-07-18).
-Everything here was **left unfixed deliberately** — the fixes that shipped are
-in commits `a9a6546`, `399993c`, `dfa2fa3`, `164eca2`.
+Findings from the full-scale review on `review/full-audit` (2026-07-18).
+Everything here was **left unfixed deliberately at the time** — the fixes that
+shipped then are in commits `a9a6546`, `399993c`, `dfa2fa3`, `164eca2`.
+
+> **Partly overtaken by events (verified against `main`, 2026-07-25).** The
+> H1 accessibility pass in Phase 11 closed several of these incidentally,
+> without updating this file. Confirmed **fixed** by reading the current
+> code — do not re-fix:
+>
+> - **§1 and §2 — context-menu and dock-menu clipping.** `ContextMenu.tsx`
+>   now measures after mount and clamps (`useClampedPosition`), and `Dock`
+>   reuses `ContextMenu` instead of its own reimplementation. The hardcoded
+>   200px guess is gone.
+> - **§6 — Get Info keyboard modality.** `NodeInfoPanel` focus-traps with
+>   `trapFocus: true`, and `FilesApp`'s window key handler is gated while it
+>   is open.
+> - **§8 — Files selection semantics.** `FilesView` has roving `tabIndex`
+>   and `aria-selected`, and cites this entry in its comments.
+> - **§9 — Escape.** `useFocusTrap` handles Escape-to-close for the menus
+>   and the notification center.
+>
+> The rest were spot-checked and **remain open**, including §3, §4, §5, §10,
+> §12, §13, §14, and §15. §15 is now doubly wrong: About hardcodes
+> `0.6.0 — "Lagoon"` while `package.json` says `0.1.0`.
+>
+> Step 14 (`ROADMAP.md`) starts by re-verifying every entry against `main`,
+> not by fixing from this list as written.
 
 Each entry records where the bug is, how to reproduce it, and a concrete fix.
 Severity is about user impact, not effort. "Verified" means someone drove the
