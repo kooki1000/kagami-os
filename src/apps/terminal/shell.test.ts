@@ -157,6 +157,21 @@ describe("mutating commands", () => {
     expect(nodesByName("log.txt")?.content).toBe("first\nsecond\n");
   });
 
+  // Technical debt register T5: a naive redirect scan can mistake a `>`
+  // that's part of the quoted text for a real redirect.
+  it("a quoted '>' is literal text, not a redirect (T5)", () => {
+    expect(text("echo \"a > b\"")).toBe("a > b");
+    expect(nodesByName("b")).toBeUndefined();
+
+    expect(text("echo 'x >> y'")).toBe("x >> y");
+    expect(nodesByName("y")).toBeUndefined();
+  });
+
+  it("a redirect target can itself be quoted", () => {
+    run("echo hi > \"my file.txt\"", DOCUMENTS_ID);
+    expect(nodesByName("my file.txt")?.content).toBe("hi\n");
+  });
+
   it("mkdir/touch resolve path arguments against an existing parent", () => {
     run("mkdir Reports/Nested", DOCUMENTS_ID);
     expect(nodesByName("Nested")?.parentId).toBe("reports");

@@ -44,6 +44,6 @@ export const useSettingsStore = create<SettingsStore>()(
         set({ fileAssociations: rest });
       },
     }),
-    { name: "kagami-settings" },
+    { name: "kagami-settings", version: 1 },
   ),
 );

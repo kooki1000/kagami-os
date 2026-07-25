@@ -41,6 +41,7 @@ export const useThemeStore = create<ThemeStore>()(
     }),
     {
       name: "kagami-theme",
+      version: 1,
       // Only the preference is durable; `resolved` is recomputed from it (and
       // the live OS setting) right here in `merge` rather than via a separate
       // `onRehydrateStorage` callback. localStorage reads are synchronous, so
