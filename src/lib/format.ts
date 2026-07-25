@@ -1,9 +1,4 @@
-/**
- * Locale for `Intl`/`toLocaleString` calls — the runtime's own language when
- * known (e.g. the browser's `navigator.language`), or `undefined` so the API
- * falls back to its own runtime default instead of a hardcoded locale (H2:
- * this repo has no translated content, just a locale-aware *format*).
- */
+/** Locale for `Intl`/`toLocaleString` calls — `navigator.language`, or `undefined` to use the runtime default. */
 export function currentLocale(): string | undefined {
   return typeof navigator === "undefined" ? undefined : navigator.language;
 }
