@@ -1,34 +1,22 @@
-/**
- * Best-effort request for durable storage (ROADMAP.md risk R1): browsers may
- * evict IndexedDB/localStorage for a site under storage pressure unless the
- * origin has been granted "persistent" storage. Requesting it can't force a
- * grant — that's up to browser heuristics (installed PWAs and frequently
- * visited sites are favored) — but asking is free, and the result is worth
- * showing the user rather than silently hoping. Deliberately not a Zustand
- * store: this resolves once per session and has exactly one reader
- * (Settings › About), so a plain memoized promise is enough.
- */
+import { useEffect, useState } from "react";
 
-let resolved: boolean | null = null;
+/** Best-effort request for durable storage (ROADMAP.md risk R1) — result shown in Settings › About. */
 
-const request: Promise<boolean | null> = (async () => {
-  if (typeof navigator === "undefined" || !navigator.storage?.persist)
-    return null;
-  try {
-    resolved = await navigator.storage.persist();
-  }
-  catch {
-    resolved = null;
-  }
-  return resolved;
-})();
+let pending: Promise<boolean | null> | null = null;
 
-/** Kick off the request. Idempotent — every caller shares the same promise. */
+/** Idempotent — every caller shares the same in-flight/settled promise. */
 export function requestPersistentStorage(): Promise<boolean | null> {
-  return request;
+  pending ??= typeof navigator === "undefined" || !navigator.storage?.persist
+    ? Promise.resolve(null)
+    : navigator.storage.persist().catch(() => null);
+  return pending;
 }
 
-/** Last-known result, synchronously: `null` before it resolves or when unsupported. */
-export function getPersistedStorageStatus(): boolean | null {
-  return resolved;
+/** Whether storage persistence was granted — `null` while pending or unsupported. */
+export function usePersistentStorageStatus(): boolean | null {
+  const [status, setStatus] = useState<boolean | null>(null);
+  useEffect(() => {
+    requestPersistentStorage().then(setStatus);
+  }, []);
+  return status;
 }
