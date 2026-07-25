@@ -1,6 +1,6 @@
 /**
- * Feature flags — the dark-shipping seam for later phases (backend/sync land
- * behind `online` through Phase 13). Resolution order, highest wins:
+ * Feature flags — the dark-shipping seam: work can land on `main` behind a
+ * flag before it's ready to be on by default. Resolution order, highest wins:
  *
  *   1. localStorage override  (`kagami:flag:<id>` = "on" | "off") — per device,
  *      set from the Settings › About debug list or the console.
@@ -9,7 +9,7 @@
  *
  * Flags are read synchronously; there is no reactive store on purpose — a
  * flag's value is stable for a session (overrides take effect on reload),
- * which keeps call sites (`if (isFlagEnabled("online"))`) trivial.
+ * which keeps call sites (`if (isFlagEnabled("e2e_crash"))`) trivial.
  */
 
 export interface FlagDef {
@@ -20,15 +20,9 @@ export interface FlagDef {
   default: boolean;
 }
 
-export type FlagId = "online" | "e2e_crash";
+export type FlagId = "e2e_crash";
 
 export const FLAGS: readonly FlagDef[] = [
-  {
-    id: "online",
-    label: "Online mode",
-    description: "Accounts, remote storage, and sync (Phase 13). Not yet wired up.",
-    default: false,
-  },
   {
     id: "e2e_crash",
     label: "E2E crash trigger",
