@@ -1,12 +1,11 @@
 import type { DragEvent, MouseEvent as ReactMouseEvent } from "react";
-import type { NodeMap } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { formatBytes, formatModified } from "@/lib/format";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { draggedNodeIds, hasExternalFiles, hasNodeDrag, startNodeDrag } from "./dnd";
-import { isImageNode, nodeKind, nodeSize } from "./fileMeta";
+import { fileBytes, isImageNode, nodeKind } from "./fileMeta";
 import { NodeGlyph } from "./NodeGlyph";
 
 export type SelectMode = "replace" | "toggle" | "range";
@@ -16,8 +15,8 @@ const MARQUEE_ENGAGE_THRESHOLD_PX = 4;
 
 export interface FilesViewProps {
   items: FsNode[];
-  /** Full tree, for the list view's Size column (B8) — folder sizes are a recursive rollup, so they need more than just the visible `items`. */
-  nodes: NodeMap;
+  /** Every folder's rolled-up byte size (B8), computed once (`folderSizes(nodes)`, memoized per `nodes` identity) rather than per row — the list view's Size column looks folders up here instead of recursing inline. */
+  folderSizes: Map<string, number>;
   view: "grid" | "list";
   selectedIds: Set<string>;
   /** The roving keyboard-nav cursor (B6) — exactly the item matching this id is a Tab stop; every other item is `tabIndex={-1}` (review-backlog #8). */
@@ -32,7 +31,8 @@ export interface FilesViewProps {
   onOpen: (node: FsNode) => void;
   onItemContextMenu: (e: ReactMouseEvent, node: FsNode) => void;
   onBackgroundContextMenu: (e: ReactMouseEvent) => void;
-  onRenameCommit: (id: string, name: string) => void;
+  /** Return `false` to reject the name — see `RenameInput`'s `onCommit` contract (review-backlog #4). */
+  onRenameCommit: (id: string, name: string) => boolean;
   onRenameCancel: () => void;
   onDropInto: (folderId: string, nodeIds: string[]) => void;
   /** A drag from the host OS was dropped onto this folder (B2 upload). */
@@ -45,7 +45,7 @@ export interface FilesViewProps {
 
 /** Grid-view image preview: an uploaded/blob-backed image, or inline data URL. */
 function Thumbnail({ node }: { node: FsNode }) {
-  const blobUrl = useBlobUrl(node.contentRef);
+  const { url: blobUrl } = useBlobUrl(node.contentRef);
   const src = node.content ?? blobUrl;
   if (isImageNode(node) && src) {
     return (
@@ -85,7 +85,7 @@ function rectsOverlap(a: MarqueeRect, b: DOMRect): boolean {
 export function FilesView(props: FilesViewProps) {
   const {
     items,
-    nodes,
+    folderSizes,
     view,
     selectedIds,
     cursorId,
@@ -111,6 +111,13 @@ export function FilesView(props: FilesViewProps) {
   const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
   const itemsRef = useRef(new Map<string, HTMLElement>());
   const suppressClickRef = useRef(false);
+  // Imperative cleanup for the marquee's document-level listeners, so a
+  // FilesView unmount mid-drag (e.g. ⌘W while the button is still held)
+  // doesn't leave them attached forever (review-backlog #18) — they're
+  // started outside React's effect lifecycle (from a mousedown handler), so
+  // this is the only hook available to tear them down on unmount.
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   function registerItemRef(id: string) {
     return (el: HTMLElement | null) => {
@@ -153,10 +160,27 @@ export function FilesView(props: FilesViewProps) {
     function onUp(): void {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      dragCleanupRef.current = null;
       setMarquee(null);
+      // If the drag ended over this container, the click that immediately
+      // follows this mouseup still needs to see `suppressClickRef` as true
+      // so it can swallow itself (the container's onClick clears the flag
+      // when it does). Ending the drag *outside* the container (the
+      // sidebar, another window, off-browser) means no click ever reaches
+      // it to consume the flag, so it would otherwise stick and silently
+      // eat the next, unrelated background click (review-backlog #18) —
+      // clear it here on a fresh tick either way, after any same-gesture
+      // click already had its turn.
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
     }
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+    dragCleanupRef.current = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
   }
 
   function dropHandlers(node: FsNode) {
@@ -206,6 +230,12 @@ export function FilesView(props: FilesViewProps) {
       "draggable": renamingId !== node.id,
       "onMouseDown": (e: ReactMouseEvent) => e.stopPropagation(),
       "onDragStart": (e: DragEvent) => {
+        // Match onContextMenu below: dragging an item outside the current
+        // selection replaces the selection with just that item, instead of
+        // moving it alone while leaving the old selection's highlight
+        // stale on screen (review-backlog #18).
+        if (!selectedIds.has(node.id))
+          onSelectNode(node, "replace");
         const ids = selectedIds.has(node.id) && selectedIds.size > 1 ? [...selectedIds] : [node.id];
         startNodeDrag(e, ids);
       },
@@ -400,7 +430,9 @@ export function FilesView(props: FilesViewProps) {
                   </td>
                   <td className="px-2 py-1.5 text-ink-2">{formatModified(node.modifiedAt)}</td>
                   <td className="px-2 py-1.5 text-ink-2">{nodeKind(node)}</td>
-                  <td className="px-2 py-1.5 text-right text-ink-2">{formatBytes(nodeSize(nodes, node))}</td>
+                  <td className="px-2 py-1.5 text-right text-ink-2">
+                    {formatBytes(node.type === "folder" ? (folderSizes.get(node.id) ?? 0) : fileBytes(node))}
+                  </td>
                 </tr>
               );
             })}
