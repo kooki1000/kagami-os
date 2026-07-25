@@ -15,7 +15,8 @@ import { getApp } from "@/system/apps/registry";
 import { autoPosition, clampIconPosition, DESKTOP_CELL_W } from "@/system/desktop/desktopLayout";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { blobStore } from "@/system/fs/blobStore";
-import { childrenOf, isSystemNode, isValidNodeName, pathOf, useFsStore } from "@/system/fs/fsStore";
+import { childrenOf, isSystemNode, pathOf, useFsStore } from "@/system/fs/fsStore";
+import { isCommittableRename } from "@/system/fs/renameCommit";
 import { DESKTOP_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { useWindowStore } from "@/system/windows/windowStore";
@@ -148,17 +149,12 @@ export function Desktop() {
       setSelectedId(lastLanded);
   }
 
-  function commitRename(id: string, name: string): void {
-    if (name.trim() && !isValidNodeName(name)) {
-      notify({
-        title: "Can’t rename",
-        body: "Names can’t contain a slash (/).",
-        tone: "danger",
-      });
-      return;
-    }
+  function commitRename(id: string, name: string): boolean {
+    if (!isCommittableRename(name))
+      return false;
     rename(id, name);
     setRenamingId(null);
+    return true;
   }
 
   function menuEntries(state: MenuState): ContextMenuEntry[] {
