@@ -15,14 +15,10 @@ import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
 const adapter = isTauri() ? createTauriAdapter() : createIdbAdapter();
 
 /**
- * Every `adapter.putMany`/`removeMany`/blob-sweep call is fire-and-forget
- * (see `commit`/`removeIds` below), so a write failure had nowhere to surface
- * but the console — the in-memory store kept showing the change as saved
- * while the bytes silently never reached disk (review-backlog.md §17). Log
- * for diagnostics, but also tell the user: quota exhaustion is actionable,
- * everything else at least explains why a reload might lose the change.
- * Exported for direct unit testing — the (fire-and-forget) call sites below
- * don't give tests an easy hook into the async `.catch` branch itself.
+ * Every persistence call below is fire-and-forget, so a write failure had
+ * nowhere to surface but the console (review-backlog.md §17) — notify the
+ * user too, with actionable copy for quota exhaustion. Exported for direct
+ * unit testing.
  */
 export function logPersistError(error: unknown): void {
   console.error("[kagami-fs] persistence failed:", error);
@@ -121,7 +117,7 @@ export function isDescendantOf(nodes: NodeMap, id: string, ancestorId: string): 
 }
 
 /** parentId → child ids, built in one pass over the map. */
-function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
+export function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
   const index = new Map<string, string[]>();
   for (const node of Object.values(nodes)) {
     if (node.parentId === null)

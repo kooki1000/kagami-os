@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
 import { File, FileText, Film, Folder, Image, Music } from "lucide-react";
+import { childIdsByParent } from "@/system/fs/fsStore";
 
 export function isImageNode(node: FsNode): boolean {
   return node.type === "file" && (node.mimeType?.startsWith("image/") ?? false);
@@ -66,31 +67,17 @@ export function fileBytes(node: FsNode): number {
 }
 
 /**
- * Every folder's size (B8) — the recursive byte sum of its children — in
- * one linear pass over the whole node map, rather than each folder
- * re-scanning `nodes` and recursing into its children individually (the
- * previous `nodeSize` cost `O(k · n)` for a folder with `k` descendants,
- * visibly stuttering the marquee and filter input at a few thousand nodes).
- *
- * Same shape as `fsStore.ts`'s `collectSubtrees`: index `parentId →
- * children[]` once, then walk each folder's subtree with an explicit stack
- * rather than recursion. A `globallySeen` set shared across every top-level
- * folder in the loop means each node is ever pushed once in total (not just
- * once per traversal), which keeps the whole function linear — and, same as
- * `collectSubtrees`, makes a corrupt `parentId` cycle terminate instead of
- * overflowing the call stack.
+ * Every folder's size (B8) — the recursive byte sum of its children — in one
+ * linear pass over the whole node map, instead of each folder re-scanning
+ * `nodes` and recursing individually (the old `O(k · n)` `nodeSize` visibly
+ * stuttered the marquee and filter input at a few thousand nodes). Same
+ * traversal shape as `fsStore.ts`'s `collectSubtrees`: a shared
+ * `globallySeen` set means every node is visited once in total, which also
+ * makes a corrupt `parentId` cycle terminate instead of overflowing the
+ * stack.
  */
 export function folderSizes(nodes: NodeMap): Map<string, number> {
-  const childIds = new Map<string, string[]>();
-  for (const node of Object.values(nodes)) {
-    if (node.parentId === null)
-      continue;
-    const siblings = childIds.get(node.parentId);
-    if (siblings)
-      siblings.push(node.id);
-    else childIds.set(node.parentId, [node.id]);
-  }
-
+  const childIds = childIdsByParent(nodes);
   const sizes = new Map<string, number>();
   const globallySeen = new Set<string>();
 
@@ -98,11 +85,10 @@ export function folderSizes(nodes: NodeMap): Map<string, number> {
     if (node.type !== "folder" || globallySeen.has(node.id))
       continue;
 
-    // Iterative post-order (two-stack technique) over this folder's
-    // not-yet-visited subtree: push each folder onto `toVisit`, record it
-    // into `finished` on first pop, and push its unvisited folder children.
-    // Reversing `finished` afterward puts every child before its parent, so
-    // the summing pass below can trust a child's size is already in `sizes`.
+    // Iterative post-order: push each folder onto `toVisit`, record it into
+    // `finished` on first pop, and push its unvisited folder children.
+    // Reversing `finished` puts every child before its parent, so the
+    // summing pass below can trust a child's size is already in `sizes`.
     const toVisit = [node.id];
     globallySeen.add(node.id);
     const finished: string[] = [];

@@ -79,6 +79,13 @@ export function Desktop() {
     [nodes, ready],
   );
 
+  // Memoized so re-renders while the Get Info panel is open (selection,
+  // drag, rename) don't re-walk the tree for a size that hasn't changed.
+  const infoNodeSize = useMemo(
+    () => (infoNode ? nodeSize(nodes, infoNode) : 0),
+    [nodes, infoNode],
+  );
+
   function positionFor(node: FsNode, index: number) {
     const stored = positions[node.id];
     return stored
@@ -303,7 +310,7 @@ export function Desktop() {
       {infoNode && (
         <NodeInfoPanel
           node={infoNode}
-          size={nodeSize(nodes, infoNode)}
+          size={infoNodeSize}
           location={infoNode.parentId
             ? pathOf(nodes, infoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}
