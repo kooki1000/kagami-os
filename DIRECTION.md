@@ -1,7 +1,7 @@
 # Kagami OS — Product Direction
 
 **Status:** direction set · July 2026
-**Baseline:** phases 1–11 shipped (see `ARCHITECTURE.md` § Phase status)
+**Baseline:** phases 1–12 shipped (see `ARCHITECTURE.md` § Phase status)
 
 This is the "where is Kagami going and why" document. `ARCHITECTURE.md`
 describes what exists; `ROADMAP.md` enumerates the feature backlog toward a

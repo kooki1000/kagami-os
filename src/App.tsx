@@ -13,6 +13,7 @@ import { notify } from "./system/notifications/notificationStore";
 import { accentById, themeVariables, wallpaperById } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
 import { useGlobalShortcuts } from "./system/shortcuts";
+import { requestPersistentStorage } from "./system/storage/persistence";
 import { useThemeStore } from "./system/theme/themeStore";
 import { restoreSession, watchSessionForSave } from "./system/windows/sessionStore";
 import { useWindowManagementShortcuts } from "./system/windows/windowShortcuts";
@@ -57,6 +58,10 @@ export default function App() {
     // hydrate/launch twice from two overlapping boots.
     let cancelled = false;
     let unwatch: (() => void) | null = null;
+
+    // Ask for durable storage (F1/R1) — independent of the fs boot below,
+    // so a slow/unsupported browser never blocks it.
+    void requestPersistentStorage();
 
     // Bring the virtual file system up as part of boot (idempotent). Once
     // it's ready, honor the "auto-empty Trash after 30 days" preference,

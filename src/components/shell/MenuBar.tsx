@@ -3,7 +3,7 @@ import type { MenuItem, MenuSection } from "@/system/apps/types";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Bell, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { formatShortcut } from "@/lib/format";
+import { currentLocale, formatShortcut } from "@/lib/format";
 import { emitAppCommand } from "@/system/appCommands";
 import { getApp } from "@/system/apps/registry";
 import { executeCommand } from "@/system/commands";
@@ -15,6 +15,7 @@ import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { useSearchStore } from "@/system/search/searchStore";
 import { useThemeStore } from "@/system/theme/themeStore";
 import { MENU_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
+import { OfflineIndicator } from "./OfflineIndicator";
 
 interface BarMenuItem {
   /** Stable per-position id — not the label, which apps aren't guaranteed to keep unique. */
@@ -91,7 +92,7 @@ function Clock() {
     const t = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(t);
   }, []);
-  const weekday = now.toLocaleDateString("en-US", { weekday: "short" });
+  const weekday = now.toLocaleDateString(currentLocale(), { weekday: "short" });
   const hours = ((now.getHours() + 11) % 12) + 1;
   const minutes = now.getMinutes().toString().padStart(2, "0");
   return (
@@ -342,6 +343,7 @@ export function MenuBar() {
         </div>
 
         <div className="ml-auto flex items-center gap-3.5 text-[12.5px] opacity-80">
+          <OfflineIndicator />
           <button
             type="button"
             aria-label="Search"

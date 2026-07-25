@@ -1,8 +1,13 @@
+/** Locale for `Intl`/`toLocaleString` calls — `navigator.language`, or `undefined` to use the runtime default. */
+export function currentLocale(): string | undefined {
+  return typeof navigator === "undefined" ? undefined : navigator.language;
+}
+
 /** Short human date for file listings ("Jul 4", "Dec 12 2025"). */
 export function formatModified(timestamp: number): string {
   const date = new Date(timestamp);
   const sameYear = date.getFullYear() === new Date().getFullYear();
-  return date.toLocaleDateString("en-US", {
+  return date.toLocaleDateString(currentLocale(), {
     month: "short",
     day: "numeric",
     year: sameYear ? undefined : "numeric",

@@ -33,6 +33,8 @@ jobs:
 
       # Fail on high/critical advisories (caught the vitest CVE); lower
       # severities stay visible without blocking on transient dev-dep noise.
+      # pnpm-workspace.yaml's auditConfig.ignoreGhsas carries one temporary
+      # exception — see docs/security-advisories.md for why.
       - name: Security audit
         run: pnpm audit --audit-level=high
 

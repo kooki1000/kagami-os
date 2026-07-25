@@ -387,6 +387,13 @@ stay lean and stable:
     v2, accessibility pass (ARIA menu roles + arrow-key traversal, per-window
     Tab focus trap, visible focus rings, reduced-motion variants, axe-core
     audit)
+12. ✅ PWA & offline packaging — installable manifest + icons, a hand-rolled
+    offline-capable service worker (`public/sw.js`), storage persistence
+    requested and surfaced in Settings › About, a menu-bar offline
+    indicator, and the browser support matrix documented
+    (`docs/browser-support-matrix.md`). H2 (i18n scaffolding) was scoped
+    into this phase but deliberately deferred — see ROADMAP.md's Phase 12
+    entry.
 
 **Native desktop track (parallel, not phase-numbered — see `DIRECTION.md`):**
 N-1 shipped — Tauri v2 shell (`src-tauri/`), `isTauri()` platform detection,
@@ -395,5 +402,5 @@ described under `StorageAdapter` above. `pnpm dev`/`build` (the website) are
 unaffected. Remaining: N-2 (built-in Browser) and N-3 (signed/notarized
 distribution, desktop e2e via `tauri-driver`).
 
-**Next (planned, not yet built):** the online track (`ROADMAP.md` phases
-12+).
+**Next (planned, not yet built):** the online track's backend/sync work
+(`ROADMAP.md` phase 13+).

@@ -11,6 +11,7 @@ import {
   WALLPAPERS,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
+import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
 
 type Section = "appearance" | "dock" | "general" | "about";
@@ -281,11 +282,17 @@ function FlagsDebug() {
 }
 
 function AboutSection() {
+  const persisted = usePersistentStorageStatus();
+
+  const storageLabel = persisted === null
+    ? "Virtual file system (IndexedDB)"
+    : `Virtual file system (IndexedDB, ${persisted ? "persistent" : "best-effort"})`;
+
   const facts: Array<[string, string]> = [
     ["Version", "0.6.0 — “Lagoon”"],
     ["Build", "Phase 6 · Settings"],
     ["Engine", "React + TypeScript · Vite"],
-    ["Storage", "Virtual file system (IndexedDB)"],
+    ["Storage", storageLabel],
   ];
   return (
     <div className="flex flex-col items-center px-6 py-8 text-center">
