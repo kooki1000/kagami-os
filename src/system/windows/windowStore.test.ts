@@ -335,6 +335,14 @@ describe("move + resize", () => {
     api().resizeWindow(id, { x: 100, y: 100, width: 500, height: 400 });
     expect(win(id).mode).toBe("normal");
   });
+
+  it("resizing clears restoreRect along with returning to normal mode (review-backlog #18)", () => {
+    const id = open("files", { size: { width: 400, height: 300 } });
+    api().maximizeWindow(id);
+    expect(win(id).restoreRect).not.toBeNull();
+    api().resizeWindow(id, { x: 100, y: 100, width: 500, height: 400 });
+    expect(win(id).restoreRect).toBeNull();
+  });
 });
 
 describe("hydrateSession (C1)", () => {

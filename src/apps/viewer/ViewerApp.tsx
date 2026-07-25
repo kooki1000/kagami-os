@@ -42,7 +42,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
   const nodes = useFsStore(s => s.nodes);
   const node = activeId ? nodes[activeId] : undefined;
-  const blobUrl = useBlobUrl(node?.contentRef);
+  const { url: blobUrl, status: blobStatus } = useBlobUrl(node?.contentRef);
   const src = node?.content ?? blobUrl ?? undefined;
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
@@ -273,8 +273,12 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
 
   // Blob-backed images resolve their object URL asynchronously; a node with
   // a contentRef but no `src` yet is loading, not missing — don't flash the
-  // "no longer available" message while that read is in flight.
-  const hasSource = !!(node?.content || node?.contentRef);
+  // "no longer available" message while that read is in flight. But once
+  // `useBlobUrl` settles to "missing" (the hash isn't in the blob store —
+  // review-backlog #18), treat it the same as no source at all instead of
+  // spinning forever.
+  const blobMissing = node?.contentRef !== undefined && blobStatus === "missing";
+  const hasSource = !!(node?.content || (node?.contentRef && !blobMissing));
   if (!hasSource) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-2 select-none">
