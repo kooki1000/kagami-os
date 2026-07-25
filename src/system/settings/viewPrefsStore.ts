@@ -23,7 +23,7 @@ export const useViewPrefsStore = create<ViewPrefsStore>()(
           sortByFolder: { ...state.sortByFolder, [folderId]: sort },
         })),
     }),
-    { name: "kagami-view-prefs" },
+    { name: "kagami-view-prefs", version: 1 },
   ),
 );
 
