@@ -4,6 +4,7 @@ import type { ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
+import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { useDockStore } from "@/system/dock/dockStore";
 import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import { blobStore } from "@/system/fs/blobStore";
@@ -256,17 +257,9 @@ function BackupSection() {
   const nodes = useFsStore(s => s.nodes);
   const replaceAll = useFsStore(s => s.replaceAll);
   const [exporting, setExporting] = useState(false);
-  const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const { armed: pendingImport, arm: armImport, disarm: disarmImport } = useArmedConfirm<File>(IMPORT_CONFIRM_MS);
   const [importing, setImporting] = useState(false);
-  const disarmTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  function clearDisarmTimer(): void {
-    if (disarmTimerRef.current !== null) {
-      window.clearTimeout(disarmTimerRef.current);
-      disarmTimerRef.current = null;
-    }
-  }
 
   async function handleExport(): Promise<void> {
     setExporting(true);
@@ -288,19 +281,15 @@ function BackupSection() {
   function handlePick(e: ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0] ?? null;
     e.target.value = "";
-    if (!file)
-      return;
-    setPendingImport(file);
-    clearDisarmTimer();
-    disarmTimerRef.current = window.setTimeout(setPendingImport, IMPORT_CONFIRM_MS, null);
+    if (file)
+      armImport(file);
   }
 
   async function handleConfirmImport(): Promise<void> {
     const file = pendingImport;
     if (!file)
       return;
-    clearDisarmTimer();
-    setPendingImport(null);
+    disarmImport();
     setImporting(true);
     try {
       const plan = await importDisk(file, { replaceAll });

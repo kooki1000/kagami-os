@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@/system/apps/openFile";
@@ -39,7 +40,7 @@ import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
-import { folderSizes, nodeSize } from "./fileMeta";
+import { fileBytes, folderSizes } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { NodeInfoPanel } from "./NodeInfoPanel";
@@ -118,7 +119,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [infoNode, setInfoNode] = useState<FsNode | null>(null);
-  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const { armed: confirmEmpty, arm: armEmptyTrash, disarm: disarmEmptyTrash } = useArmedConfirm<true>(EMPTY_TRASH_CONFIRM_MS);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -127,19 +128,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // listener needs to re-attach to whichever is current.
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const typeAheadRef = useRef({ text: "", at: 0 });
-  const confirmEmptyTimerRef = useRef<number | null>(null);
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
   useEffect(() => {
     folderInputRef.current?.setAttribute("webkitdirectory", "");
-  }, []);
-
-  // The "Empty Trash" confirm-arm timer (review-backlog #18) is never
-  // cleared on unmount otherwise — harmless in itself (it only calls
-  // `setConfirmEmpty` on a state hook React already no-ops for an unmounted
-  // component), but it's a needless pending timer outliving the window.
-  useEffect(() => () => {
-    if (confirmEmptyTimerRef.current !== null)
-      window.clearTimeout(confirmEmptyTimerRef.current);
   }, []);
 
   const cwd = history[historyIndex] ?? HOME_ID;
@@ -188,7 +179,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     setAnchorId(null);
     setCursorId(null);
     setRenamingId(null);
-    setConfirmEmpty(false);
+    disarmEmptyTrash();
   }
 
   function goBack(): void {
@@ -474,14 +465,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     setAnchorId(node.id);
   }
 
-  // A marquee drag (FilesView) reports its live hit set; route it through
-  // the same anchor/cursor update handleSelectNode does instead of just
-  // `setSelectedIds` (review-backlog #18) — otherwise anchorId/cursorId
-  // stay wherever a previous click left them, so an arrow key right after
-  // marqueeing a range collapses the selection to a neighbor of that stale
-  // cursor rather than continuing from the marquee. `ids` preserves
-  // FilesView's insertion order (visible-list order), so the last id is the
-  // marquee's bottom/right-most hit — a reasonable cursor to land on.
+  // A marquee drag (FilesView) reports its live hit set; sync anchor/cursor
+  // to it too (review-backlog #18), not just the selection — otherwise an
+  // arrow key right after marqueeing jumps from a stale prior cursor instead
+  // of continuing from the marquee. `ids` preserves visible-list order, so
+  // the last id is a reasonable cursor to land on.
   function handleMarqueeSelect(ids: Set<string>): void {
     setSelectedIds(ids);
     const last = [...ids].at(-1) ?? null;
@@ -771,7 +759,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       {liveInfoNode && (
         <NodeInfoPanel
           node={liveInfoNode}
-          size={nodeSize(nodes, liveInfoNode)}
+          size={liveInfoNode.type === "folder" ? (sizes.get(liveInfoNode.id) ?? 0) : fileBytes(liveInfoNode)}
           location={liveInfoNode.parentId
             ? pathOf(nodes, liveInfoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}
@@ -835,7 +823,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                   if (confirmEmpty) {
                     const count = trashCount;
                     emptyTrash();
-                    setConfirmEmpty(false);
+                    disarmEmptyTrash();
                     notify({
                       title: "Trash emptied",
                       body: `${count} ${count === 1 ? "item" : "items"} permanently deleted.`,
@@ -844,8 +832,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                     });
                   }
                   else {
-                    setConfirmEmpty(true);
-                    confirmEmptyTimerRef.current = window.setTimeout(setConfirmEmpty, EMPTY_TRASH_CONFIRM_MS, false);
+                    armEmptyTrash(true);
                   }
                 }}
               >
