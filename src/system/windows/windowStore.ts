@@ -99,6 +99,14 @@ export interface WindowStore {
    * whatever it was launched with.
    */
   setWindowPayload: (id: string, payload: unknown) => void;
+  /**
+   * Deliver a fresh launch payload to an already-open window and bring it
+   * forward (restoring it first if minimized) — the "re-launch focuses the
+   * existing window instead of opening a duplicate" behavior shared by
+   * `openWindow`'s singleInstance path and multi-instance file-reuse in
+   * `openFile.ts`.
+   */
+  reuseWindow: (id: string, payload: unknown) => void;
   closeWindow: (id: string) => void;
   closeApp: (appId: string) => void;
   /** Hide every window of an app (⌃⌥H, Dock/menu "Hide {app}") without minimizing them. */
@@ -318,21 +326,21 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
     });
   },
 
+  reuseWindow: (id, payload) => {
+    if (payload !== undefined)
+      get().setWindowPayload(id, payload);
+    const win = get().windows.find(w => w.id === id);
+    if (win?.minimized)
+      get().restoreWindow(id);
+    else get().focusWindow(id);
+  },
+
   openWindow: (appId, opts) => {
     const state = get();
     if (opts.singleInstance) {
       const existing = state.windows.find(w => w.appId === appId);
       if (existing) {
-        // Re-launching a single-instance app can carry fresh launch data
-        // (e.g. "open this file"); deliver it to the existing window.
-        if (opts.payload !== undefined) {
-          set({
-            windows: updateWindow(get().windows, existing.id, w => ({ ...w, payload: opts.payload })),
-          });
-        }
-        if (existing.minimized)
-          get().restoreWindow(existing.id);
-        else get().focusWindow(existing.id);
+        get().reuseWindow(existing.id, opts.payload);
         return existing.id;
       }
     }
@@ -461,7 +469,11 @@ export const useWindowStore = create<WindowStore>()((set, get) => ({
           rect.height < w.minSize.height ? w.rect.y : rect.y,
           MENU_BAR_HEIGHT,
         );
-        return { ...w, rect: { x, y, width, height }, mode: "normal" };
+        // A manual resize always lands in "normal" mode (review-backlog
+        // #18) — clear `restoreRect` along with it so a later maximize/snap
+        // doesn't "restore" back to a pre-resize rect the window never
+        // actually returns to.
+        return { ...w, rect: { x, y, width, height }, mode: "normal", restoreRect: null };
       }),
     });
   },

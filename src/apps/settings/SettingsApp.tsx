@@ -1,10 +1,15 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { exportDisk, importDisk } from "@/apps/files/exportImport";
+import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { useDockStore } from "@/system/dock/dockStore";
-import { FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
+import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
+import { blobStore } from "@/system/fs/blobStore";
+import { useFsStore } from "@/system/fs/fsStore";
+import { notify } from "@/system/notifications/notificationStore";
 import {
   ACCENTS,
   accentSwatch,
@@ -219,17 +224,129 @@ function GeneralSection() {
   const setAutoEmptyTrash = useSettingsStore(s => s.setAutoEmptyTrash);
 
   return (
-    <Row label="Trash">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-[12px] leading-relaxed text-ink-2">
-          Empty the Trash automatically, removing items more than 30 days old
-          when the desktop starts.
-        </p>
-        <Switch
-          checked={autoEmptyTrash}
-          onChange={setAutoEmptyTrash}
-          label="Auto-empty Trash after 30 days"
-        />
+    <>
+      <Row label="Trash">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-[12px] leading-relaxed text-ink-2">
+            Empty the Trash automatically, removing items more than 30 days old
+            when the desktop starts.
+          </p>
+          <Switch
+            checked={autoEmptyTrash}
+            onChange={setAutoEmptyTrash}
+            label="Auto-empty Trash after 30 days"
+          />
+        </div>
+      </Row>
+      <BackupSection />
+    </>
+  );
+}
+
+/** How long "Import disk" stays armed after a file is picked before it disarms itself — same confirm-by-clicking-again shape as Files' Empty Trash. */
+const IMPORT_CONFIRM_MS = 8000;
+
+/**
+ * Full-disk export/import (PR 3 of step 14 — the only backstop for Safari's
+ * ~7-day IndexedDB eviction now that sync is retired). Export zips the
+ * whole fs tree + blob bytes (not settings/theme/dock state); import is
+ * destructive (wipe-then-restore), so picking a file arms a second
+ * confirm click rather than replacing the disk on selection alone.
+ */
+function BackupSection() {
+  const nodes = useFsStore(s => s.nodes);
+  const replaceAll = useFsStore(s => s.replaceAll);
+  const [exporting, setExporting] = useState(false);
+  const { armed: pendingImport, arm: armImport, disarm: disarmImport } = useArmedConfirm<File>(IMPORT_CONFIRM_MS);
+  const [importing, setImporting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleExport(): Promise<void> {
+    setExporting(true);
+    try {
+      await exportDisk(nodes, blobStore);
+    }
+    catch (error) {
+      notify({
+        title: "Export failed",
+        body: error instanceof Error ? error.message : "The disk couldn’t be exported.",
+        tone: "danger",
+      });
+    }
+    finally {
+      setExporting(false);
+    }
+  }
+
+  function handlePick(e: ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (file)
+      armImport(file);
+  }
+
+  async function handleConfirmImport(): Promise<void> {
+    const file = pendingImport;
+    if (!file)
+      return;
+    disarmImport();
+    setImporting(true);
+    try {
+      const plan = await importDisk(file, { replaceAll });
+      const fileCount = plan.nodes.filter(n => n.type === "file").length;
+      notify({
+        title: "Disk restored",
+        body: `${fileCount} ${fileCount === 1 ? "file" : "files"} imported from “${file.name}”.`,
+      });
+    }
+    catch (error) {
+      notify({
+        title: "Import failed",
+        body: error instanceof Error ? error.message : "The disk couldn’t be restored.",
+        tone: "danger",
+      });
+    }
+    finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <Row label="Backup">
+      <p className="mb-3 text-[12px] leading-relaxed text-ink-2">
+        Export everything in Files — every file and folder, including the
+        Trash — as a single zip you can keep somewhere safe. Importing
+        replaces the entire disk with what’s in the zip.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={exporting}
+          className="rounded-btn bg-ph px-2.5 py-1.5 text-[11.5px] font-medium text-ink hover:bg-ph-2 disabled:opacity-50"
+          onClick={() => void handleExport()}
+        >
+          {exporting ? "Exporting…" : "Export disk"}
+        </button>
+        <button
+          type="button"
+          disabled={importing}
+          className={`rounded-btn px-2.5 py-1.5 text-[11.5px] font-medium disabled:opacity-50 ${
+            pendingImport ? "bg-accent-2 text-white" : "bg-ph text-ink hover:bg-ph-2"
+          }`}
+          onClick={() => {
+            if (pendingImport)
+              void handleConfirmImport();
+            else
+              inputRef.current?.click();
+          }}
+        >
+          {importing
+            ? "Importing…"
+            : pendingImport
+              ? "Click again to replace the disk"
+              : "Import disk…"}
+        </button>
+        <input ref={inputRef} type="file" accept=".zip" hidden onChange={handlePick} />
       </div>
     </Row>
   );
@@ -264,14 +381,34 @@ function FlagsDebug() {
                 </div>
                 <div className="truncate text-[11px] text-ink-2">{flag.description}</div>
               </div>
-              <Switch
-                checked={on}
-                label={`Toggle ${flag.label}`}
-                onChange={(value) => {
-                  setFlagOverride(flag.id, value);
-                  setTick(n => n + 1);
-                }}
-              />
+              <div className="flex flex-none items-center gap-2">
+                {hasFlagOverride(flag.id) && (
+                  <button
+                    type="button"
+                    className="rounded-btn px-1.5 py-0.5 text-[10.5px] font-medium text-ink-2 hover:bg-ph hover:text-ink"
+                    onClick={() => {
+                      setFlagOverride(flag.id, null);
+                      setTick(n => n + 1);
+                    }}
+                  >
+                    Reset to default
+                  </button>
+                )}
+                <Switch
+                  checked={on}
+                  label={`Toggle ${flag.label}`}
+                  onChange={(value) => {
+                    // Toggling back to whatever the flag would resolve to
+                    // anyway (review-backlog #14) clears the override
+                    // instead of pinning a value that merely restates it —
+                    // otherwise a flag toggled on then off stays pinned off
+                    // per device forever, ignoring any future default/env
+                    // change.
+                    setFlagOverride(flag.id, value === effectiveDefault(flag.id) ? null : value);
+                    setTick(n => n + 1);
+                  }}
+                />
+              </div>
             </div>
           );
         })}
@@ -289,8 +426,7 @@ function AboutSection() {
     : `Virtual file system (IndexedDB, ${persisted ? "persistent" : "best-effort"})`;
 
   const facts: Array<[string, string]> = [
-    ["Version", "0.6.0 — “Lagoon”"],
-    ["Build", "Phase 6 · Settings"],
+    ["Version", __APP_VERSION__],
     ["Engine", "React + TypeScript · Vite"],
     ["Storage", storageLabel],
   ];

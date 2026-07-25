@@ -1,11 +1,14 @@
 import type { FsNode } from "./types";
 import { beforeEach, describe, expect, it } from "vitest";
+import { useNotificationStore } from "@/system/notifications/notificationStore";
+import { blobStore } from "./blobStore";
 import {
   childrenOf,
   expiredTrashIds,
   indexNodes,
   isDescendantOf,
   isValidNodeName,
+  logPersistError,
   pathOf,
   TRASH_MAX_AGE_MS,
   uniqueChildName,
@@ -348,5 +351,79 @@ describe("subtree collection at depth", () => {
     expect(() => api().deleteForever("reports")).not.toThrow();
     expect(api().nodes.reports).toBeUndefined();
     expect(api().nodes.child).toBeUndefined();
+  });
+});
+
+// review-backlog.md §17: a storage write failure used to be console-only —
+// the in-memory store kept the change and the UI showed it as saved while
+// the bytes never reached disk. logPersistError now also raises a
+// danger-tone notification so the user finds out.
+describe("logPersistError", () => {
+  beforeEach(() => {
+    useNotificationStore.setState({ items: [], toastIds: [], centerOpen: false });
+  });
+
+  it("gives actionable copy for a quota-exceeded failure", () => {
+    logPersistError(new DOMException("quota", "QuotaExceededError"));
+
+    const [notification] = useNotificationStore.getState().items;
+    expect(notification).toMatchObject({ tone: "danger", title: "Storage is full" });
+    expect(notification.body).toMatch(/trash|large files/i);
+  });
+
+  it("gives a generic message for any other failure", () => {
+    logPersistError(new Error("network blip"));
+
+    const [notification] = useNotificationStore.getState().items;
+    expect(notification).toMatchObject({ tone: "danger" });
+    expect(notification.title).not.toBe("Storage is full");
+  });
+});
+
+describe("replaceAll (export/import's wipe-then-restore)", () => {
+  beforeEach(async () => {
+    await blobStore.delete(await blobStore.listHashes());
+  });
+
+  it("replaces the whole node set, dropping everything not in the new tree", async () => {
+    // seed()'s "note"/"deep"/"reports"/"child" nodes should all be gone
+    // after a replace that doesn't mention them.
+    const next: FsNode[] = [
+      node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+      node({ id: HOME_ID, parentId: ROOT_ID, name: "Home", type: "folder" }),
+      node({ id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder" }),
+      node({ id: "fresh", parentId: HOME_ID, name: "fresh.txt", type: "file", content: "new disk" }),
+    ];
+    await api().replaceAll(next, []);
+
+    expect(Object.keys(api().nodes).sort()).toEqual([HOME_ID, ROOT_ID, TRASH_ID, "fresh"].sort());
+    expect(get("fresh")?.content).toBe("new disk");
+    expect(get("note")).toBeUndefined();
+    expect(get("reports")).toBeUndefined();
+  });
+
+  it("writes the given blobs and drops blobs the new tree no longer references", async () => {
+    // Old disk has a blob-backed file...
+    await blobStore.put("old-hash", new Blob(["old bytes"]));
+    useFsStore.setState({
+      nodes: indexNodes([
+        ...Object.values(api().nodes),
+        node({ id: "old-blob-file", parentId: DOCUMENTS_ID, name: "old.bin", type: "file", contentRef: { hash: "old-hash", size: 9 } }),
+      ]),
+    });
+
+    const bytes = new TextEncoder().encode("new blob bytes");
+    const next: FsNode[] = [
+      node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+      node({ id: HOME_ID, parentId: ROOT_ID, name: "Home", type: "folder" }),
+      node({ id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder" }),
+      node({ id: "new-blob-file", parentId: HOME_ID, name: "new.bin", type: "file", contentRef: { hash: "new-hash", size: bytes.byteLength } }),
+    ];
+    await api().replaceAll(next, [{ hash: "new-hash", bytes, mimeType: "application/octet-stream" }]);
+
+    expect(await blobStore.has("new-hash")).toBe(true);
+    expect(await blobStore.has("old-hash")).toBe(false);
+    const stored = await blobStore.get("new-hash");
+    expect(await stored?.text()).toBe("new blob bytes");
   });
 });

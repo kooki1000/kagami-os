@@ -29,7 +29,9 @@ export async function resolveFileBytes(node: FsNode, store: BlobStore): Promise<
  * Flatten a folder's full contents into `{ relativePath: bytes }`, ready to
  * hand to a zip encoder. Empty subfolders get a trailing-slash entry with no
  * bytes so the archive preserves them (fflate's directory-entry convention).
- * Pure aside from blob reads.
+ * Pure aside from blob reads, which run concurrently across siblings rather
+ * than one at a time — matters once a caller (e.g. full-disk export) points
+ * this at a tree with many blob-backed files.
  */
 export async function buildZipEntries(
   folderId: string,
@@ -37,24 +39,27 @@ export async function buildZipEntries(
   store: BlobStore,
   prefix = "",
 ): Promise<Record<string, Uint8Array>> {
-  const out: Record<string, Uint8Array> = {};
   const children = childrenOf(nodes, folderId);
-  if (children.length === 0 && prefix) {
-    out[`${prefix}/`] = new Uint8Array(0);
-    return out;
-  }
-  for (const child of children) {
+  if (children.length === 0)
+    return prefix ? { [`${prefix}/`]: new Uint8Array(0) } : {};
+
+  const out: Record<string, Uint8Array> = {};
+  await Promise.all(children.map(async (child) => {
     const path = prefix ? `${prefix}/${child.name}` : child.name;
     if (child.type === "folder")
       Object.assign(out, await buildZipEntries(child.id, nodes, store, path));
     else
       out[path] = await resolveFileBytes(child, store);
-  }
+  }));
   return out;
 }
 
-/** Trigger a browser "Save As" for `blob` via a throwaway anchor click. */
-function triggerDownload(blob: Blob, filename: string): void {
+/**
+ * Trigger a browser "Save As" for `blob` via a throwaway anchor click.
+ * Exported for reuse by other archive-producing flows (e.g. `exportImport.ts`'s
+ * full-disk export) that need the same download mechanics.
+ */
+export function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -70,9 +75,10 @@ function triggerDownload(blob: Blob, filename: string): void {
  * Zip `entries` off the main thread (roadmap: "Zip via a Web Worker to keep
  * the shell responsive"). Not unit-testable under Vitest's Node environment
  * (no real Worker) — covered by `buildZipEntries`'s tests plus in-browser
- * verification instead.
+ * verification instead. Exported so `exportImport.ts`'s full-disk export
+ * reuses the same worker plumbing instead of duplicating it.
  */
-function zipInWorker(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
+export function zipInWorker(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./zipWorker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<{ ok: true; data: Uint8Array } | { ok: false; error: string }>) => {

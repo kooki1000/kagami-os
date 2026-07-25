@@ -1,9 +1,9 @@
 import type { AppWindowProps } from "@/system/apps/types";
 import type { FsNode } from "@/system/fs/types";
 import { Music, SkipBack, SkipForward } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useAppCommand } from "@/system/appCommands";
-import { payloadFileId } from "@/system/apps/openFile";
+import { usePayloadFileId } from "@/system/apps/filePayload";
 import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
@@ -11,15 +11,14 @@ import { useWindowStore } from "@/system/windows/windowStore";
 import { isAudioNode, isVideoNode } from "../files/fileMeta";
 
 export default function PlayerApp({ windowId, payload }: AppWindowProps) {
-  // The playlist cursor (D5): starts at the file that opened the window, but
+  // The playlist cursor (D5): starts at the file that opened the window;
   // Next/Previous move it within this same window rather than launching a
-  // new one — openFile.ts's "reuse an existing window" match is keyed off
-  // the *opening* payload, so re-opening a since-selected track from Files
-  // will still spawn a second window. An acceptable gap for a first pass.
-  const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
+  // new one.
+  const [activeId, setActiveId] = usePayloadFileId(payload);
+
   const nodes = useFsStore(s => s.nodes);
   const node = activeId ? nodes[activeId] : undefined;
-  const blobUrl = useBlobUrl(node?.contentRef);
+  const { url: blobUrl, status: blobStatus } = useBlobUrl(node?.contentRef);
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
   // Player windows are titled after the current track; keep the title bar in
@@ -55,7 +54,12 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
     }
   });
 
-  if (!activeId || !node) {
+  // A node with a contentRef but no blob store entry is missing, not
+  // loading — treat it the same as no track selected instead of spinning
+  // forever (the same fix ViewerApp got for review-backlog #18).
+  const blobMissing = node?.contentRef !== undefined && blobStatus === "missing";
+
+  if (!activeId || !node || blobMissing) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-2 select-none">
         <Music className="size-7" strokeWidth={1.4} />
@@ -66,8 +70,6 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
     );
   }
 
-  // Blob-backed media resolves its object URL asynchronously; a node with a
-  // contentRef but no url yet is loading, not missing.
   if (!blobUrl) {
     return (
       <div className="grid h-full place-items-center">

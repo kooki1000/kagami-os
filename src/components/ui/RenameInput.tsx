@@ -6,7 +6,8 @@ interface RenameInputProps {
   /** Preselect only the name stem (keep the ".ext" suffix out of selection). */
   selectStem?: boolean;
   className?: string;
-  onCommit: (name: string) => void;
+  /** Return `false` to reject the name and keep editing (review-backlog #4) — the field stays open and regains focus rather than sticking around unfocused. */
+  onCommit: (name: string) => boolean;
   onCancel: () => void;
 }
 
@@ -35,7 +36,14 @@ export function RenameInput({ value, selectStem = false, className = "", onCommi
         else if (e.key === "Escape")
           onCancel();
       }}
-      onBlur={e => onCommit(e.target.value)}
+      onBlur={(e) => {
+        // A rejected commit (review-backlog #4) means the caller left
+        // `renamingId` set on purpose — refocus so the field doesn't sit
+        // there editable but unfocused, silently re-firing on the next
+        // stray blur.
+        if (!onCommit(e.target.value))
+          e.target.focus();
+      }}
     />
   );
 }

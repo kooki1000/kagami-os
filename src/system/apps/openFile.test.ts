@@ -83,4 +83,31 @@ describe("openFileWithApp (B11)", () => {
     expect(openFile(clip)).toBe(true);
     expect(useWindowStore.getState().windows[0].appId).toBe("player");
   });
+
+  it("doesn't persist the association when the launch fails (review-backlog #18)", () => {
+    const note = file({ id: "n", name: "todo.txt", mimeType: "text/plain" });
+    const ok = openFileWithApp(note, "no-such-app");
+    expect(ok).toBe(false);
+    expect(useSettingsStore.getState().fileAssociations["text/plain"]).toBeUndefined();
+    expect(useWindowStore.getState().windows).toHaveLength(0);
+  });
+});
+
+describe("re-launching a multi-instance app onto an existing window (review-backlog #7)", () => {
+  it("refreshes the existing window's payload (a fresh object, same fileId) instead of leaving it stale", () => {
+    const clip = file({ id: "c", name: "clip.mp4", mimeType: "video/mp4" });
+    expect(openFile(clip)).toBe(true);
+    const [win] = useWindowStore.getState().windows;
+    const firstPayload = win.payload;
+
+    // Re-opening the same file (as if double-clicked again in Files) should
+    // focus the same window but hand it a *new* payload object — Player's
+    // render-phase payload adoption keys off identity, not fileId, so a
+    // stale object would never re-trigger it even though the fileId matches.
+    expect(openFile(clip)).toBe(true);
+    const windows = useWindowStore.getState().windows;
+    expect(windows).toHaveLength(1);
+    expect(windows[0].payload).not.toBe(firstPayload);
+    expect(payloadFileId(windows[0].payload)).toBe("c");
+  });
 });

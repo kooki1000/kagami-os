@@ -15,7 +15,8 @@ import { getApp } from "@/system/apps/registry";
 import { autoPosition, clampIconPosition, DESKTOP_CELL_W } from "@/system/desktop/desktopLayout";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { blobStore } from "@/system/fs/blobStore";
-import { childrenOf, isSystemNode, isValidNodeName, pathOf, useFsStore } from "@/system/fs/fsStore";
+import { childrenOf, isSystemNode, pathOf, useFsStore } from "@/system/fs/fsStore";
+import { isCommittableRename } from "@/system/fs/renameCommit";
 import { DESKTOP_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { useWindowStore } from "@/system/windows/windowStore";
@@ -76,6 +77,13 @@ export function Desktop() {
   const children = useMemo(
     () => (ready ? childrenOf(nodes, DESKTOP_ID) : []),
     [nodes, ready],
+  );
+
+  // Memoized so re-renders while the Get Info panel is open (selection,
+  // drag, rename) don't re-walk the tree for a size that hasn't changed.
+  const infoNodeSize = useMemo(
+    () => (infoNode ? nodeSize(nodes, infoNode) : 0),
+    [nodes, infoNode],
   );
 
   function positionFor(node: FsNode, index: number) {
@@ -148,17 +156,12 @@ export function Desktop() {
       setSelectedId(lastLanded);
   }
 
-  function commitRename(id: string, name: string): void {
-    if (name.trim() && !isValidNodeName(name)) {
-      notify({
-        title: "Can’t rename",
-        body: "Names can’t contain a slash (/).",
-        tone: "danger",
-      });
-      return;
-    }
+  function commitRename(id: string, name: string): boolean {
+    if (!isCommittableRename(name))
+      return false;
     rename(id, name);
     setRenamingId(null);
+    return true;
   }
 
   function menuEntries(state: MenuState): ContextMenuEntry[] {
@@ -307,7 +310,7 @@ export function Desktop() {
       {infoNode && (
         <NodeInfoPanel
           node={infoNode}
-          size={nodeSize(nodes, infoNode)}
+          size={infoNodeSize}
           location={infoNode.parentId
             ? pathOf(nodes, infoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}

@@ -4,29 +4,40 @@ Findings from the full-scale review on `review/full-audit` (2026-07-18).
 Everything here was **left unfixed deliberately at the time** — the fixes that
 shipped then are in commits `a9a6546`, `399993c`, `dfa2fa3`, `164eca2`.
 
-> **Partly overtaken by events (verified against `main`, 2026-07-25).** The
-> H1 accessibility pass in Phase 11 closed several of these incidentally,
-> without updating this file. Confirmed **fixed** by reading the current
-> code — do not re-fix:
+> **Closed out by step 14 (`ROADMAP.md`), 2026-07-25.** The H1 accessibility
+> pass in Phase 11 had already closed several of these incidentally, without
+> updating this file. Step 14 then fixed everything else that was
+> genuinely still open. **Every numbered entry and `§18` sub-item below is
+> now resolved**, except §11, which was reclassified rather than fixed —
+> see its entry. Nothing in this file is open work.
 >
-> - **§1 and §2 — context-menu and dock-menu clipping.** `ContextMenu.tsx`
->   now measures after mount and clamps (`useClampedPosition`), and `Dock`
->   reuses `ContextMenu` instead of its own reimplementation. The hardcoded
->   200px guess is gone.
-> - **§6 — Get Info keyboard modality.** `NodeInfoPanel` focus-traps with
->   `trapFocus: true`, and `FilesApp`'s window key handler is gated while it
->   is open.
-> - **§8 — Files selection semantics.** `FilesView` has roving `tabIndex`
->   and `aria-selected`, and cites this entry in its comments.
-> - **§9 — Escape.** `useFocusTrap` handles Escape-to-close for the menus
->   and the notification center.
->
-> The rest were spot-checked and **remain open**, including §3, §4, §5, §10,
-> §12, §13, §14, and §15. §15 is now doubly wrong: About hardcodes
-> `0.6.0 — "Lagoon"` while `package.json` says `0.1.0`.
->
-> Step 14 (`ROADMAP.md`) starts by re-verifying every entry against `main`,
-> not by fixing from this list as written.
+> - **§1 and §2 — context-menu and dock-menu clipping.** Fixed by Phase 11.
+>   `ContextMenu.tsx` now measures after mount and clamps
+>   (`useClampedPosition`), and `Dock` reuses `ContextMenu` instead of its
+>   own reimplementation. The hardcoded 200px guess is gone.
+> - **§6 — Get Info keyboard modality.** Fixed by Phase 11. `NodeInfoPanel`
+>   focus-traps with `trapFocus: true`, and `FilesApp`'s window key handler
+>   is gated while it is open.
+> - **§8 — Files selection semantics.** Fixed by Phase 11. `FilesView` has
+>   roving `tabIndex` and `aria-selected`, and cites this entry in its
+>   comments.
+> - **§9 — Escape.** Fixed by Phase 11. `useFocusTrap` handles
+>   Escape-to-close for the menus and the notification center.
+> - **§3, §4, §5, §7, §10, §12, §13, §14, §15, §16, §17, and every listed
+>   `§18` sub-item — fixed in step 14**, across `fix/persistence-hardening`
+>   (§12, §16, §17) and `fix/ui-interaction-backlog` (everything else, plus
+>   §7). Each entry below records what changed.
+> - **Two `§18` sub-items were found already fixed on `main`** while step 14
+>   was underway, unrelated to this pass: `MenuBar.tsx`'s section/item keys
+>   are already index-namespaced (landed in `76678b2`, the H1 ARIA sweep),
+>   and `Window.tsx`'s `onTitlePointerMove` already reads the window store's
+>   `viewport` rather than `window.innerWidth`. No changes were needed for
+>   either — noted so nobody goes looking for a step-14 commit that doesn't
+>   exist.
+> - **§11 was reclassified, not fixed** — it needs a new `setFileBlob`
+>   fsStore action, which is real scope beyond a bug-fix pass. Deferred to
+>   step 15/16, alongside the Player rewrite (U12) already touching this
+>   area. See its entry.
 
 Each entry records where the bug is, how to reproduce it, and a concrete fix.
 Severity is about user impact, not effort. "Verified" means someone drove the
@@ -113,6 +124,12 @@ measure-then-clamp on both axes.
 
 ## 3. Suppressed toasts resurrect ~6s later instead of expiring
 
+**✅ Resolved in step 14** (`fix/persistence-hardening`). `notify()` now
+stamps each toast with `expiresAt`; `ToastStack` prunes past-deadline ids on
+a single interval instead of relying on component mount, and renders
+oldest-first so the stack drains in arrival order. This also closed the T4
+debt-register entry (`toastIds` retaining evicted ids) as a byproduct.
+
 **MEDIUM · verified · `src/components/shell/ToastStack.tsx:66-68` (`MAX_VISIBLE = 4`)**
 
 ```ts
@@ -144,6 +161,12 @@ stack drains in arrival order.
 ---
 
 ## 4. An invalid rename leaves a stuck, unfocused field and double-fires the error
+
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). `RenameInput`'s
+`onCommit` now returns `boolean`; `false` keeps the field open and refocuses
+it. Files, Notes, and Desktop all return `false` on an invalid name, and
+their duplicated validate-and-toast block was extracted into
+`src/system/fs/renameCommit.ts`.
 
 **MEDIUM · verified · `src/components/ui/RenameInput.tsx:38`**
 
@@ -190,6 +213,12 @@ currently exists in all three.
 ---
 
 ## 5. `nodeSize` is quadratic and recomputed every render
+
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). A new
+`folderSizes(nodes)` in `fileMeta.ts` builds the size index in one linear
+pass (same shape as `fsStore.ts`'s `collectSubtrees`), memoized per `nodes`
+identity in `FilesApp` and passed down instead of each row recursing.
+Incidentally fixes the unguarded-cycle stack-overflow risk too.
 
 **MEDIUM · measured · `src/apps/files/fileMeta.ts:68-77`**
 
@@ -265,6 +294,12 @@ the node disappears.
 
 ## 7. Reopening a track focuses a Player window playing something else
 
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). `PlayerApp` now
+adopts a changed `payload` at render time, mirroring `NotesApp`'s existing
+pattern, and `openFile.ts`'s multi-instance launch branch refreshes an
+existing window's payload before focusing it (the `singleInstance` branch
+already did).
+
 **MEDIUM · by reading · `src/apps/player/PlayerApp.tsx:18` + `src/system/apps/openFile.ts:76-87`**
 
 ```ts
@@ -336,6 +371,10 @@ in one place.
 
 ## 10. Notification center backdrop covers the menu bar
 
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). The backdrop
+dropped from `z-45` to `z-35`, below `MenuBar.tsx`'s `z-40`, so the bell's
+toggle branch is reachable again.
+
 **LOW · verified · `NotificationCenter.tsx:20` (`z-45`) vs `MenuBar.tsx:169` (`z-40`)**
 
 With the center open, the backdrop intercepts pointer events on the bell, so
@@ -352,6 +391,11 @@ expect.
 ---
 
 ## 11. `provider.writeFile` bypasses the inline-content size contract
+
+**Reclassified, not fixed, in step 14.** Still real and still open — this
+needs a new `setFileBlob` fsStore action (symmetric with
+`updateFileContent`), which is more scope than a bug-fix pass. Deferred to
+step 15/16, alongside the Player rewrite (U12) already touching this area.
 
 **LOW (latent — no in-tree consumers) · verified · `src/system/fs/provider.ts`**
 
@@ -383,6 +427,11 @@ large document. Then `writeFile` picks a path on `content.length`.
 
 ## 12. Persisted stores have no `version` / `migrate`
 
+**✅ Resolved in step 14** (`fix/persistence-hardening`). `settingsStore.ts`,
+`viewPrefsStore.ts`, and `themeStore.ts` all now declare `version: 1`, same
+as `dockStore.ts` already did. No `migrate` function yet — this just gives a
+future shape change somewhere to hang one.
+
 **LOW (latent) · `settingsStore.ts:47`, `viewPrefsStore.ts:26`, `themeStore.ts:43`**
 
 None declares a `version`, so there is no migration hook when a shape changes.
@@ -400,6 +449,11 @@ a `migrate`. Cheap insurance; no behavior change.
 ---
 
 ## 13. `viewPrefsStore.sortByFolder` grows without bound
+
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). After
+`fsStore.init()` resolves, `pruneSortByFolder()` drops any `sortByFolder`
+key with no live node, via the pure `withoutStaleFolders()` — same idle-sweep
+shape as `sweepUnreferencedBlobs`.
 
 **LOW · verified · `src/system/settings/viewPrefsStore.ts:8-24`**
 
@@ -419,6 +473,12 @@ forgets real preferences.
 ---
 
 ## 14. The flag toggle can pin an override but never clear one
+
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). `flags.ts` exports
+`effectiveDefault(id)`; the Settings toggle now clears the override
+(`setFlagOverride(id, null)`) when the chosen value matches it instead of
+always pinning a value, and overridden rows get a "Reset to default"
+affordance.
 
 **LOW · verified · `src/apps/settings/SettingsApp.tsx:266` + `src/system/flags.ts:79`**
 
@@ -454,6 +514,10 @@ value that matches the default currently can't tell it's pinned.
 
 ## 15. About panel shows a hardcoded, stale version
 
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`). `vite.config.ts`
+now injects `__APP_VERSION__` from `package.json` via `define`; the About
+panel reads it and the "Phase 6 · Settings" build string is gone.
+
 **LOW · verified · `src/apps/settings/SettingsApp.tsx:282-283`**
 
 ```ts
@@ -472,6 +536,11 @@ in `vite.config.ts` — and drop the phase string, which will always drift.
 ---
 
 ## 16. IndexedDB `open()` handles neither `onblocked` nor `versionchange`
+
+**✅ Resolved in step 14** (`fix/persistence-hardening`). `idbShared.ts`'s
+`openIdbDatabase` now rejects on `onblocked` and closes the connection on
+`onversionchange`, covering both `idbAdapter.ts` and `idbBlobStore.ts` which
+share it.
 
 **LOW (latent, unreachable today) · `src/system/fs/idbAdapter.ts:7-16`, `src/system/fs/idbBlobStore.ts:12-20`**
 
@@ -497,6 +566,11 @@ The existing seed fallback in `init` then handles the rejection gracefully.
 
 ## 17. Storage write failures are console-only
 
+**✅ Resolved in step 14** (`fix/persistence-hardening`). `logPersistError`
+now also raises a danger-tone `notify()`, with actionable copy for
+`QuotaExceededError` ("Storage is full — empty the Trash or remove large
+files") and a generic message otherwise.
+
 **LOW · path confirmed by reading; quota trigger unverified · `src/system/fs/idbAdapter.ts:61-79`**
 
 `StorageAdapter` has no error-signalling seam, and every call site is
@@ -514,6 +588,11 @@ before large uploads would be a further improvement.
 ---
 
 ## 18. Smaller items
+
+**✅ Resolved in step 14** (`fix/ui-interaction-backlog`), except the
+`MenuBar.tsx` and `Window.tsx` rows — both were found already fixed on
+`main` (see the banner above), so no step-14 change was needed for either.
+Every other row got the fix described in its cell.
 
 Noticed during review, each small and independent:
 

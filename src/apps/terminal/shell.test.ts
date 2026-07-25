@@ -114,6 +114,16 @@ describe("navigation + read commands", () => {
     expect(out).toContain("deep.txt");
     expect(out).toContain("note.md");
   });
+
+  it("ls/cd error rather than throw when `cwd` itself doesn't exist in nodes (review-backlog #18)", () => {
+    // `resolvePath` hands back `cwd` unchecked when there's no real path
+    // segment to resolve (`ls`'s own bare-cwd case, `cd .`) — a
+    // corrupted/vanished cwd shouldn't crash the engine.
+    expect(() => run("ls", "ghost-cwd")).not.toThrow();
+    expect(run("ls", "ghost-cwd").lines[0]).toMatchObject({ kind: "error" });
+    expect(() => run("cd .", "ghost-cwd")).not.toThrow();
+    expect(run("cd .", "ghost-cwd").lines[0]).toMatchObject({ kind: "error" });
+  });
 });
 
 describe("mutating commands", () => {
@@ -155,6 +165,21 @@ describe("mutating commands", () => {
     run("echo first >> log.txt", DOCUMENTS_ID);
     run("echo second >> log.txt", DOCUMENTS_ID);
     expect(nodesByName("log.txt")?.content).toBe("first\nsecond\n");
+  });
+
+  // Technical debt register T5: a naive redirect scan can mistake a `>`
+  // that's part of the quoted text for a real redirect.
+  it("a quoted '>' is literal text, not a redirect (T5)", () => {
+    expect(text("echo \"a > b\"")).toBe("a > b");
+    expect(nodesByName("b")).toBeUndefined();
+
+    expect(text("echo 'x >> y'")).toBe("x >> y");
+    expect(nodesByName("y")).toBeUndefined();
+  });
+
+  it("a redirect target can itself be quoted", () => {
+    run("echo hi > \"my file.txt\"", DOCUMENTS_ID);
+    expect(nodesByName("my file.txt")?.content).toBe("hi\n");
   });
 
   it("mkdir/touch resolve path arguments against an existing parent", () => {

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@/system/apps/openFile";
@@ -25,10 +26,10 @@ import { blobStore } from "@/system/fs/blobStore";
 import {
   childrenOf,
   isSystemNode,
-  isValidNodeName,
   pathOf,
   useFsStore,
 } from "@/system/fs/fsStore";
+import { isCommittableRename } from "@/system/fs/renameCommit";
 import {
   DOCUMENTS_ID,
   HOME_ID,
@@ -39,7 +40,7 @@ import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
-import { nodeSize } from "./fileMeta";
+import { fileBytes, folderSizes } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { NodeInfoPanel } from "./NodeInfoPanel";
@@ -118,7 +119,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [infoNode, setInfoNode] = useState<FsNode | null>(null);
-  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const { armed: confirmEmpty, arm: armEmptyTrash, disarm: disarmEmptyTrash } = useArmedConfirm<true>(EMPTY_TRASH_CONFIRM_MS);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -151,7 +152,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   }
 
   // If the current folder vanished (trashed/deleted elsewhere), go home.
-  if (ready && !nodes[cwd]) {
+  // Guarded explicitly on `cwd !== HOME_ID` (review-backlog #18) rather than
+  // relying on HOME_ID always existing to make this converge — without it,
+  // a store somehow missing HOME_ID too would render-loop resetting `cwd`
+  // to a still-missing HOME_ID forever. With the guard it just settles on
+  // `cwd === HOME_ID` and renders through the empty `visible` list.
+  if (ready && cwd !== HOME_ID && !nodes[cwd]) {
     setHistory([HOME_ID]);
     setHistoryIndex(0);
     if (selectedIds.size > 0)
@@ -173,7 +179,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     setAnchorId(null);
     setCursorId(null);
     setRenamingId(null);
-    setConfirmEmpty(false);
+    disarmEmptyTrash();
   }
 
   function goBack(): void {
@@ -333,6 +339,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     else openFile(node);
   }
 
+  // One linear pass over the whole tree (review-backlog #5), reused by
+  // every row in FilesView's list view instead of each row recursing/
+  // rescanning `nodes` for its own folder size.
+  const sizes = useMemo(() => folderSizes(nodes), [nodes]);
   const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -453,6 +463,18 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     }
     setSelectedIds(new Set([node.id]));
     setAnchorId(node.id);
+  }
+
+  // A marquee drag (FilesView) reports its live hit set; sync anchor/cursor
+  // to it too (review-backlog #18), not just the selection — otherwise an
+  // arrow key right after marqueeing jumps from a stale prior cursor instead
+  // of continuing from the marquee. `ids` preserves visible-list order, so
+  // the last id is a reasonable cursor to land on.
+  function handleMarqueeSelect(ids: Set<string>): void {
+    setSelectedIds(ids);
+    const last = [...ids].at(-1) ?? null;
+    setAnchorId(last);
+    setCursorId(last);
   }
 
   // Live grid column count (B6), read from the actual laid-out CSS grid
@@ -737,7 +759,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       {liveInfoNode && (
         <NodeInfoPanel
           node={liveInfoNode}
-          size={nodeSize(nodes, liveInfoNode)}
+          size={liveInfoNode.type === "folder" ? (sizes.get(liveInfoNode.id) ?? 0) : fileBytes(liveInfoNode)}
           location={liveInfoNode.parentId
             ? pathOf(nodes, liveInfoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}
@@ -801,7 +823,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                   if (confirmEmpty) {
                     const count = trashCount;
                     emptyTrash();
-                    setConfirmEmpty(false);
+                    disarmEmptyTrash();
                     notify({
                       title: "Trash emptied",
                       body: `${count} ${count === 1 ? "item" : "items"} permanently deleted.`,
@@ -810,8 +832,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                     });
                   }
                   else {
-                    setConfirmEmpty(true);
-                    window.setTimeout(setConfirmEmpty, EMPTY_TRASH_CONFIRM_MS, false);
+                    armEmptyTrash(true);
                   }
                 }}
               >
@@ -883,7 +904,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
         <FilesView
           items={visible}
-          nodes={nodes}
+          folderSizes={sizes}
           view={view}
           selectedIds={selectedIds}
           cursorId={cursorId}
@@ -898,21 +919,16 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           }
           onSelectNode={handleSelectNode}
           onClearSelection={() => setSelectedIds(new Set())}
-          onMarqueeSelect={setSelectedIds}
+          onMarqueeSelect={handleMarqueeSelect}
           onOpen={openNode}
           onItemContextMenu={onItemContextMenu}
           onBackgroundContextMenu={onBackgroundContextMenu}
           onRenameCommit={(id, name) => {
-            if (name.trim() && !isValidNodeName(name)) {
-              notify({
-                title: "Can’t rename",
-                body: "Names can’t contain a slash (/).",
-                tone: "danger",
-              });
-              return;
-            }
+            if (!isCommittableRename(name))
+              return false;
             rename(id, name);
             setRenamingId(null);
+            return true;
           }}
           onRenameCancel={() => setRenamingId(null)}
           onDropInto={handleDrop}

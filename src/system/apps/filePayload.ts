@@ -1,3 +1,5 @@
+import type { Dispatch, SetStateAction } from "react";
+import { useState } from "react";
 import { useFsStore } from "@/system/fs/fsStore";
 
 /**
@@ -21,6 +23,27 @@ export function payloadFileId(payload: unknown): string | null {
     return (payload as FilePayload).fileId;
   }
   return null;
+}
+
+/**
+ * A single-file app's selection, kept in sync with a re-launch: opening the
+ * same app on a different file replaces the window's `payload` with a fresh
+ * object, and this adopts it as the selection during render (compared by
+ * identity, not fileId, so re-opening the same file after navigating
+ * elsewhere still re-selects it) — otherwise the window would only ever
+ * reflect whichever file it was *first* opened with (review-backlog #7).
+ * Shared by Notes and Player, which both have this exact shape.
+ */
+export function usePayloadFileId(payload: unknown): [string | null, Dispatch<SetStateAction<string | null>>] {
+  const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
+  const [lastPayload, setLastPayload] = useState(payload);
+  if (payload !== lastPayload) {
+    setLastPayload(payload);
+    const payloadId = payloadFileId(payload);
+    if (payloadId)
+      setActiveId(payloadId);
+  }
+  return [activeId, setActiveId];
 }
 
 /** `AppManifest.serializePayload` for apps whose payload is just a `FilePayload`. */

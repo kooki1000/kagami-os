@@ -1,29 +1,26 @@
 import type { KagamiNotification } from "@/system/notifications/notificationStore";
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNotificationStore } from "@/system/notifications/notificationStore";
 import { MENU_BAR_HEIGHT } from "@/system/windows/windowStore";
 import { NotificationGlyph } from "./NotificationGlyph";
 
-const TOAST_MS = 5000;
 const MAX_VISIBLE = 4;
+// Frequent enough that a dismissal feels immediate, cheap enough to run for
+// the whole session — pruning is a single filter over at most a handful of
+// ids either way.
+const PRUNE_INTERVAL_MS = 250;
 
 function Toast({ notification }: { notification: KagamiNotification }) {
   const dismissToast = useNotificationStore(s => s.dismissToast);
-  const [paused, setPaused] = useState(false);
-
-  useEffect(() => {
-    if (paused)
-      return;
-    const timer = window.setTimeout(dismissToast, TOAST_MS, notification.id);
-    return () => window.clearTimeout(timer);
-  }, [paused, notification.id, dismissToast]);
+  const pauseToast = useNotificationStore(s => s.pauseToast);
+  const resumeToast = useNotificationStore(s => s.resumeToast);
 
   return (
     <div
       className="pointer-events-auto flex w-80 animate-toast-in items-start gap-2.5 rounded-tile p-3 shadow-(--shadow-deep) chrome hairline"
-      onPointerEnter={() => setPaused(true)}
-      onPointerLeave={() => setPaused(false)}
+      onPointerEnter={() => pauseToast(notification.id)}
+      onPointerLeave={() => resumeToast(notification.id)}
     >
       <NotificationGlyph notification={notification} />
       <div className="min-w-0 flex-1">
@@ -63,8 +60,24 @@ export function ToastStack() {
   const items = useNotificationStore(s => s.items);
   const toastIds = useNotificationStore(s => s.toastIds);
 
-  const visible = items
-    .filter(n => toastIds.includes(n.id))
+  // Expiry is store-owned (each notification carries its own `expiresAt`),
+  // so a toast queued behind MAX_VISIBLE others still counts down even
+  // though it's never mounted — this single interval is what retires it,
+  // rather than a `Toast` component's own timer (review-backlog.md §3).
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      useNotificationStore.getState().pruneExpiredToasts();
+    }, PRUNE_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // `toastIds` is oldest-first (appended on arrival); slicing from the front
+  // keeps the oldest queued toasts on screen and renders newest-last, so the
+  // stack drains in the order notifications arrived instead of newest-first.
+  const byId = new Map(items.map(n => [n.id, n]));
+  const visible = toastIds
+    .map(id => byId.get(id))
+    .filter((n): n is KagamiNotification => n !== undefined)
     .slice(0, MAX_VISIBLE);
 
   if (visible.length === 0)
