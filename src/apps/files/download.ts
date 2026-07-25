@@ -53,8 +53,12 @@ export async function buildZipEntries(
   return out;
 }
 
-/** Trigger a browser "Save As" for `blob` via a throwaway anchor click. */
-function triggerDownload(blob: Blob, filename: string): void {
+/**
+ * Trigger a browser "Save As" for `blob` via a throwaway anchor click.
+ * Exported for reuse by other archive-producing flows (e.g. `exportImport.ts`'s
+ * full-disk export) that need the same download mechanics.
+ */
+export function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -70,9 +74,10 @@ function triggerDownload(blob: Blob, filename: string): void {
  * Zip `entries` off the main thread (roadmap: "Zip via a Web Worker to keep
  * the shell responsive"). Not unit-testable under Vitest's Node environment
  * (no real Worker) — covered by `buildZipEntries`'s tests plus in-browser
- * verification instead.
+ * verification instead. Exported so `exportImport.ts`'s full-disk export
+ * reuses the same worker plumbing instead of duplicating it.
  */
-function zipInWorker(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
+export function zipInWorker(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./zipWorker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<{ ok: true; data: Uint8Array } | { ok: false; error: string }>) => {
