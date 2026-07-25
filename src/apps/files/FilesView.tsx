@@ -319,7 +319,7 @@ export function FilesView(props: FilesViewProps) {
   if (items.length === 0) {
     content = (
       <div
-        className={`grid flex-1 place-items-center text-[13px] text-ink-2 ${backgroundDropRing}`}
+        className={`grid flex-1 place-items-center text-13 text-ink-2 ${backgroundDropRing}`}
         {...containerProps}
       >
         {emptyLabel}
@@ -337,7 +337,7 @@ export function FilesView(props: FilesViewProps) {
           return (
             <div
               key={node.id}
-              className={`flex cursor-default flex-col gap-1.5 rounded-[11px] p-1.5 ${
+              className={`flex cursor-default flex-col gap-[calc(6px*var(--ui-scale))] rounded-[11px] p-1.5 ${
                 selected ? "bg-ph-2" : "hover:bg-ph"
               } ${cutIds.has(node.id) ? "opacity-45" : ""}`}
               {...itemProps(node, index)}
@@ -361,7 +361,7 @@ export function FilesView(props: FilesViewProps) {
                   )
                 : (
                     <span
-                      className={`truncate text-center text-[12px] font-medium ${
+                      className={`truncate text-center text-12 font-medium ${
                         selected ? "text-ink" : "text-ink-2"
                       }`}
                     >
@@ -380,13 +380,13 @@ export function FilesView(props: FilesViewProps) {
         className={`flex-1 overflow-auto ${backgroundDropRing}`}
         {...containerProps}
       >
-        <table className="w-full border-collapse text-[12.5px]">
+        <table className="w-full border-collapse text-12.5">
           <thead>
-            <tr className="text-left text-[11px] text-ink-2">
-              <th className="px-4 py-1.5 font-medium hairline-b">Name</th>
-              <th className="w-28 px-2 py-1.5 font-medium hairline-b">Modified</th>
-              <th className="w-24 px-2 py-1.5 font-medium hairline-b">Kind</th>
-              <th className="w-20 px-2 py-1.5 text-right font-medium hairline-b">Size</th>
+            <tr className="text-left text-11 text-ink-2">
+              <th className="px-4 py-[calc(6px*var(--ui-scale))] font-medium hairline-b">Name</th>
+              <th className="w-28 px-2 py-[calc(6px*var(--ui-scale))] font-medium hairline-b">Modified</th>
+              <th className="w-24 px-2 py-[calc(6px*var(--ui-scale))] font-medium hairline-b">Kind</th>
+              <th className="w-20 px-2 py-[calc(6px*var(--ui-scale))] text-right font-medium hairline-b">Size</th>
             </tr>
           </thead>
           <tbody>
@@ -402,7 +402,7 @@ export function FilesView(props: FilesViewProps) {
                   }`}
                   {...itemProps(node, index)}
                 >
-                  <td className="px-4 py-1.5">
+                  <td className="px-4 py-[calc(6px*var(--ui-scale))]">
                     <span className="flex items-center gap-2">
                       <NodeGlyph
                         node={node}
@@ -425,9 +425,9 @@ export function FilesView(props: FilesViewProps) {
                           )}
                     </span>
                   </td>
-                  <td className="px-2 py-1.5 text-ink-2">{formatModified(node.modifiedAt)}</td>
-                  <td className="px-2 py-1.5 text-ink-2">{nodeKind(node)}</td>
-                  <td className="px-2 py-1.5 text-right text-ink-2">
+                  <td className="px-2 py-[calc(6px*var(--ui-scale))] text-ink-2">{formatModified(node.modifiedAt)}</td>
+                  <td className="px-2 py-[calc(6px*var(--ui-scale))] text-ink-2">{nodeKind(node)}</td>
+                  <td className="px-2 py-[calc(6px*var(--ui-scale))] text-right text-ink-2">
                     {formatBytes(node.type === "folder" ? (folderSizes.get(node.id) ?? 0) : fileBytes(node))}
                   </td>
                 </tr>

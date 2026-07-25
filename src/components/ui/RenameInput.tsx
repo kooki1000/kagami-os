@@ -27,7 +27,7 @@ export function RenameInput({ value, selectStem = false, className = "", onCommi
     <input
       ref={inputRef}
       defaultValue={value}
-      className={`w-full rounded-[5px] bg-surface px-1 py-0.5 text-[12px] text-ink ring-1 ring-accent outline-none ${className}`}
+      className={`w-full rounded-[5px] bg-surface px-1 py-[calc(2px*var(--ui-scale))] text-12 text-ink ring-1 ring-accent outline-none ${className}`}
       onClick={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
       onKeyDown={(e) => {

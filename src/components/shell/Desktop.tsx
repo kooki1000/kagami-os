@@ -293,7 +293,7 @@ export function Desktop() {
                       <NodeGlyph node={node} className="size-7 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]" strokeWidth={1.4} />
                     </div>
                     <span
-                      className={`max-w-full truncate rounded-[4px] px-1 text-[11px] text-white [text-shadow:0_1px_2px_rgba(0,0,0,.6)] ${
+                      className={`max-w-full truncate rounded-[4px] px-1 text-11 text-white [text-shadow:0_1px_2px_rgba(0,0,0,.6)] ${
                         selectedId === node.id ? "bg-accent" : ""
                       }`}
                     >

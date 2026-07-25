@@ -20,7 +20,7 @@ export default function DevCrashApp(_props: AppWindowProps) {
     throw new Error("E2E forced crash (flag: e2e_crash)");
   }
   return (
-    <div className="grid h-full place-items-center text-[13px] text-ink-2">
+    <div className="grid h-full place-items-center text-13 text-ink-2">
       Recovered.
     </div>
   );

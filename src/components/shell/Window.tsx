@@ -42,10 +42,10 @@ function releasePointer(el: Element, pointerId: number) {
 type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 const RESIZE_HANDLES: Array<{ edge: Edge; className: string; cursor: string }> = [
-  { edge: "n", className: "top-0 left-3 right-3 h-1.5", cursor: "ns-resize" },
-  { edge: "s", className: "bottom-0 left-3 right-3 h-1.5", cursor: "ns-resize" },
-  { edge: "e", className: "right-0 top-3 bottom-3 w-1.5", cursor: "ew-resize" },
-  { edge: "w", className: "left-0 top-3 bottom-3 w-1.5", cursor: "ew-resize" },
+  { edge: "n", className: "top-0 left-3 right-3 h-[calc(6px*var(--ui-scale))]", cursor: "ns-resize" },
+  { edge: "s", className: "bottom-0 left-3 right-3 h-[calc(6px*var(--ui-scale))]", cursor: "ns-resize" },
+  { edge: "e", className: "right-0 top-3 bottom-3 w-[calc(6px*var(--ui-scale))]", cursor: "ew-resize" },
+  { edge: "w", className: "left-0 top-3 bottom-3 w-[calc(6px*var(--ui-scale))]", cursor: "ew-resize" },
   { edge: "ne", className: "top-0 right-0 size-3", cursor: "nesw-resize" },
   { edge: "nw", className: "top-0 left-0 size-3", cursor: "nwse-resize" },
   { edge: "se", className: "bottom-0 right-0 size-3", cursor: "nwse-resize" },
@@ -302,7 +302,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
       onPointerDownCapture={() => focusWindow(win.id)}
     >
       <div
-        className={`relative flex flex-none touch-none items-center bg-surface px-3.75 select-none hairline-b ${
+        className={`relative flex flex-none touch-none items-center bg-surface px-[calc(15px*var(--ui-scale))] select-none hairline-b ${
           focused ? "titlebar-focused" : ""
         }`}
         style={{ height: TITLE_BAR_HEIGHT }}
@@ -316,7 +316,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
           toggleMaximize(win.id);
         }}
       >
-        <div className="z-2 flex gap-2.25 win-controls" data-window-control>
+        <div className="z-2 flex gap-[calc(9px*var(--ui-scale))] win-controls" data-window-control>
           {CONTROLS.map(c => (
             <button
               key={c.kind}
@@ -332,7 +332,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         </div>
         <div
           data-window-title
-          className={`pointer-events-none absolute inset-x-0 text-center text-[13px] font-semibold ${
+          className={`pointer-events-none absolute inset-x-0 text-center text-13 font-semibold ${
             focused ? "text-ink" : "text-ink-2"
           }`}
         >
@@ -344,7 +344,7 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
         <Suspense
           fallback={(
             <div className="grid h-full place-items-center">
-              <span className="size-2.5 animate-pulse rounded-full bg-accent" />
+              <span className="size-[calc(10px*var(--ui-scale))] animate-pulse rounded-full bg-accent" />
             </div>
           )}
         >

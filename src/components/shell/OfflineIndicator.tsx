@@ -30,7 +30,7 @@ export function OfflineIndicator() {
     <span
       role="status"
       aria-label="Offline"
-      className="flex items-center gap-1 rounded-full bg-ph px-2 py-0.5 text-[11px] font-medium text-ink-2"
+      className="flex items-center gap-1 rounded-full bg-ph px-2 py-[calc(2px*var(--ui-scale))] text-11 font-medium text-ink-2"
     >
       <WifiOff className="size-3" />
       Offline

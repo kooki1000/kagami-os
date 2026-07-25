@@ -57,7 +57,7 @@ function SidebarItem({
     <button
       type="button"
       title={title}
-      className={`flex w-full items-center gap-[9px] rounded-[8px] px-[9px] py-1.5 text-left text-[12.5px] font-medium ${
+      className={`flex w-full items-center gap-[9px] rounded-[8px] px-[9px] py-[calc(6px*var(--ui-scale))] text-left text-12.5 font-medium ${
         active
           ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent"
           : "text-ink-2 hover:bg-ph"
@@ -80,7 +80,7 @@ function SidebarItem({
     >
       <Icon className="size-[15px] opacity-80" strokeWidth={1.8} />
       <span className="flex-1">{label}</span>
-      {trailing && <span className="text-[10.5px] opacity-60">{trailing}</span>}
+      {trailing && <span className="text-[calc(10.5px*var(--ui-scale))] opacity-60">{trailing}</span>}
     </button>
   );
 }
@@ -103,8 +103,8 @@ export function FilesSidebar({ cwd, trashCount, onNavigate, onDropNode }: FilesS
   };
 
   return (
-    <div className="flex w-[150px] flex-none flex-col gap-0.5 bg-surface-2 px-[9px] py-3 select-none hairline-r">
-      <div className="mx-1.5 mt-2 mb-1 font-mono text-[9.5px] font-semibold tracking-[0.5px] text-ink-2 uppercase opacity-70">
+    <div className="flex w-[150px] flex-none flex-col gap-[calc(2px*var(--ui-scale))] bg-surface-2 px-[9px] py-3 select-none hairline-r">
+      <div className="mx-1.5 mt-2 mb-1 font-mono text-[calc(9.5px*var(--ui-scale))] font-semibold tracking-[0.5px] text-ink-2 uppercase opacity-70">
         Places
       </div>
       {PLACES.map(place => (
@@ -118,7 +118,7 @@ export function FilesSidebar({ cwd, trashCount, onNavigate, onDropNode }: FilesS
           {...shared}
         />
       ))}
-      <div className="mx-1.5 mt-3 mb-1 font-mono text-[9.5px] font-semibold tracking-[0.5px] text-ink-2 uppercase opacity-70">
+      <div className="mx-1.5 mt-3 mb-1 font-mono text-[calc(9.5px*var(--ui-scale))] font-semibold tracking-[0.5px] text-ink-2 uppercase opacity-70">
         System
       </div>
       <SidebarItem

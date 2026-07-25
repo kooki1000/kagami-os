@@ -160,7 +160,7 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
           className="grid size-6 flex-none place-items-center rounded-[6px] hover:bg-ph disabled:opacity-30"
           onClick={() => browserBridge.back(windowId).catch(logBridgeError("back"))}
         >
-          <ChevronLeft className="size-3.5 opacity-70" />
+          <ChevronLeft className="size-[calc(14px*var(--ui-scale))] opacity-70" />
         </button>
         <button
           type="button"
@@ -169,7 +169,7 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
           className="grid size-6 flex-none place-items-center rounded-[6px] hover:bg-ph disabled:opacity-30"
           onClick={() => browserBridge.forward(windowId).catch(logBridgeError("forward"))}
         >
-          <ChevronRight className="size-3.5 opacity-70" />
+          <ChevronRight className="size-[calc(14px*var(--ui-scale))] opacity-70" />
         </button>
         <button
           type="button"
@@ -177,13 +177,13 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
           className="grid size-6 flex-none place-items-center rounded-[6px] hover:bg-ph"
           onClick={() => go(url)}
         >
-          <RotateCw className="size-3.5 opacity-70" />
+          <RotateCw className="size-[calc(14px*var(--ui-scale))] opacity-70" />
         </button>
         <input
           value={addressInput}
           onChange={e => setAddressInput(e.target.value)}
           placeholder="Enter an address"
-          className="min-w-0 flex-1 rounded-btn bg-ph px-2.5 py-1 text-[12px] text-ink outline-none placeholder:text-ink-2"
+          className="min-w-0 flex-1 rounded-btn bg-ph px-[calc(10px*var(--ui-scale))] py-1 text-12 text-ink outline-none placeholder:text-ink-2"
         />
       </form>
       {/* The native child webview is layered over this region by the Rust
@@ -193,8 +193,8 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
           that the page is paused rather than broken. */}
       <BrowserEmptyState className="min-h-0 flex-1">
         <Globe className="size-7 opacity-80" strokeWidth={1.4} />
-        <span className="font-mono text-[13px] text-ink">{host}</span>
-        <span className="text-[11.5px] opacity-70">Select this window to keep browsing</span>
+        <span className="font-mono text-13 text-ink">{host}</span>
+        <span className="text-11.5 opacity-70">Select this window to keep browsing</span>
       </BrowserEmptyState>
     </div>
   );
@@ -214,8 +214,8 @@ function UnavailableOnWeb() {
   return (
     <BrowserEmptyState className="h-full">
       <Globe className="size-7" strokeWidth={1.4} />
-      <span className="text-[13px]">Browser is available in the desktop app</span>
-      <span className="max-w-[280px] text-[11.5px] opacity-70">
+      <span className="text-13">Browser is available in the desktop app</span>
+      <span className="max-w-[280px] text-11.5 opacity-70">
         Third-party sites can't be embedded in a browser tab — install the
         Kagami desktop app for a real built-in browser.
       </span>

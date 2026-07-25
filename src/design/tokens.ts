@@ -48,6 +48,23 @@ export const sizing = {
   dockIcon: 46,
 } as const;
 
+/**
+ * Interface density (U4). `--ui-scale` in global.css multiplies the shell's
+ * fixed text/icon/control sizes; this is the JS-side mirror of the same
+ * three presets, read by Settings and applied to `<html>` by App.tsx
+ * (same "inline wins over stylesheet default" mechanism as accent/wallpaper
+ * in palettes.ts). Chosen so the two extremes roughly land on the next
+ * step of the existing type scale (e.g. 12.5px -> ~11.5px / ~13.5px)
+ * rather than an arbitrary blur.
+ */
+export const uiScaleMultipliers = {
+  small: 0.92,
+  default: 1,
+  large: 1.08,
+} as const;
+
+export type UiScale = keyof typeof uiScaleMultipliers;
+
 /** Type scale — Inter. [px, weight] */
 export const typeScale = {
   display: [28, 700],

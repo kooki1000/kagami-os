@@ -33,12 +33,12 @@ export function NotificationCenter() {
         className="fixed right-3 z-50 flex max-h-[70vh] w-84 animate-flyout-in flex-col overflow-hidden rounded-[15px] shadow-(--shadow-deep) chrome hairline"
         style={{ top: MENU_BAR_HEIGHT + 8 }}
       >
-        <div className="flex flex-none items-center justify-between px-4 py-2.5 hairline-b">
-          <span className="text-[13px] font-semibold text-ink">Notifications</span>
+        <div className="flex flex-none items-center justify-between px-4 py-[calc(10px*var(--ui-scale))] hairline-b">
+          <span className="text-13 font-semibold text-ink">Notifications</span>
           {items.length > 0 && (
             <button
               type="button"
-              className="rounded-btn px-1.5 py-0.5 text-[11.5px] font-medium text-ink-2 hover:bg-ph hover:text-ink"
+              className="rounded-btn px-[calc(6px*var(--ui-scale))] py-[calc(2px*var(--ui-scale))] text-11.5 font-medium text-ink-2 hover:bg-ph hover:text-ink"
               onClick={clearAll}
             >
               Clear All
@@ -50,7 +50,7 @@ export function NotificationCenter() {
           ? (
               <div className="flex flex-col items-center gap-2 px-6 py-10 text-ink-2">
                 <BellOff size={22} strokeWidth={1.5} />
-                <span className="text-[12.5px]">No notifications</span>
+                <span className="text-12.5">No notifications</span>
               </div>
             )
           : (
@@ -58,27 +58,27 @@ export function NotificationCenter() {
                 {items.map(n => (
                   <div
                     key={n.id}
-                    className="group relative flex items-start gap-2.5 rounded-[11px] p-2.5 hover:bg-ph"
+                    className="group relative flex items-start gap-[calc(10px*var(--ui-scale))] rounded-[11px] p-2.5 hover:bg-ph"
                   >
                     <NotificationGlyph notification={n} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="truncate text-[12.5px] font-semibold text-ink">
+                        <span className="truncate text-12.5 font-semibold text-ink">
                           {n.title}
                         </span>
-                        <span className="ml-auto flex-none text-[10.5px] text-ink-2">
+                        <span className="ml-auto flex-none text-[calc(10.5px*var(--ui-scale))] text-ink-2">
                           {formatRelativeTime(n.createdAt)}
                         </span>
                       </div>
                       {n.body && (
-                        <div className="mt-0.5 text-[11.5px] leading-snug text-ink-2">
+                        <div className="mt-0.5 text-11.5/snug text-ink-2">
                           {n.body}
                         </div>
                       )}
                       {n.action && (
                         <button
                           type="button"
-                          className="mt-1.5 rounded-btn bg-ph px-2 py-0.75 text-[11px] font-semibold text-accent hover:bg-ph-2"
+                          className="mt-1.5 rounded-btn bg-ph px-2 py-[calc(3px*var(--ui-scale))] text-11 font-semibold text-accent hover:bg-ph-2"
                           onClick={() => {
                             n.action?.run();
                             remove(n.id);

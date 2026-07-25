@@ -68,7 +68,7 @@ function EntryRow({ entry, onClose }: {
   const submenuRef = useRef<HTMLDivElement>(null);
   const pos = useClampedPosition(submenuRef, anchor, open);
 
-  const rowClass = `block w-full rounded-btn px-2.5 py-1 text-left text-[13px] ${
+  const rowClass = `block w-full rounded-btn px-[calc(10px*var(--ui-scale))] py-1 text-left text-13 ${
     entry.disabled
       ? "text-ink-2 opacity-50"
       : entry.danger
@@ -159,7 +159,7 @@ export function ContextMenu({ x, y, header, entries, onClose }: ContextMenuProps
         }}
       >
         {header && (
-          <div className="px-2.5 py-1 text-[11px] font-semibold text-ink-2">
+          <div className="px-[calc(10px*var(--ui-scale))] py-1 text-11 font-semibold text-ink-2">
             {header}
           </div>
         )}

@@ -7,6 +7,7 @@ import { NotificationCenter } from "./components/shell/NotificationCenter";
 import { SearchOverlay } from "./components/shell/SearchOverlay";
 import { ToastStack } from "./components/shell/ToastStack";
 import { WindowLayer } from "./components/shell/WindowLayer";
+import { uiScaleMultipliers } from "./design/tokens";
 import { launchApp } from "./system/apps/launch";
 import { useFsStore } from "./system/fs/fsStore";
 import { notify } from "./system/notifications/notificationStore";
@@ -23,6 +24,7 @@ export default function App() {
   const resolved = useThemeStore(s => s.resolved);
   const accentId = useSettingsStore(s => s.accentId);
   const wallpaperId = useSettingsStore(s => s.wallpaperId);
+  const uiScale = useSettingsStore(s => s.uiScale);
   const setViewport = useWindowStore(s => s.setViewport);
 
   useGlobalShortcuts();
@@ -42,6 +44,15 @@ export default function App() {
     for (const [key, value] of Object.entries(vars))
       root.style.setProperty(key, value);
   }, [resolved, accentId, wallpaperId]);
+
+  // Interface density (U4): same inline-override mechanism as above, kept
+  // as its own effect since it's an independent axis from theme/accent.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--ui-scale",
+      String(uiScaleMultipliers[uiScale]),
+    );
+  }, [uiScale]);
 
   useEffect(() => {
     const update = () =>

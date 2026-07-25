@@ -17,15 +17,15 @@ export default function WelcomeApp(_props: AppWindowProps) {
           className="size-5 rotate-45 rounded-[5px]"
           style={{ background: "var(--accent)" }}
         />
-        <h1 className="text-[28px] font-bold tracking-tight text-ink">
+        <h1 className="text-[calc(28px*var(--ui-scale))] font-bold tracking-tight text-ink">
           Kagami OS
         </h1>
       </div>
-      <p className="text-[15px] font-medium text-ink-2">
+      <p className="text-[calc(15px*var(--ui-scale))] font-medium text-ink-2">
         A desktop that lives in your browser.
       </p>
 
-      <div className="mt-6 space-y-4 text-[13px] leading-relaxed text-ink">
+      <div className="mt-6 space-y-4 text-13/relaxed text-ink">
         <p>
           Drag this window by its title bar, resize it from any edge,
           double-click the title bar to zoom, or drag it against the left or
@@ -41,17 +41,17 @@ export default function WelcomeApp(_props: AppWindowProps) {
       </div>
 
       <div className="mt-7">
-        <div className="mb-2.5 font-mono text-[10px] font-semibold tracking-[0.7px] text-ink-2 uppercase">
+        <div className="mb-2.5 font-mono text-[calc(10px*var(--ui-scale))] font-semibold tracking-[0.7px] text-ink-2 uppercase">
           Lagoon palette
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex gap-[calc(10px*var(--ui-scale))]">
           {swatches.map(s => (
-            <div key={s.name} className="flex flex-col items-center gap-1.5">
+            <div key={s.name} className="flex flex-col items-center gap-[calc(6px*var(--ui-scale))]">
               <span
                 className="size-9 rounded-[9px] hairline"
                 style={{ background: s.value }}
               />
-              <span className="text-[10px] font-medium text-ink-2">{s.name}</span>
+              <span className="text-[calc(10px*var(--ui-scale))] font-medium text-ink-2">{s.name}</span>
             </div>
           ))}
         </div>

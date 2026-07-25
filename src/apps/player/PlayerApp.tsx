@@ -63,7 +63,7 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-2 select-none">
         <Music className="size-7" strokeWidth={1.4} />
-        <span className="text-[13px]">
+        <span className="text-13">
           {activeId ? "This file is no longer available" : "Open an audio or video file from Files"}
         </span>
       </div>
@@ -73,7 +73,7 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
   if (!blobUrl) {
     return (
       <div className="grid h-full place-items-center">
-        <span className="size-2.5 animate-pulse rounded-full bg-accent" />
+        <span className="size-[calc(10px*var(--ui-scale))] animate-pulse rounded-full bg-accent" />
       </div>
     );
   }
@@ -91,7 +91,7 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
             <button
               key={track.id}
               type="button"
-              className={`block w-full truncate rounded-btn px-2 py-1 text-left text-[12px] ${
+              className={`block w-full truncate rounded-btn px-2 py-1 text-left text-12 ${
                 track.id === activeId ? "bg-accent text-white" : "text-ink hover:bg-ph"
               }`}
               onClick={() => setActiveId(track.id)}
@@ -110,7 +110,7 @@ export default function PlayerApp({ windowId, payload }: AppWindowProps) {
             : (
                 <div className="flex flex-col items-center gap-3 text-ink-2">
                   <Music className="size-16" strokeWidth={1} />
-                  <span className="max-w-64 truncate text-[13px] font-medium text-ink">{node.name}</span>
+                  <span className="max-w-64 truncate text-13 font-medium text-ink">{node.name}</span>
                 </div>
               )}
         </div>
