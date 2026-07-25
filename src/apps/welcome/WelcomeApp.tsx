@@ -1,5 +1,4 @@
 import type { AppWindowProps } from "@/system/apps/types";
-import { useTranslation } from "react-i18next";
 import { lagoon } from "@/design/tokens";
 
 const swatches = [
@@ -11,7 +10,6 @@ const swatches = [
 ];
 
 export default function WelcomeApp(_props: AppWindowProps) {
-  const { t } = useTranslation();
   return (
     <div className="h-full overflow-auto p-8 select-none">
       <div className="mb-1 flex items-center gap-3">
@@ -24,17 +22,27 @@ export default function WelcomeApp(_props: AppWindowProps) {
         </h1>
       </div>
       <p className="text-[15px] font-medium text-ink-2">
-        {t("welcome.tagline")}
+        A desktop that lives in your browser.
       </p>
 
       <div className="mt-6 space-y-4 text-[13px] leading-relaxed text-ink">
-        <p>{t("welcome.instructions")}</p>
-        <p className="text-ink-2">{t("welcome.overview")}</p>
+        <p>
+          Drag this window by its title bar, resize it from any edge,
+          double-click the title bar to zoom, or drag it against the left or
+          right edge of the screen to tile it. Press ⌘W to close a window.
+        </p>
+        <p className="text-ink-2">
+          Files, Notes, the image viewer, and a sandboxed Terminal are all
+          live — double-click a document or picture in Files to open it.
+          Everything is stored in a virtual file system in your browser, so it
+          survives refreshes. Tune the accent, wallpaper, theme, and dock in
+          Settings.
+        </p>
       </div>
 
       <div className="mt-7">
         <div className="mb-2.5 font-mono text-[10px] font-semibold tracking-[0.7px] text-ink-2 uppercase">
-          {t("welcome.paletteLabel")}
+          Lagoon palette
         </div>
         <div className="flex gap-2.5">
           {swatches.map(s => (
