@@ -1,11 +1,13 @@
 import type { FsNode } from "./types";
 import { beforeEach, describe, expect, it } from "vitest";
+import { useNotificationStore } from "@/system/notifications/notificationStore";
 import {
   childrenOf,
   expiredTrashIds,
   indexNodes,
   isDescendantOf,
   isValidNodeName,
+  logPersistError,
   pathOf,
   TRASH_MAX_AGE_MS,
   uniqueChildName,
@@ -348,5 +350,31 @@ describe("subtree collection at depth", () => {
     expect(() => api().deleteForever("reports")).not.toThrow();
     expect(api().nodes.reports).toBeUndefined();
     expect(api().nodes.child).toBeUndefined();
+  });
+});
+
+// review-backlog.md §17: a storage write failure used to be console-only —
+// the in-memory store kept the change and the UI showed it as saved while
+// the bytes never reached disk. logPersistError now also raises a
+// danger-tone notification so the user finds out.
+describe("logPersistError", () => {
+  beforeEach(() => {
+    useNotificationStore.setState({ items: [], toastIds: [], centerOpen: false });
+  });
+
+  it("gives actionable copy for a quota-exceeded failure", () => {
+    logPersistError(new DOMException("quota", "QuotaExceededError"));
+
+    const [notification] = useNotificationStore.getState().items;
+    expect(notification).toMatchObject({ tone: "danger", title: "Storage is full" });
+    expect(notification.body).toMatch(/trash|large files/i);
+  });
+
+  it("gives a generic message for any other failure", () => {
+    logPersistError(new Error("network blip"));
+
+    const [notification] = useNotificationStore.getState().items;
+    expect(notification).toMatchObject({ tone: "danger" });
+    expect(notification.title).not.toBe("Storage is full");
   });
 });

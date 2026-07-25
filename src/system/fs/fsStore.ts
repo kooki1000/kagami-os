@@ -1,6 +1,7 @@
 import type { FsNode } from "./types";
 import { create } from "zustand";
 import { nameStem } from "@/lib/format";
+import { notify } from "@/system/notifications/notificationStore";
 import { isTauri } from "../platform";
 import { sweepUnreferencedBlobs } from "./blobGc";
 import { hashBlob } from "./blobHash";
@@ -13,8 +14,26 @@ import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
 
 const adapter = isTauri() ? createTauriAdapter() : createIdbAdapter();
 
-function logPersistError(error: unknown): void {
+/**
+ * Every `adapter.putMany`/`removeMany`/blob-sweep call is fire-and-forget
+ * (see `commit`/`removeIds` below), so a write failure had nowhere to surface
+ * but the console — the in-memory store kept showing the change as saved
+ * while the bytes silently never reached disk (review-backlog.md §17). Log
+ * for diagnostics, but also tell the user: quota exhaustion is actionable,
+ * everything else at least explains why a reload might lose the change.
+ * Exported for direct unit testing — the (fire-and-forget) call sites below
+ * don't give tests an easy hook into the async `.catch` branch itself.
+ */
+export function logPersistError(error: unknown): void {
   console.error("[kagami-fs] persistence failed:", error);
+  const quotaExceeded = error instanceof DOMException && error.name === "QuotaExceededError";
+  notify({
+    title: quotaExceeded ? "Storage is full" : "Couldn't save your changes",
+    body: quotaExceeded
+      ? "Empty the Trash or remove large files, then try again."
+      : "Your change may not survive a reload. Try again in a moment.",
+    tone: "danger",
+  });
 }
 
 /* ---------- pure tree helpers (exported for apps and tests) ---------- */
