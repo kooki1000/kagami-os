@@ -79,14 +79,22 @@ function byKey(a: FsNode, b: FsNode, key: SortKey): number {
  * convention); `sort` orders within each group. Direction applies to the
  * key only — ties always resolve by name ascending, so reversing the order
  * doesn't scramble same-key items.
+ *
+ * T7: looks the folder's child ids up in {@link childIdsByParent}'s index
+ * instead of scanning every node in the map — a full-map `Object.values`
+ * scan cost the same whether the folder held 5 items or 5,000. The index
+ * itself is cached per `nodes` identity (see there), so this is the only
+ * per-call cost beyond the sort.
  */
 export function childrenOf(
   nodes: NodeMap,
   parentId: string,
   sort: SortSpec = DEFAULT_SORT,
 ): FsNode[] {
-  return Object.values(nodes)
-    .filter(n => n.parentId === parentId)
+  const ids = childIdsByParent(nodes).get(parentId) ?? [];
+  return ids
+    .map(id => nodes[id])
+    .filter((n): n is FsNode => !!n)
     .sort((a, b) => {
       if (a.type !== b.type)
         return a.type === "folder" ? -1 : 1;
@@ -116,8 +124,21 @@ export function isDescendantOf(nodes: NodeMap, id: string, ancestorId: string): 
   return false;
 }
 
-/** parentId → child ids, built in one pass over the map. */
+// T7: every commit replaces `nodes` with a fresh object (see `commit`/
+// `removeIds` below), so a `WeakMap` keyed on that identity is a correct,
+// self-invalidating cache — the same `nodes` reference always yields the
+// same index, and a stale entry can never outlive the map it was built
+// from. This is what turns "every caller (childrenOf, folderSizes,
+// duplicate, uniqueChildName's future callers, …) rebuilds its own index"
+// into "built once per render/commit, shared by all of them."
+const childIdsByParentCache = new WeakMap<NodeMap, Map<string, string[]>>();
+
+/** parentId → child ids, built in one pass over the map. Cached per `nodes` identity — see above. */
 export function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
+  const cached = childIdsByParentCache.get(nodes);
+  if (cached)
+    return cached;
+
   const index = new Map<string, string[]>();
   for (const node of Object.values(nodes)) {
     if (node.parentId === null)
@@ -127,6 +148,7 @@ export function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
       siblings.push(node.id);
     else index.set(node.parentId, [node.id]);
   }
+  childIdsByParentCache.set(nodes, index);
   return index;
 }
 
