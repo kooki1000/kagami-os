@@ -22,7 +22,11 @@ export function NotificationCenter() {
 
   return (
     <>
-      <div className="fixed inset-0 z-45" onPointerDown={closeCenter} />
+      {/* Below the menu bar's z-40 (review-backlog #10) so the bell (inside
+          the menu bar) still receives its own pointerdown and can toggle
+          the center closed, instead of this backdrop intercepting it first
+          and making the bell's toggle branch unreachable. */}
+      <div className="fixed inset-0 z-35" onPointerDown={closeCenter} />
       <div
         ref={centerRef}
         tabIndex={-1}
