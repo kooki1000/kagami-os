@@ -5,6 +5,7 @@ import "@fontsource-variable/inter/index.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "./styles/global.css";
+import "./system/i18n/i18n";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
