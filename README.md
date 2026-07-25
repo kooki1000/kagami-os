@@ -6,10 +6,13 @@ A browser-based desktop environment — windowing shell, virtual file system,
 and a suite of built-in apps, all client-side. Built with React, TypeScript,
 Vite, Zustand, and Tailwind v4.
 
-The website is the zero-install baseline. A **native desktop app** (Tauri)
-is the next direction: the same codebase, packaged natively, with a real
-isolated filesystem and a built-in browser — progressive enhancement, not a
-pivot away from the web. See [`DIRECTION.md`](DIRECTION.md).
+Kagami is **local-first**: no account, no server, no telemetry. Your files
+stay on your machine.
+
+It runs two ways from one codebase. The website is the zero-install
+baseline; a **native desktop app** (Tauri) adds a real isolated filesystem
+on disk and a built-in browser — progressive enhancement, not a pivot away
+from the web. See [`DIRECTION.md`](DIRECTION.md).
 
 ## Getting started
 
@@ -52,8 +55,8 @@ Node 22.23.1 (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
   guardrails that keep the native-desktop track coherent.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the shell's moving parts and the two
   seams (app manifest pattern, storage adapter) that future features hook into.
-- [`ROADMAP.md`](ROADMAP.md) — feature backlog and the phased plan toward a
-  full online desktop, plus the parallel native desktop track.
+- [`ROADMAP.md`](ROADMAP.md) — feature backlog and the step-by-step plan
+  toward a finished local-first desktop, plus the parallel native track.
 
 ## Feature flags
 

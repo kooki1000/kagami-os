@@ -8,10 +8,9 @@ here ships until the shape below is agreed.
 ## Problem
 
 `FsNode.content` holds file bytes as strings — data URLs for images, raw text
-for documents. Every byte therefore rides through `loadAll` into memory, sits
-in every Zustand snapshot, and (once sync lands in Phase 13) would travel in
-every op. This caps practical file size at "toy" and blocks real uploads (B2),
-download (B3), and media/PDF (D5/D6).
+for documents. Every byte therefore rides through `loadAll` into memory and
+sits in every Zustand snapshot. This caps practical file size at "toy" and
+blocks real uploads (B2), download (B3), and media/PDF (D5/D6).
 
 **Exit criterion (roadmap Phase 10):** `loadAll` no longer contains file bytes
 — nodes are metadata.
@@ -41,7 +40,7 @@ text) becomes a `contentRef`.
 ## Storage layer
 
 A new seam, parallel to `StorageAdapter`, so the byte store can evolve
-independently (IndexedDB today; S3 presigned URLs server-side in Phase 13):
+independently (IndexedDB in the web build, disk files in the native one):
 
 ```ts
 interface BlobStore {
@@ -137,7 +136,8 @@ B2 (upload from host OS) then builds directly on steps 1–2.
 2. **Threshold value:** 64 KB proposed. Balances keeping Notes/Terminal on the
    inline path against payload bloat.
 3. **`BlobStore` as a separate seam** (recommended) vs extending
-   `StorageAdapter`. Separate keeps the S3 swap (Phase 13) isolated.
+   `StorageAdapter`. Separate keeps a future backend swap isolated — which
+   is what let the native disk store land without touching node persistence.
 4. **Seed SVGs inline** (recommended) vs migrated to blobs.
 
 ## Risk

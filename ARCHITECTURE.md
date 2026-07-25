@@ -204,9 +204,9 @@ with two seams around it:
   the Tauri app's `$APPDATA/disk` folder — a real, isolated folder on the
   host machine — instead of IndexedDB. `fsStore.ts`/`blobStore.ts` each
   pick the adapter at construction with one `isTauri()` check
-  (`system/platform.ts`); a remote/API adapter for the online track
-  (`ROADMAP.md` area A) will select in behind the same interface the same
-  way.
+  (`system/platform.ts`). The seam was built for a remote/API adapter that
+  is no longer coming (`ROADMAP.md` §3.X.1); if bring-your-own-storage sync
+  is ever picked up (§3.X.2), it selects in here the same way.
 - **`FileSystemProvider`** (`provider.ts`, app-facing seam): async
   `readDir/readFile/writeFile/mkdir/move/rename/delete/stat` for external
   consumers that don't need reactivity. UI like Files subscribes to the
@@ -402,5 +402,8 @@ described under `StorageAdapter` above. `pnpm dev`/`build` (the website) are
 unaffected. Remaining: N-2 (built-in Browser) and N-3 (signed/notarized
 distribution, desktop e2e via `tauri-driver`).
 
-**Next (planned, not yet built):** the online track's backend/sync work
-(`ROADMAP.md` phase 13+).
+**Next (planned, not yet built):** `ROADMAP.md` steps 13–17 — realigned
+docs, a stability pass over the review backlog, app depth and customization
+(area U), the capability sandbox and the apps that need it, then the
+third-party app SDK. The online track that used to sit here is retired
+(`ROADMAP.md` §3.X.1): Kagami is local-first with no server.

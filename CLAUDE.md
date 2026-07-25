@@ -8,6 +8,17 @@ Kagami OS — a browser-based desktop environment (windowing shell, virtual
 file system, built-in apps) that runs entirely client-side. React 19 +
 TypeScript + Vite + Zustand + Tailwind v4.
 
+**Kagami is local-first and there will be no server** — no accounts, no
+backend, no telemetry, ever. The online track (accounts, sync, sharing) was
+retired in July 2026; see `ROADMAP.md` §3.X.1 for the reasoning and §3.X.2
+for the parked bring-your-own-storage alternative. Don't propose a backend.
+
+Current priorities, in order (`ROADMAP.md` §4): stability (step 14) → app
+depth and customization (step 15, area U) → the capability sandbox and the
+apps that need it (step 16) → the third-party app SDK (step 17). Anything
+distribution-shaped — public deploy, releases, signed installers — is
+deliberately below that line.
+
 ## Commands
 
 Requires **Node 22.23.1** exactly (`.nvmrc`, `engines`, `.npmrc
@@ -54,9 +65,11 @@ CI (`.github/workflows/ci.yml`) runs two jobs on every push/PR to `main`:
 `ARCHITECTURE.md` is the living design doc — read it before any
 non-trivial change; update it when a change alters one of the seams below.
 `ROADMAP.md` tracks the phased feature backlog, and
-`docs/review-backlog.md` holds known open bugs from the last review pass
-(with repros and proposed fixes) — check it before touching the shell's
-menus, the Files view, or the persisted stores. `docs/security-advisories.md`
+`docs/review-backlog.md` holds bugs from the last review pass (with repros
+and proposed fixes) — check it before touching the shell's menus, the Files
+view, or the persisted stores, but read its staleness banner first: five of
+its entries were closed incidentally by the accessibility pass and it hasn't
+been re-triaged since. `docs/security-advisories.md`
 records dependency vulnerability alerts that were investigated and
 deliberately left open (with the reasoning and a revisit condition) — check
 it before re-dismissing or "fixing" an alert someone already triaged. The
@@ -149,14 +162,14 @@ the fs store — writes land in the same VFS the Files app shows. Keep new
 commands in the pure engine, not the React REPL shell
 (`TerminalApp.tsx`), so they stay unit-testable without React.
 
-### Blob storage (Phase 10, in progress)
+### Blob storage (Phase 10, shipped)
 
-Design note: `docs/blob-architecture.md`. Large/binary file content is
-moving out of `FsNode.content` (inline string, capped at 64 KB) into a
+Design note: `docs/blob-architecture.md`. Large/binary file content lives
+outside `FsNode.content` (inline string, capped at 64 KB) in a
 content-addressed `BlobStore` (SHA-256 hash → bytes), parallel to
-`StorageAdapter`, enabling dedupe and unblocking real upload/download.
-Consumers resolve bytes via a `useBlobUrl(ref)`-style hook rather than
-reading `node.content` directly once a node has a `contentRef`.
+`StorageAdapter`, giving dedupe and real upload/download. Consumers resolve
+bytes via `useBlobUrl(ref)` rather than reading `node.content` directly once
+a node has a `contentRef`.
 
 ## Conventions
 
