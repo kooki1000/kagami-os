@@ -7,7 +7,7 @@ import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
-import { payloadFileId } from "@/system/apps/openFile";
+import { payloadFileId, usePayloadFileId } from "@/system/apps/filePayload";
 import { isDescendantOf, useFsStore } from "@/system/fs/fsStore";
 import { isCommittableRename } from "@/system/fs/renameCommit";
 import { DOCUMENTS_ID, TRASH_ID } from "@/system/fs/types";
@@ -85,21 +85,9 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
   const rename = useFsStore(s => s.rename);
   const moveToTrash = useFsStore(s => s.moveToTrash);
 
-  const [selectedId, setSelectedId] = useState<string | null>(() => payloadFileId(payload));
+  const [selectedId, setSelectedId] = usePayloadFileId(payload);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; docId: string } | null>(null);
-
-  // A re-launch ("open this file in Notes") replaces the window payload
-  // with a fresh object; adopt its file as the selection (state adjustment
-  // during render). Compared by identity, not fileId, so re-opening the
-  // same file after switching notes still re-selects it.
-  const [lastPayload, setLastPayload] = useState(payload);
-  if (payload !== lastPayload) {
-    setLastPayload(payload);
-    const payloadId = payloadFileId(payload);
-    if (payloadId)
-      setSelectedId(payloadId);
-  }
 
   // Keep the window's payload in sync with whichever note is actually
   // showing (selecting a note in the sidebar is internal state, not a
