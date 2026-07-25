@@ -1,7 +1,7 @@
 # Kagami OS — Feature Backlog & Roadmap
 
 **Status:** draft for review · July 2026
-**Baseline:** phases 1–11 complete (see `ARCHITECTURE.md` § Phase status)
+**Baseline:** phases 1–12 complete (see `ARCHITECTURE.md` § Phase status)
 
 This document defines what "a fully functioning online desktop client" means
 for Kagami, enumerates every feature gap between that target and today's
