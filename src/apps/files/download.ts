@@ -29,7 +29,9 @@ export async function resolveFileBytes(node: FsNode, store: BlobStore): Promise<
  * Flatten a folder's full contents into `{ relativePath: bytes }`, ready to
  * hand to a zip encoder. Empty subfolders get a trailing-slash entry with no
  * bytes so the archive preserves them (fflate's directory-entry convention).
- * Pure aside from blob reads.
+ * Pure aside from blob reads, which run concurrently across siblings rather
+ * than one at a time — matters once a caller (e.g. full-disk export) points
+ * this at a tree with many blob-backed files.
  */
 export async function buildZipEntries(
   folderId: string,
@@ -37,19 +39,18 @@ export async function buildZipEntries(
   store: BlobStore,
   prefix = "",
 ): Promise<Record<string, Uint8Array>> {
-  const out: Record<string, Uint8Array> = {};
   const children = childrenOf(nodes, folderId);
-  if (children.length === 0 && prefix) {
-    out[`${prefix}/`] = new Uint8Array(0);
-    return out;
-  }
-  for (const child of children) {
+  if (children.length === 0)
+    return prefix ? { [`${prefix}/`]: new Uint8Array(0) } : {};
+
+  const out: Record<string, Uint8Array> = {};
+  await Promise.all(children.map(async (child) => {
     const path = prefix ? `${prefix}/${child.name}` : child.name;
     if (child.type === "folder")
       Object.assign(out, await buildZipEntries(child.id, nodes, store, path));
     else
       out[path] = await resolveFileBytes(child, store);
-  }
+  }));
   return out;
 }
 

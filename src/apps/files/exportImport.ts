@@ -108,17 +108,11 @@ function collectFolderPaths(filePaths: string[], explicitFolderPaths: string[]):
 
 /**
  * Reconstruct a full-disk replacement — folders, files, and the blobs they
- * reference — from an unzipped export archive. Pure aside from hashing (Web
- * Crypto, no I/O): callers hand the result to `useFsStore`'s `replaceAll`.
- *
- * Mirrors the upload path's inline-vs-blob split (`BLOB_INLINE_THRESHOLD`,
- * text/* stays inline) using the manifest's recorded mime type, so a
- * round-tripped disk lands in the exact same storage shape it started in —
- * and hashes each file's bytes the same way `createBlobFile` does, so
- * restored files dedupe identically to a fresh upload of the same content.
- *
- * `makeId` defaults to `crypto.randomUUID`; tests can pass a deterministic
- * generator.
+ * reference — from an unzipped export archive, for `useFsStore.replaceAll`.
+ * Pure aside from hashing (Web Crypto, no I/O). Mirrors the upload path's
+ * inline-vs-blob split and hashing, so a round-tripped disk lands in the
+ * same storage shape and dedupes the same way a fresh upload would.
+ * `makeId` defaults to `crypto.randomUUID`; tests can pass a deterministic one.
  */
 export async function planImport(
   entries: Record<string, Uint8Array>,
@@ -167,42 +161,38 @@ export async function planImport(
     });
   }
 
-  const blobsByHash = new Map<string, ImportBlob>();
+  interface FileMeta { bytes: Uint8Array; parentId: string; name: string; mimeType?: string; createdAt: number; modifiedAt: number }
+  const metaByPath = new Map<string, FileMeta>();
+  const binaryPaths: string[] = [];
   for (const path of filePaths) {
     const bytes = entries[path];
     if (!bytes)
       throw new InvalidArchiveError(`Missing bytes for "${path}" in the archive.`);
     const { mimeType, createdAt, modifiedAt } = manifest.files[path];
     const { parentPath, name } = splitPath(path);
-    const parentId = idByPath.get(parentPath) ?? ROOT_ID;
+    metaByPath.set(path, { bytes, parentId: idByPath.get(parentPath) ?? ROOT_ID, name, mimeType, createdAt, modifiedAt });
+    if (!(mimeType?.startsWith("text/") && bytes.byteLength <= BLOB_INLINE_THRESHOLD))
+      binaryPaths.push(path);
+  }
 
-    if (mimeType?.startsWith("text/") && bytes.byteLength <= BLOB_INLINE_THRESHOLD) {
-      nodes.push({
-        id: makeId(),
-        parentId,
-        name,
-        type: "file",
-        mimeType,
-        content: new TextDecoder().decode(bytes),
-        createdAt,
-        modifiedAt,
-      });
+  // Every hash is an independent Web Crypto call — run them concurrently
+  // instead of one file at a time.
+  const hashes = await Promise.all(binaryPaths.map(path => sha256Hex(metaByPath.get(path)!.bytes)));
+  const hashByPath = new Map(binaryPaths.map((path, i) => [path, hashes[i]]));
+
+  const blobsByHash = new Map<string, ImportBlob>();
+  for (const path of filePaths) {
+    const { bytes, parentId, name, mimeType, createdAt, modifiedAt } = metaByPath.get(path)!;
+    const hash = hashByPath.get(path);
+
+    if (hash === undefined) {
+      nodes.push({ id: makeId(), parentId, name, type: "file", mimeType, content: new TextDecoder().decode(bytes), createdAt, modifiedAt });
       continue;
     }
 
-    const hash = await sha256Hex(bytes);
     if (!blobsByHash.has(hash))
       blobsByHash.set(hash, { hash, bytes, mimeType });
-    nodes.push({
-      id: makeId(),
-      parentId,
-      name,
-      type: "file",
-      mimeType,
-      contentRef: { hash, size: bytes.byteLength, mimeType },
-      createdAt,
-      modifiedAt,
-    });
+    nodes.push({ id: makeId(), parentId, name, type: "file", mimeType, contentRef: { hash, size: bytes.byteLength, mimeType }, createdAt, modifiedAt });
   }
 
   return { nodes, blobs: [...blobsByHash.values()] };
