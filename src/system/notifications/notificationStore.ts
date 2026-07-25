@@ -99,6 +99,8 @@ export const useNotificationStore = create<NotificationStore>()((set, get) => ({
 
   pruneExpiredToasts: (now = Date.now()) =>
     set((state) => {
+      if (state.toastIds.length === 0)
+        return state;
       const byId = new Map(state.items.map(n => [n.id, n]));
       const toastIds = state.toastIds.filter((id) => {
         const notification = byId.get(id);
