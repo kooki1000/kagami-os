@@ -39,6 +39,14 @@
   --shadow-window: 0 8px 22px -8px rgba(0, 0, 0, 0.32);
   --shadow-window-focus: 0 30px 65px -18px rgba(0, 0, 0, 0.5), 0 6px 18px -8px rgba(0, 0, 0, 0.3);
   --shadow-deep: 0 22px 55px -16px rgba(28, 22, 14, 0.42);
+
+  /* interface density (U4) — multiplies the shell's fixed text/icon/control
+     sizes below. Settings' density picker sets this inline on <html>
+     (small/default/large -> a multiplier in src/design/tokens.ts), same
+     "inline beats stylesheet default" mechanism as --accent/--wall. The
+     bare default here is 1 so anything reading the var pre-hydration (or
+     with JS disabled) gets an unscaled shell. */
+  --ui-scale: 1;
 }
 
 :root[data-theme="dark"] {
@@ -84,6 +92,18 @@
   --radius-window: 14px;
   --radius-tile: 13px;
   --radius-btn: 7px;
+
+  /* density (U4) — named utilities for the shell's five most common
+     hardcoded text sizes (menu items, sidebar rows, captions), each scaled
+     by --ui-scale: text-11, text-11.5, text-12, text-12.5, text-13. Less
+     common one-off sizes are converted at the call site with an inline
+     `text-[calc(Npx*var(--ui-scale))]` arbitrary value instead of getting a
+     dedicated token here — see the density sweep for the full file list. */
+  --text-11: calc(11px * var(--ui-scale));
+  --text-11.5: calc(11.5px * var(--ui-scale));
+  --text-12: calc(12px * var(--ui-scale));
+  --text-12.5: calc(12.5px * var(--ui-scale));
+  --text-13: calc(13px * var(--ui-scale));
 }
 
 html,

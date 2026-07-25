@@ -29,4 +29,15 @@ describe("settingsStore persistence", () => {
     // than silently adopted — the store keeps its own default instead.
     expect(useSettingsStore.getState().accentId).toBe(DEFAULT_ACCENT_ID);
   });
+
+  it("defaults uiScale to 'default' and persists a changed value", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    expect(useSettingsStore.getState().uiScale).toBe("default");
+
+    useSettingsStore.getState().setUiScale("large");
+    expect(useSettingsStore.getState().uiScale).toBe("large");
+
+    const persisted = JSON.parse(localStorage.getItem("kagami-settings") ?? "{}");
+    expect(persisted.state.uiScale).toBe("large");
+  });
 });

@@ -1,4 +1,5 @@
 import type { ChangeEvent, ReactNode } from "react";
+import type { UiScale } from "@/design/tokens";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
@@ -36,7 +37,7 @@ function dividerExceptLast(index: number, length: number): string {
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="px-5 py-4 hairline-b">
-      <div className="mb-2.5 text-[12.5px] font-semibold text-ink">{label}</div>
+      <div className="mb-2.5 text-12.5 font-semibold text-ink">{label}</div>
       {children}
     </div>
   );
@@ -64,7 +65,7 @@ function Segmented<T extends string>({
         <button
           key={option.value}
           type="button"
-          className={`flex-1 rounded-btn px-3 py-1.5 text-[12px] transition-colors ${
+          className={`flex-1 rounded-btn px-3 py-[calc(6px*var(--ui-scale))] text-12 transition-colors ${
             value === option.value
               ? "bg-surface font-semibold text-ink shadow-[0_1px_3px_rgba(0,0,0,.14)]"
               : "font-medium text-ink-2 hover:text-ink"
@@ -85,6 +86,8 @@ function AppearanceSection() {
   const setAccent = useSettingsStore(s => s.setAccent);
   const wallpaperId = useSettingsStore(s => s.wallpaperId);
   const setWallpaper = useSettingsStore(s => s.setWallpaper);
+  const uiScale = useSettingsStore(s => s.uiScale);
+  const setUiScale = useSettingsStore(s => s.setUiScale);
 
   return (
     <>
@@ -102,7 +105,7 @@ function AppearanceSection() {
       </Row>
 
       <Row label="Accent color">
-        <div className="flex gap-2.75">
+        <div className="flex gap-[calc(11px*var(--ui-scale))]">
           {ACCENTS.map((accent) => {
             const selected = accent.id === accentId;
             return (
@@ -111,7 +114,7 @@ function AppearanceSection() {
                 type="button"
                 aria-label={accent.name}
                 title={accent.name}
-                className={`relative size-6.5 rounded-full border-[1.5px] border-black/10 ${
+                className={`relative size-[calc(26px*var(--ui-scale))] rounded-full border-[1.5px] border-black/10 ${
                   selected
                     ? "shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]"
                     : ""
@@ -120,7 +123,7 @@ function AppearanceSection() {
                 onClick={() => setAccent(accent.id)}
               >
                 {selected && (
-                  <Check className="absolute inset-0 m-auto size-3.5 text-white" strokeWidth={3} />
+                  <Check className="absolute inset-0 m-auto size-[calc(14px*var(--ui-scale))] text-white" strokeWidth={3} />
                 )}
               </button>
             );
@@ -129,7 +132,7 @@ function AppearanceSection() {
       </Row>
 
       <Row label="Wallpaper">
-        <div className="flex gap-2.5">
+        <div className="flex gap-[calc(10px*var(--ui-scale))]">
           {WALLPAPERS.map((wallpaper) => {
             const selected = wallpaper.id === wallpaperId;
             return (
@@ -138,7 +141,7 @@ function AppearanceSection() {
                 type="button"
                 aria-label={wallpaper.name}
                 title={wallpaper.name}
-                className={`h-12.5 w-19.5 rounded-[9px] border-2 transition-shadow ${
+                className={`h-[calc(50px*var(--ui-scale))] w-[calc(78px*var(--ui-scale))] rounded-[9px] border-2 transition-shadow ${
                   selected
                     ? "border-accent shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_22%,transparent)]"
                     : "border-transparent"
@@ -149,6 +152,19 @@ function AppearanceSection() {
             );
           })}
         </div>
+      </Row>
+
+      <Row label="Interface density">
+        <Segmented<UiScale>
+          width={240}
+          value={uiScale}
+          onChange={setUiScale}
+          options={[
+            { value: "small", label: "Small" },
+            { value: "default", label: "Default" },
+            { value: "large", label: "Large" },
+          ]}
+        />
       </Row>
     </>
   );
@@ -205,13 +221,13 @@ function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={`relative h-4.5 w-8 flex-none rounded-full transition-colors ${
+      className={`relative h-[calc(18px*var(--ui-scale))] w-8 flex-none rounded-full transition-colors ${
         checked ? "bg-accent" : "bg-ph"
       }`}
       onClick={() => onChange(!checked)}
     >
       <span
-        className={`absolute top-0.5 size-3.5 rounded-full bg-white transition-[left] ${
+        className={`absolute top-0.5 size-[calc(14px*var(--ui-scale))] rounded-full bg-white transition-[left] ${
           checked ? "left-4" : "left-0.5"
         }`}
       />
@@ -227,7 +243,7 @@ function GeneralSection() {
     <>
       <Row label="Trash">
         <div className="flex items-center justify-between gap-4">
-          <p className="text-[12px] leading-relaxed text-ink-2">
+          <p className="text-12/relaxed text-ink-2">
             Empty the Trash automatically, removing items more than 30 days old
             when the desktop starts.
           </p>
@@ -313,7 +329,7 @@ function BackupSection() {
 
   return (
     <Row label="Backup">
-      <p className="mb-3 text-[12px] leading-relaxed text-ink-2">
+      <p className="mb-3 text-12/relaxed text-ink-2">
         Export everything in Files — every file and folder, including the
         Trash — as a single zip you can keep somewhere safe. Importing
         replaces the entire disk with what’s in the zip.
@@ -322,7 +338,7 @@ function BackupSection() {
         <button
           type="button"
           disabled={exporting}
-          className="rounded-btn bg-ph px-2.5 py-1.5 text-[11.5px] font-medium text-ink hover:bg-ph-2 disabled:opacity-50"
+          className="rounded-btn bg-ph px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-11.5 font-medium text-ink hover:bg-ph-2 disabled:opacity-50"
           onClick={() => void handleExport()}
         >
           {exporting ? "Exporting…" : "Export disk"}
@@ -330,7 +346,7 @@ function BackupSection() {
         <button
           type="button"
           disabled={importing}
-          className={`rounded-btn px-2.5 py-1.5 text-[11.5px] font-medium disabled:opacity-50 ${
+          className={`rounded-btn px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-11.5 font-medium disabled:opacity-50 ${
             pendingImport ? "bg-accent-2 text-white" : "bg-ph text-ink hover:bg-ph-2"
           }`}
           onClick={() => {
@@ -361,7 +377,7 @@ function FlagsDebug() {
 
   return (
     <div key={tick} className="mt-6 w-full max-w-72 text-left">
-      <div className="mb-1.5 px-1 text-[11px] font-semibold tracking-wide text-ink-2 uppercase">
+      <div className="mb-1.5 px-1 text-11 font-semibold tracking-wide text-ink-2 uppercase">
         Feature flags
       </div>
       <div className="overflow-hidden rounded-[12px] bg-surface-2 hairline">
@@ -370,22 +386,22 @@ function FlagsDebug() {
           return (
             <div
               key={flag.id}
-              className={`flex items-center justify-between gap-3 px-3.5 py-2.5 ${dividerExceptLast(i, FLAGS.length)}`}
+              className={`flex items-center justify-between gap-3 px-[calc(14px*var(--ui-scale))] py-[calc(10px*var(--ui-scale))] ${dividerExceptLast(i, FLAGS.length)}`}
             >
               <div className="min-w-0">
-                <div className="truncate text-[12px] font-medium text-ink">
+                <div className="truncate text-12 font-medium text-ink">
                   {flag.label}
                   {hasFlagOverride(flag.id) && (
-                    <span className="ml-1.5 text-[10px] text-ink-2">(overridden)</span>
+                    <span className="ml-1.5 text-[calc(10px*var(--ui-scale))] text-ink-2">(overridden)</span>
                   )}
                 </div>
-                <div className="truncate text-[11px] text-ink-2">{flag.description}</div>
+                <div className="truncate text-11 text-ink-2">{flag.description}</div>
               </div>
               <div className="flex flex-none items-center gap-2">
                 {hasFlagOverride(flag.id) && (
                   <button
                     type="button"
-                    className="rounded-btn px-1.5 py-0.5 text-[10.5px] font-medium text-ink-2 hover:bg-ph hover:text-ink"
+                    className="rounded-btn px-[calc(6px*var(--ui-scale))] py-[calc(2px*var(--ui-scale))] text-[calc(10.5px*var(--ui-scale))] font-medium text-ink-2 hover:bg-ph hover:text-ink"
                     onClick={() => {
                       setFlagOverride(flag.id, null);
                       setTick(n => n + 1);
@@ -413,7 +429,7 @@ function FlagsDebug() {
           );
         })}
       </div>
-      <p className="mt-1.5 px-1 text-[11px] text-ink-2">Reload to apply flag changes.</p>
+      <p className="mt-1.5 px-1 text-11 text-ink-2">Reload to apply flag changes.</p>
     </div>
   );
 }
@@ -433,14 +449,14 @@ function AboutSection() {
   return (
     <div className="flex flex-col items-center px-6 py-8 text-center">
       <span className="size-14 rotate-45 rounded-[12px] bg-accent shadow-[0_10px_28px_-8px_var(--accent)]" />
-      <h1 className="mt-5 text-[24px] font-bold tracking-tight text-ink">Kagami OS</h1>
-      <p className="mt-1 text-[13px] text-ink-2">A desktop that lives in your browser.</p>
+      <h1 className="mt-5 text-[calc(24px*var(--ui-scale))] font-bold tracking-tight text-ink">Kagami OS</h1>
+      <p className="mt-1 text-13 text-ink-2">A desktop that lives in your browser.</p>
 
       <div className="mt-6 w-full max-w-72 overflow-hidden rounded-[12px] bg-surface-2 hairline">
         {facts.map(([key, value], i) => (
           <div
             key={key}
-            className={`flex items-center justify-between px-3.5 py-2 text-[12px] ${dividerExceptLast(i, facts.length)}`}
+            className={`flex items-center justify-between px-[calc(14px*var(--ui-scale))] py-2 text-12 ${dividerExceptLast(i, facts.length)}`}
           >
             <span className="text-ink-2">{key}</span>
             <span className="font-medium text-ink">{value}</span>
@@ -450,7 +466,7 @@ function AboutSection() {
 
       <FlagsDebug />
 
-      <p className="mt-5 max-w-72 text-[11.5px] leading-relaxed text-ink-2">
+      <p className="mt-5 max-w-72 text-11.5/relaxed text-ink-2">
         An original desktop environment — no Apple or third-party OS code,
         assets, or trademarks. Icons by Lucide; typeface Inter.
       </p>
@@ -463,7 +479,7 @@ export default function SettingsApp() {
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex w-[150px] flex-none flex-col gap-0.5 bg-surface-2 px-2.25 py-3 select-none hairline-r">
+      <div className="flex w-[150px] flex-none flex-col gap-[calc(2px*var(--ui-scale))] bg-surface-2 px-[calc(9px*var(--ui-scale))] py-3 select-none hairline-r">
         {NAV.map((item) => {
           const Icon = item.icon;
           const active = section === item.id;
@@ -471,7 +487,7 @@ export default function SettingsApp() {
             <button
               key={item.id}
               type="button"
-              className={`flex items-center gap-2.25 rounded-[8px] px-2.25 py-1.5 text-left text-[12.5px] font-medium ${
+              className={`flex items-center gap-[calc(9px*var(--ui-scale))] rounded-[8px] px-[calc(9px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-left text-12.5 font-medium ${
                 active
                   ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent"
                   : "text-ink-2 hover:bg-ph"
