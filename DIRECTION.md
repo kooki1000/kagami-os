@@ -1,16 +1,23 @@
 # Kagami OS — Product Direction
 
-**Status:** direction set · July 2026
-**Baseline:** phases 1–12 shipped (see `ARCHITECTURE.md` § Phase status)
+**Status:** direction set · revised July 2026
+**Baseline:** phases 1–12 shipped, native N-1/N-2 shipped (see
+`ARCHITECTURE.md` § Phase status)
 
 This is the "where is Kagami going and why" document. `ARCHITECTURE.md`
-describes what exists; `ROADMAP.md` enumerates the feature backlog toward a
-full online desktop. This document sits above both: it states the strategic
-shift, the bets that follow, and the guardrails that keep the project
+describes what exists; `ROADMAP.md` enumerates the feature backlog and
+sequences the work. This document sits above both: it states the strategic
+position, the bets that follow, and the guardrails that keep the project
 coherent (§6).
 
 If you read only one section, read [§2 The shift](#2-the-shift) and
 [§4 The dual-target principle](#4-the-dual-target-principle).
+
+> **Revised July 2026.** Two things changed. Kagami is now explicitly
+> **local-first with no server, ever** — the online track (accounts, sync,
+> sharing) is retired, not deferred (§7). And Bet 3, the third-party app
+> ecosystem, moved from an open question to a **committed goal** (§5.3),
+> which is the one place the strict-CSP guardrail is knowingly loosened.
 
 ---
 
@@ -18,19 +25,41 @@ If you read only one section, read [§2 The shift](#2-the-shift) and
 
 Kagami OS today is a **browser-based desktop environment** — a windowing
 shell, a virtual file system, and a suite of built-in apps, running entirely
-client-side. Phases 1–11 are shipped: the shell, window manager, VFS with a
+client-side. Phases 1–12 are shipped: the shell, window manager, VFS with a
 content-addressed blob store, the app suite (Files, Notes, Viewer, Terminal,
-Media Player, Settings), desktop icons, session restore, ⌘K search, and an
-accessibility pass.
+Media Player, Settings), desktop icons, session restore, ⌘K search, an
+accessibility pass, and PWA/offline packaging. On the native track, N-1
+(Tauri shell, `isTauri()`, disk-backed adapters) and N-2 (the built-in
+Browser) have shipped too.
 
 Its defining qualities today are that it is **coherent** (one design
 language, from the "Lagoon" prototype) and **locked down** (a strict CSP,
-no untrusted code paths, everything `'self'`). It ships exactly one way:
-as a website you open in a browser tab.
+no untrusted code paths, everything `'self'`).
+
+Its defining _weakness_ is depth. The shell is mature; most of the apps
+inside it are first passes, and the desktop is barely customizable. That is
+the gap `ROADMAP.md` area U and step 15 exist to close, and it outranks
+every new capability on the list.
 
 ## 2. The shift
 
-**Kagami is becoming a desktop environment that runs two ways:**
+**First, the constraint everything else follows from: Kagami is
+local-first, and there will be no server.**
+
+No accounts, no backend service, no telemetry. Files live on the user's
+machine and never leave it unless the user exports them. This is a product
+claim, not a limitation to apologize for — and it is what the codebase
+already is. The previously planned online track (accounts, cross-device
+sync, share links) is retired; the reasoning is in `ROADMAP.md` §3.X.1, and
+the zero-cost alternative for multi-device users — pointing Kagami at
+storage they already own — is parked in §3.X.2.
+
+The practical consequence to keep in view: with no server-side copy, a
+browser evicting local data is unrecoverable. Export and import are
+therefore a data-durability feature, not a privacy nicety, and they ship in
+the stability step rather than late (`ROADMAP.md` R1).
+
+**Second, Kagami is a desktop environment that runs two ways:**
 
 1. **As a website** — the universal baseline. Open a URL, get a full
    desktop, zero install. Shareable by link, runs on a locked-down
@@ -120,10 +149,12 @@ filesystem access.
 
 ## 5. The three bets, sequenced
 
-Each bet is independently shippable. They are ordered so the contained,
-high-confidence work comes first and each unlocks the next.
+Each bet is independently shippable, ordered so the contained,
+high-confidence work comes first and each unlocks the next. **Bets 1 and 2
+have shipped**; Bet 3 is now committed (§5.3) and scheduled as `ROADMAP.md`
+steps 16a and 17.
 
-### 5.1 Bet 1 — Native shell + isolated filesystem _(do first)_
+### 5.1 Bet 1 — Native shell + isolated filesystem — ✅ _shipped (N-1)_
 
 Wrap the existing web app in a Tauri window and back the VFS with the hidden
 app-data folder (§3.1). New `StorageAdapter` + `BlobStore` implementations
@@ -135,14 +166,25 @@ This is the **foundation** the other two bets sit on — it proves the
 packaging, the seam swap, and the CSP reconciliation with the least surface
 area.
 
-### 5.2 Bet 2 — Built-in Browser _(second)_
+### 5.2 Bet 2 — Built-in Browser — ✅ _shipped (N-2)_
 
 A generic "Browser" app over a native child webview (§3.2): tabs, address
 bar, history, back/forward. Desktop-only; the web build shows it as
 unavailable. Medium lift, low architectural risk — and the feature that best
 demonstrates why the native tier is worth installing.
 
-### 5.3 Bet 3 — Third-party app ecosystem _(a deliberate platform decision)_
+### 5.3 Bet 3 — Third-party app ecosystem _(decided: yes)_
+
+> **Committed, July 2026.** This was a go/no-go to be made once Bets 1–2
+> shipped. They have, and the answer is yes: extensibility is part of
+> `ROADMAP.md` §2's definition of finished. The section below stands as
+> written — including its account of what the decision costs, now a cost
+> being accepted rather than weighed.
+>
+> The sandbox comes **before** the apps that need it. Markdown preview and
+> PDF rendering handle untrusted content, so they land inside it as its first
+> consumers: first-party code hardens the bridge before any third-party code
+> touches it.
 
 The biggest lift, and a genuine fork in what Kagami _is_. Third-party apps
 cannot be bundled TypeScript loaded into our own React tree — they must be
@@ -160,55 +202,74 @@ What it forces, and why it is a _decision_ rather than just a feature:
   SDK contract, a permission system, and an install/uninstall UI" — most of
   what makes a platform a platform.
 
-Do this only after deciding Kagami should be an **ecosystem** rather than a
-polished self-contained shell. Bets 1 and 2 do not depend on it.
+That decision — **ecosystem** rather than polished self-contained shell —
+has now been made. It is why this bet sits above the distribution line
+instead of after it.
 
 ## 6. Guardrails — what stays true
 
 These hold across every bet above. They are what keep the project coherent
 as it grows.
 
-- **Design language is fixed.** The Lagoon prototype constraints in
-  `ARCHITECTURE.md` bind: monochrome-at-rest window controls with the
-  coral+teal duotone focus tint (never a traffic-light triad), rounded-
-  square dock tiles without magnification, Inter / JetBrains Mono, generic
-  app names, palettes only from the documented directions. **No Apple or
-  Puter naming or assets** — Puter (the open-source "internet OS") is a
-  _reference we studied_ for the third-party-app model, not a source of
-  branding or code.
-- **Local-first.** Both builds boot and work with no network. Persistence
-  degrades gracefully — if the native disk folder or IndexedDB is
-  unavailable, the OS still boots in-memory rather than hanging. Accounts
-  and sync (the `ROADMAP.md` online track) are additive, never a
-  precondition to using Kagami.
-- **Strict CSP in both builds** (§4). Loosened only for the third-party
-  sandbox, and only as far as that sandbox requires.
+- **Design language is fixed — the _system_ is, not every value.** The
+  Lagoon prototype constraints in `ARCHITECTURE.md` bind: monochrome-at-rest
+  window controls with the coral+teal duotone focus tint (never a
+  traffic-light triad), rounded-square dock tiles without magnification,
+  Inter / JetBrains Mono, generic app names. **No Apple or Puter naming or
+  assets** — Puter (the open-source "internet OS") is a _reference we
+  studied_ for the third-party-app model, not a source of branding or code.
+- **Customization is allowed inside that system** _(revised July 2026)_.
+  The old rule — palettes only from the documented directions — is replaced.
+  Users may set a custom accent colour and their own wallpaper image, with
+  two conditions that keep the guardrail meaningful: the accent picker
+  **validates contrast** against the token system and warns below WCAG AA,
+  and the window-control duotone stays **derived from the accent** rather
+  than user-set, so a user can never produce a traffic-light triad. Curated
+  presets remain the designed default and the recommended path.
+  (`ROADMAP.md` §6.5, U1–U3.)
+- **Local-first, permanently.** Both builds boot and work with no network,
+  because there is no network to work with. Persistence degrades gracefully
+  — if the native disk folder or IndexedDB is unavailable, the OS still
+  boots in-memory rather than hanging. There is no account, and nothing is
+  ever a precondition to using Kagami.
+- **Strict CSP in both builds** (§4), with exactly one planned exception:
+  step 16a adds a `frame-src` directive for the sandboxed-app host and
+  nothing else. Every other directive stays as-is, in both builds.
 - **Coherence over sprawl.** Puter's ideas are adopted **deliberately and
   sequenced**, not imported wholesale. The risk in chasing a full cloud-OS
   clone is turning a tight desktop into a sprawling one with a much larger
   attack surface. Every bet ends shippable; scope moves right rather than
   quality dropping.
 
-## 7. How this relates to the online-desktop roadmap
+## 7. What happened to the online track
 
-`ROADMAP.md` describes a second, **parallel** track: accounts, a backend,
-sync across devices, and sharing — the "online" in "online desktop." The two
-tracks are independent and share the same seams:
+`ROADMAP.md` used to describe a second, parallel track: accounts, a backend,
+sync across devices, and sharing. **It is retired** — the reasoning is in
+`ROADMAP.md` §3.X.1, and it comes down to the difference between shipping
+code and running a service indefinitely, for free, for strangers.
 
-- Both swap the **same `StorageAdapter`/`BlobStore`** interface — the online
-  track for a remote/API adapter, the native track for a filesystem adapter.
-  A device could eventually be _both_ (native app with an account that syncs)
-  because both are just adapters behind one seam.
-- The third-party sandbox (§5.3) is the same `G2`/`D8` work already planned.
+What survives:
 
-Sequencing between the tracks is a scheduling choice, not a technical
-dependency. Neither blocks the other.
+- **The seams.** `StorageAdapter` and `BlobStore` were designed so a remote
+  backend could drop in behind them. That shape wasn't wasted — it is what
+  let the native filesystem adapter land without touching a line of shell or
+  app code, and it is what a future bring-your-own-storage sync would use.
+- **The BYO-storage idea** (`ROADMAP.md` §3.X.2), parked rather than
+  dropped: the user supplies the backend — a Dropbox or Drive folder on
+  disk, or a private Git repository over a token — and Kagami syncs. Zero
+  operational cost, and it keeps "yours anywhere" reachable without
+  contradicting §2. It sits below the line until the product is finished.
+- **The third-party sandbox** (§5.3), which was always the `G2`/`D8` work and
+  is now scheduled rather than hypothetical.
 
-## 8. Technical approach (sketch)
+Until then, the honest multi-device answer is export and import: a user's
+whole disk round-trips through a zip file they keep.
 
-Design-sketch altitude only — a full design note (in `docs/`, following the
-`docs/blob-architecture.md` precedent) and an implementation plan come when
-Bet 1 starts.
+## 8. Technical approach — _as built_
+
+This began as a sketch for Bet 1 and is now a description of shipped code:
+every bullet below except the last landed in N-1/N-2. It is kept because it
+records _why_ the native build is shaped the way it is.
 
 - **Scaffold:** add Tauri v2 to the existing frontend (not a fresh
   `create-tauri-app` scaffold). `@tauri-apps/cli` + the `fs` plugin; a
@@ -228,28 +289,33 @@ Bet 1 starts.
   inside the webview; Tauri plugin calls go over IPC, not `fetch`, so this
   likely needs no change — verify empirically in `tauri dev` and add only
   the specific directive the webview asks for if a violation appears.
-- **Out of scope for the first pass:** the desktop build/release pipeline
-  (code signing, notarization, auto-update, per-OS matrix — `ci.yml` has no
-  build/artifact job today), and desktop e2e (Playwright can't drive a Tauri
-  window; needs `tauri-driver`). Both are follow-ups once the local dev loop
-  works.
+- **Still not built, and now deliberately deferred (§9.4):** the desktop
+  build/release pipeline (code signing, notarization, auto-update, per-OS
+  matrix — `ci.yml` still has no build/artifact job), and desktop e2e
+  (Playwright can't drive a Tauri window; needs `tauri-driver`). Signing is
+  the only part that costs money; unsigned CI builds are free for public
+  repositories and are the cheap first move whenever this is revisited.
 
 ## 9. Open decisions
 
-Revisit these before the affected bet, not now:
-
-1. **Web-target longevity.** Keep the website as the permanent baseline
-   (current stance, §2), or eventually treat it as deprecated once native is
-   the primary product? The seam makes "keep both" cheap; the deciding
-   question is whether the try-by-link demo stays valuable. **Current
-   answer: keep the link.**
-2. **Is Bet 3 a committed goal?** The third-party ecosystem reshapes the
-   security model and distribution story. Treat it as a separate "become a
-   platform" go/no-go, made after Bets 1–2 ship — not folded silently into
-   the pivot.
-3. **Tauri v2 plugin specifics.** Confirm current plugin APIs (fs scope,
-   dialog, store) against Tauri v2 docs at implementation time — plugin
-   surfaces shift between versions; don't assume from memory.
-4. **Distribution burden.** The desktop build/release pipeline (§8) is a
-   real ongoing cost the web build gives for free — budget for it before
-   promising installable releases.
+1. **Web-target longevity.** ✅ **Decided: keep the website as the permanent
+   baseline.** It is the zero-install way in, and with distribution deferred
+   it is also the only way anyone will ever try Kagami without a Rust
+   toolchain. The seam makes keeping both cheap.
+2. **Is Bet 3 a committed goal?** ✅ **Decided: yes** — see §5.3. Steps 16a
+   and 17 in `ROADMAP.md` schedule it, and §6's CSP exception is the price.
+3. **Tauri v2 plugin specifics.** Still open, and still the right instinct:
+   confirm current plugin APIs (fs scope, dialog, store) against Tauri v2
+   docs at implementation time rather than from memory — plugin surfaces
+   shift between versions.
+4. **Distribution burden.** ✅ **Decided: deferred, deliberately.** Nothing
+   distribution-shaped — public deploy, tagged releases, contributor
+   onboarding, signed installers — starts until `ROADMAP.md` §2's definition
+   of finished is met. The product gets finished before it gets distributed.
+   One exception is worth taking immediately: the repository is public with
+   no LICENSE, which legally means all rights reserved. That is hygiene, not
+   distribution.
+5. **How far the app suite grows.** Open. The current answer is "fill the
+   obvious holes, then stop" — markdown preview, PDF, a code editor, a few
+   small utilities. A spreadsheet or a drawing app would be a new decision;
+   §6's "coherence over sprawl" is the tie-breaker.
