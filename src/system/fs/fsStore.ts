@@ -233,6 +233,16 @@ export interface FsStore {
   deleteForever: (id: string) => void;
   /** Permanently remove trash items older than `maxAgeMs`; returns the count. */
   purgeExpiredTrash: (maxAgeMs?: number) => number;
+  /**
+   * Wipe the whole disk and seed it from `nodes`/`blobs` instead — the
+   * import half of full-disk export/import. Narrowly scoped to that one
+   * job (not a general bulk-write API): blobs are written before the node
+   * set that references them (same blob-before-node ordering as
+   * `createBlobFile`), then every previously-persisted node is removed and
+   * `nodes` takes its place, then any blob the old disk referenced that the
+   * new tree doesn't gets swept.
+   */
+  replaceAll: (nodes: FsNode[], blobs: { hash: string; bytes: Uint8Array; mimeType?: string }[]) => Promise<void>;
 }
 
 let initPromise: Promise<void> | null = null;
@@ -510,6 +520,19 @@ export const useFsStore = create<FsStore>()((set, get) => {
       if (ids.length)
         removeIds(ids);
       return ids.length;
+    },
+
+    async replaceAll(nodes, blobs) {
+      const oldIds = Object.keys(get().nodes);
+      await Promise.all(blobs.map(async ({ hash, bytes, mimeType }) => {
+        if (!(await blobStore.has(hash)))
+          await blobStore.put(hash, new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mimeType }));
+      }));
+      const nextNodes = indexNodes(nodes);
+      await adapter.removeMany(oldIds).catch(logPersistError);
+      await adapter.putMany(nodes).catch(logPersistError);
+      set({ nodes: nextNodes });
+      await sweepUnreferencedBlobs(nextNodes, blobStore).catch(logPersistError);
     },
   };
 });
