@@ -1,16 +1,14 @@
-// Kagami OS service worker — hand-rolled (no workbox/vite-plugin-pwa; see
-// ARCHITECTURE.md's StorageAdapter section and the `idb` policy precedent:
-// new deps are subject to the workspace's `minimumReleaseAge` pnpm policy,
-// so this project prefers a thin hand-rolled layer over pulling one in).
+// Hand-rolled (no workbox/vite-plugin-pwa) — new deps are subject to this
+// workspace's minimumReleaseAge pnpm policy; see ARCHITECTURE.md's
+// StorageAdapter section for the same idb precedent.
 //
-// Strategy is runtime caching (stale-while-revalidate), not a build-time
-// precache manifest: the hashed asset filenames Vite emits aren't known to
-// this static file, so instead every same-origin GET response is cached the
-// first time it's fetched and served from cache immediately on subsequent
-// loads, with a background fetch keeping the cache fresh. That's enough to
-// make a repeat visit (and a fully offline boot) work once the shell has
-// been loaded once.
+// Runtime caching (stale-while-revalidate), not a precache manifest: Vite's
+// hashed chunk filenames aren't known to this static file, so every
+// same-origin GET gets cached on first fetch and served from cache
+// immediately after, refreshed in the background.
 const CACHE_NAME = "kagami-shell-v1";
+const cachePromise = caches.open(CACHE_NAME);
+const ORIGIN_PREFIX = `${globalThis.location.origin}/`;
 
 globalThis.addEventListener("install", () => {
   // Nothing to precache — the cache fills in as the fetch handler below
@@ -38,12 +36,12 @@ globalThis.addEventListener("fetch", (event) => {
 
   // Only same-origin GETs are cacheable/offline-relevant; let everything
   // else (POST, cross-origin, chrome-extension:, …) go straight to network.
-  if (request.method !== "GET" || new URL(request.url).origin !== globalThis.location.origin)
+  if (request.method !== "GET" || !request.url.startsWith(ORIGIN_PREFIX))
     return;
 
   event.respondWith(
     (async () => {
-      const cache = await caches.open(CACHE_NAME);
+      const cache = await cachePromise;
       const cached = await cache.match(request);
 
       const networkFetch = fetch(request)
@@ -56,9 +54,8 @@ globalThis.addEventListener("fetch", (event) => {
         })
         .catch(() => undefined);
 
-      // Stale-while-revalidate: serve the cache instantly if we have it,
-      // refreshing in the background; fall back to network for a first
-      // visit (and to the error if we're offline with nothing cached yet).
+      // Serve the cache instantly if we have it; first visit (or offline
+      // with nothing cached yet) falls through to the network/error.
       return cached ?? (await networkFetch) ?? Response.error();
     })(),
   );
