@@ -3,10 +3,11 @@ import type { FsNode } from "@/system/fs/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { indexNodes, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, HOME_ID, ROOT_ID, TRASH_ID } from "@/system/fs/types";
-import { completeToken, resolveCompletion, resolvePath, runCommand } from "./shell";
+import { completeToken, expandAlias, resolveCompletion, resolvePath, runCommand } from "./shell";
 
 let openedNodes: FsNode[] = [];
 let openPathResult = true;
+let testAliases: Record<string, string> = {};
 
 function node(partial: Partial<FsNode> & Pick<FsNode, "id" | "parentId" | "name" | "type">): FsNode {
   return { createdAt: 0, modifiedAt: 0, ...partial };
@@ -29,6 +30,7 @@ function seed(): void {
   });
   openedNodes = [];
   openPathResult = true;
+  testAliases = {};
 }
 
 function ctx(cwd = HOME_ID): ShellContext {
@@ -49,6 +51,10 @@ function ctx(cwd = HOME_ID): ShellContext {
       return openPathResult;
     },
     user: "kagami",
+    aliases: testAliases,
+    setAlias: (name, expansion) => {
+      testAliases = { ...testAliases, [name]: expansion };
+    },
   };
 }
 
@@ -344,6 +350,79 @@ describe("resolveCompletion", () => {
 
   it("returns null for no candidates", () => {
     expect(resolveCompletion([], "xyz")).toBeNull();
+  });
+});
+
+describe("find", () => {
+  it("lists everything under the cwd by default, including itself as '.'", () => {
+    const lines = text("find", DOCUMENTS_ID).split("\n");
+    expect(lines).toContain(".");
+    expect(lines).toContain("./Reports");
+    expect(lines).toContain("./Reports/Child");
+    expect(lines).toContain("./Reports/deep.txt");
+    expect(lines).toContain("./note.md");
+  });
+
+  it("takes an explicit path", () => {
+    const lines = text("find Reports", DOCUMENTS_ID).split("\n");
+    expect(lines).toEqual(["Reports", "Reports/Child", "Reports/deep.txt"]);
+  });
+
+  it("-name filters by a *?-glob, case-insensitively", () => {
+    expect(text("find -name *.txt", DOCUMENTS_ID).split("\n").sort()).toEqual(
+      ["./Reports/deep.txt", "./poem.txt"].sort(),
+    );
+    expect(text("find -name NOTE.MD", DOCUMENTS_ID)).toBe("./note.md");
+    expect(text("find -name child", DOCUMENTS_ID)).toBe("./Reports/Child");
+  });
+
+  it("combines an explicit path with -name", () => {
+    expect(text("find Reports -name *.txt", DOCUMENTS_ID)).toBe("Reports/deep.txt");
+  });
+
+  it("errors on a missing path or a dangling -name", () => {
+    expect(run("find nope", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+    expect(run("find -name", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+});
+
+describe("alias", () => {
+  it("reports no aliases defined initially", () => {
+    expect(text("alias")).toBe("no aliases defined");
+  });
+
+  it("defines an alias with name=value syntax and lists it back sorted", () => {
+    run("alias ll=ls");
+    run("alias gohome=cd ~");
+    expect(text("alias").split("\n")).toEqual([
+      "alias gohome='cd ~'",
+      "alias ll='ls'",
+    ]);
+  });
+
+  it("defines an alias with space-separated syntax", () => {
+    run("alias ll ls -a");
+    expect(text("alias")).toBe("alias ll='ls -a'");
+  });
+
+  it("errors when given a name with no expansion", () => {
+    expect(run("alias ll").lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("expandAlias leaves an unknown command untouched", () => {
+    expect(expandAlias("ls", ["Documents"], {})).toEqual({ command: "ls", args: ["Documents"] });
+  });
+
+  it("expandAlias splices the invocation's own args after the alias's", () => {
+    expect(expandAlias("ll", ["Documents"], { ll: "ls -a" })).toEqual({
+      command: "ls",
+      args: ["-a", "Documents"],
+    });
+  });
+
+  it("a defined alias actually runs the expanded command", () => {
+    run("alias ll=ls");
+    expect(text("ll Documents", HOME_ID)).toBe(text("ls Documents", HOME_ID));
   });
 });
 

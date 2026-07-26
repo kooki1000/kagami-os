@@ -19,5 +19,13 @@ export const terminalApp: AppManifest = {
         { label: "Close Window", command: "window.close", shortcut: "⌘W" },
       ],
     },
+    {
+      title: "View",
+      items: [
+        { label: "Increase Font Size", appCommand: "terminal.fontIncrease", shortcut: "⌘+" },
+        { label: "Decrease Font Size", appCommand: "terminal.fontDecrease", shortcut: "⌘−" },
+        { label: "Reset Font Size", appCommand: "terminal.fontReset", shortcut: "⌘0" },
+      ],
+    },
   ],
 };
