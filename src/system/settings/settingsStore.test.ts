@@ -40,4 +40,19 @@ describe("settingsStore persistence", () => {
     const persisted = JSON.parse(localStorage.getItem("kagami-settings") ?? "{}");
     expect(persisted.state.uiScale).toBe("large");
   });
+
+  it("defaults tourDismissed to false so the welcome tour launches on first boot", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    expect(useSettingsStore.getState().tourDismissed).toBe(false);
+  });
+
+  it("persists tourDismissed once the welcome tour's 'don't show again' is checked", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+
+    useSettingsStore.getState().setTourDismissed(true);
+    expect(useSettingsStore.getState().tourDismissed).toBe(true);
+
+    const persisted = JSON.parse(localStorage.getItem("kagami-settings") ?? "{}");
+    expect(persisted.state.tourDismissed).toBe(true);
+  });
 });
