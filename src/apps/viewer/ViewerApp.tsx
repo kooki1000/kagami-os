@@ -1,14 +1,19 @@
 import type { AppWindowProps } from "@/system/apps/types";
 import type { FsNode } from "@/system/fs/types";
 import {
+  Copy,
+  Expand,
   Image,
+  Info,
   Maximize,
   Pause,
   Play,
   RotateCcw,
   RotateCw,
+  Shrink,
   SkipBack,
   SkipForward,
+  Wallpaper,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -17,11 +22,15 @@ import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 import { useAppCommand } from "@/system/appCommands";
 import { usePayloadFileId } from "@/system/apps/filePayload";
 import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
+import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
+import { notify } from "@/system/notifications/notificationStore";
 import { isEditableTarget } from "@/system/shortcuts";
 import { useWindowStore } from "@/system/windows/windowStore";
+import { resolveFileBytes } from "../files/download";
 import { isImageNode } from "../files/fileMeta";
+import { buildExifFields } from "./exifInfo";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
@@ -232,6 +241,77 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     }
   }
 
+  // EXIF-style info panel (U13): a pure function of the node + decoded
+  // natural size, recomputed only when either changes.
+  const [showInfo, setShowInfo] = useState(false);
+  const exifFields = useMemo(() => buildExifFields(node, natural), [node, natural]);
+
+  // Fullscreen/presentation mode (U13): the Fullscreen API owns Escape-to-
+  // exit natively (no separate keydown handler needed), so this effect only
+  // has to keep the button's icon/label in sync with the real state —
+  // `fullscreenchange` also fires for an exit the browser itself drove
+  // (e.g. the user's own Escape press).
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    function onFullscreenChange(): void {
+      setIsFullscreen(document.fullscreenElement === bodyRef.current);
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  function toggleFullscreen(): void {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    bodyRef.current?.requestFullscreen().catch(() => {
+      notify({ title: "Fullscreen isn’t available", tone: "danger" });
+    });
+  }
+
+  // "Copy Image" (U13): resolve the node's real bytes across all three B1
+  // content paths (same helper `download.ts`'s Save-As flow uses) and hand
+  // them to the Async Clipboard API. `ClipboardItem` support for arbitrary
+  // image MIME types varies by engine (Chromium is broadest; Safari/Firefox
+  // are narrower) — best-effort, matching this feature's spec.
+  async function copyImage(): Promise<void> {
+    if (!node)
+      return;
+    if (!navigator.clipboard?.write) {
+      notify({ title: "Copy isn’t supported in this browser", tone: "danger" });
+      return;
+    }
+    try {
+      const bytes = await resolveFileBytes(node, blobStore);
+      const type = node.mimeType || "image/png";
+      const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type });
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      notify({ title: "Image copied", body: node.name });
+    }
+    catch (err) {
+      notify({
+        title: "Couldn’t copy image",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "danger",
+      });
+    }
+  }
+
+  // "Set as wallpaper" (U13): depends on `feat/settings-appearance` adding a
+  // wallpaperFileId (or similar) action to settingsStore — not present on
+  // this branch yet (only the built-in gradient-preset `wallpaperId` is).
+  // TODO(step-15-integration): wire to feat/settings-appearance's wallpaper
+  // action once merged; this is a no-op stub until then.
+  function setAsWallpaper(): void {
+    if (!node)
+      return;
+    notify({
+      title: "Not available yet",
+      body: "Setting a custom wallpaper is coming in a future update.",
+    });
+  }
+
   useAppCommand(windowId, (command) => {
     switch (command) {
       case "viewer.zoomIn":
@@ -254,6 +334,18 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
         break;
       case "viewer.previous":
         step(-1);
+        break;
+      case "viewer.toggleInfo":
+        setShowInfo(v => !v);
+        break;
+      case "viewer.copyImage":
+        void copyImage();
+        break;
+      case "viewer.setWallpaper":
+        setAsWallpaper();
+        break;
+      case "viewer.toggleFullscreen":
+        toggleFullscreen();
         break;
     }
   });
@@ -343,52 +435,157 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
         <button type="button" aria-label="Next image" disabled={!hasSlideshow} className={toolButton} onClick={() => step(1)}>
           <SkipForward className="size-4" />
         </button>
+        <div className="mx-1.5 h-4 w-px bg-hairline" />
+        <button
+          type="button"
+          aria-label="Copy image"
+          className={toolButton}
+          onClick={() => void copyImage()}
+        >
+          <Copy className="size-4" />
+        </button>
+        <button type="button" aria-label="Set as wallpaper" className={toolButton} onClick={setAsWallpaper}>
+          <Wallpaper className="size-4" />
+        </button>
+        <button
+          type="button"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          className={toolButton}
+          onClick={toggleFullscreen}
+        >
+          {isFullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />}
+        </button>
+        <button
+          type="button"
+          aria-label="Toggle image info"
+          aria-pressed={showInfo}
+          className={`${toolButton} ${showInfo ? "bg-ph text-ink" : ""}`}
+          onClick={() => setShowInfo(v => !v)}
+        >
+          <Info className="size-4" />
+        </button>
         <span className="ml-auto truncate text-11.5 text-ink-2">
           {natural ? `${natural.width} × ${natural.height}` : ""}
         </span>
       </div>
 
-      <div
-        ref={bodyRef}
-        className={`flex min-h-0 flex-1 overflow-auto bg-surface-2 p-4 ${fitted ? "" : isPanning ? "cursor-grabbing" : "cursor-grab"}`}
-        onPointerDown={onBodyPointerDown}
-        onPointerMove={onBodyPointerMove}
-        onPointerUp={endBodyPan}
-        onPointerCancel={endBodyPan}
-      >
-        <div
-          className="m-auto grid flex-none place-items-center"
-          style={{
-            width: rotatedWidth * zoom || undefined,
-            height: rotatedHeight * zoom || undefined,
-          }}
-        >
-          <img
-            src={src}
-            alt={node?.name}
-            draggable={false}
-            className="max-w-none shadow-[0_8px_28px_-10px_rgba(0,0,0,.4)] transition-transform duration-150"
-            style={{
-              width: natural ? natural.width * zoom : undefined,
-              height: natural ? natural.height * zoom : undefined,
-              transform: `rotate(${rotation}deg)`,
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            ref={bodyRef}
+            className={`flex min-h-0 flex-1 overflow-auto bg-surface-2 p-4 ${fitted ? "" : isPanning ? "cursor-grabbing" : "cursor-grab"}`}
+            onPointerDown={onBodyPointerDown}
+            onPointerMove={onBodyPointerMove}
+            onPointerUp={endBodyPan}
+            onPointerCancel={endBodyPan}
+            onClick={() => {
+              if (isFullscreen)
+                void document.exitFullscreen();
             }}
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              // SVGs without explicit dimensions can report 0.
-              const width = img.naturalWidth || 400;
-              const height = img.naturalHeight || 300;
-              setNatural({ width, height });
-              if (fitted) {
-                setZoom(fitZoomFor(
-                  sideways ? height : width,
-                  sideways ? width : height,
-                ));
-              }
-            }}
-          />
+          >
+            <div
+              className="m-auto grid flex-none place-items-center"
+              style={{
+                width: rotatedWidth * zoom || undefined,
+                height: rotatedHeight * zoom || undefined,
+              }}
+            >
+              <img
+                src={src}
+                alt={node?.name}
+                draggable={false}
+                className="max-w-none shadow-[0_8px_28px_-10px_rgba(0,0,0,.4)] transition-transform duration-150"
+                style={{
+                  width: natural ? natural.width * zoom : undefined,
+                  height: natural ? natural.height * zoom : undefined,
+                  transform: `rotate(${rotation}deg)`,
+                }}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  // SVGs without explicit dimensions can report 0.
+                  const width = img.naturalWidth || 400;
+                  const height = img.naturalHeight || 300;
+                  setNatural({ width, height });
+                  if (fitted) {
+                    setZoom(fitZoomFor(
+                      sideways ? height : width,
+                      sideways ? width : height,
+                    ));
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {siblings.length > 0 && (
+            <Filmstrip siblings={siblings} activeId={activeId} onSelect={setActiveId} />
+          )}
         </div>
+
+        {showInfo && (
+          <div className="w-48 flex-none overflow-auto p-3 hairline-l">
+            <h2 className="mb-2 text-11.5 font-medium tracking-wide text-ink-2 uppercase">Info</h2>
+            <dl className="flex flex-col gap-2">
+              {exifFields.map(field => (
+                <div key={field.label}>
+                  <dt className="text-11 text-ink-2">{field.label}</dt>
+                  <dd className="truncate text-12 text-ink" title={field.value}>{field.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * One folder sibling's thumbnail in the filmstrip — a blob URL resolves
+ * asynchronously per node, so this is its own component (mirrors
+ * FilesView.tsx's `Thumbnail`) rather than calling `useBlobUrl` in a loop.
+ */
+function FilmstripThumb({ node, active, onSelect }: { node: FsNode; active: boolean; onSelect: () => void }) {
+  const { url: blobUrl } = useBlobUrl(node.contentRef);
+  const src = node.content ?? blobUrl ?? undefined;
+  return (
+    <button
+      type="button"
+      aria-label={node.name}
+      aria-current={active}
+      title={node.name}
+      onClick={onSelect}
+      className={`size-11 flex-none overflow-hidden rounded-[6px] ring-2 ring-offset-1 ring-offset-surface-2 transition-colors ${
+        active ? "ring-accent" : "ring-transparent hover:ring-hairline"
+      }`}
+    >
+      {src
+        ? <img src={src} alt="" draggable={false} className="size-full object-cover" />
+        : <div className="size-full bg-ph" />}
+    </button>
+  );
+}
+
+/**
+ * Horizontal strip of the folder's other images (U13), each clickable to
+ * jump straight to it — the same `siblings` array Next/Previous already
+ * cycles through.
+ */
+function Filmstrip({ siblings, activeId, onSelect }: {
+  siblings: FsNode[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex h-[62px] flex-none items-center gap-1.5 overflow-x-auto px-2 hairline-t">
+      {siblings.map(sibling => (
+        <FilmstripThumb
+          key={sibling.id}
+          node={sibling}
+          active={sibling.id === activeId}
+          onSelect={() => onSelect(sibling.id)}
+        />
+      ))}
     </div>
   );
 }

@@ -237,6 +237,9 @@ body {
 @utility hairline-r {
   border-right: 0.5px solid var(--border);
 }
+@utility hairline-l {
+  border-left: 0.5px solid var(--border);
+}
 
 /* ---- notification / flyout entrance animations ---- */
 @keyframes toast-in {
