@@ -26,6 +26,7 @@ import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { notify } from "@/system/notifications/notificationStore";
+import { setWallpaperFromFile } from "@/system/settings/settingsStore";
 import { isEditableTarget } from "@/system/shortcuts";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { resolveFileBytes } from "../files/download";
@@ -298,17 +299,16 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     }
   }
 
-  // "Set as wallpaper" (U13): depends on `feat/settings-appearance` adding a
-  // wallpaperFileId (or similar) action to settingsStore — not present on
-  // this branch yet (only the built-in gradient-preset `wallpaperId` is).
-  // TODO(step-15-integration): wire to feat/settings-appearance's wallpaper
-  // action once merged; this is a no-op stub until then.
+  // "Set as wallpaper" (U13): sets the currently viewed image as the custom
+  // wallpaper for whichever theme is currently resolved, via the entry point
+  // `feat/settings-appearance` (U1) exported for exactly this purpose.
   function setAsWallpaper(): void {
     if (!node)
       return;
+    setWallpaperFromFile(node.id);
     notify({
-      title: "Not available yet",
-      body: "Setting a custom wallpaper is coming in a future update.",
+      title: "Wallpaper updated",
+      body: `“${node.name}” is now your wallpaper.`,
     });
   }
 

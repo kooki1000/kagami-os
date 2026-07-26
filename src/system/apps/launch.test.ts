@@ -16,7 +16,8 @@ function resetStores() {
 
 beforeEach(resetStores);
 
-// Notes' own manifest defaultSize is 720x480 (src/apps/notes/index.ts) — the
+// Notes' own manifest defaultSize is 760x480 (src/apps/notes/index.ts,
+// widened from 720 by U11's folder-scoped sidebar/filter/sort UI) — the
 // remembered override below is deliberately a different width *and* height
 // so a test asserting "not the override" can't pass by accident.
 const REMEMBERED = { width: 500, height: 350 };
@@ -25,7 +26,7 @@ describe("launchApp — remembered window size (U9)", () => {
   it("opens at the app's own defaultSize with no override recorded", () => {
     launchApp("notes");
     const [win] = useWindowStore.getState().windows;
-    expect(win.rect.width).toBe(720);
+    expect(win.rect.width).toBe(760);
     expect(win.rect.height).toBe(480);
   });
 
@@ -41,7 +42,7 @@ describe("launchApp — remembered window size (U9)", () => {
     useSettingsStore.getState().setDefaultWindowSize("player", REMEMBERED);
     launchApp("notes");
     const [win] = useWindowStore.getState().windows;
-    expect(win.rect.width).toBe(720);
+    expect(win.rect.width).toBe(760);
     expect(win.rect.height).toBe(480);
   });
 
