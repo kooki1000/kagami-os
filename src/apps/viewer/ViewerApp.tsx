@@ -470,7 +470,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             ref={bodyRef}
             className={`flex min-h-0 flex-1 overflow-auto bg-surface-2 p-4 ${fitted ? "" : isPanning ? "cursor-grabbing" : "cursor-grab"}`}
