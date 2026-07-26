@@ -13,6 +13,8 @@ interface SettingsStore {
   autoEmptyTrash: boolean;
   /** Interface density (U4) — small/default/large, see design/tokens.ts. */
   uiScale: UiScale;
+  /** Player's (U12) volume, persisted across tracks/windows/sessions — 0–1. */
+  playerVolume: number;
   // User-chosen default app per exact mime type (B11), overriding
   // openFile.ts's built-in mime-family table. Keyed on the full mime type
   // (e.g. "image/png"), not the family prefix, so a choice for PNGs doesn't
@@ -22,6 +24,7 @@ interface SettingsStore {
   setWallpaper: (id: string) => void;
   setAutoEmptyTrash: (value: boolean) => void;
   setUiScale: (value: UiScale) => void;
+  setPlayerVolume: (value: number) => void;
   setFileAssociation: (mimeType: string, appId: string) => void;
   clearFileAssociation: (mimeType: string) => void;
 }
@@ -38,11 +41,13 @@ export const useSettingsStore = create<SettingsStore>()(
       wallpaperId: DEFAULT_WALLPAPER_ID,
       autoEmptyTrash: false,
       uiScale: "default",
+      playerVolume: 0.8,
       fileAssociations: {},
       setAccent: id => set({ accentId: id }),
       setWallpaper: id => set({ wallpaperId: id }),
       setAutoEmptyTrash: value => set({ autoEmptyTrash: value }),
       setUiScale: value => set({ uiScale: value }),
+      setPlayerVolume: value => set({ playerVolume: Math.min(1, Math.max(0, value)) }),
       setFileAssociation: (mimeType, appId) =>
         set({ fileAssociations: { ...get().fileAssociations, [mimeType]: appId } }),
       clearFileAssociation: (mimeType) => {

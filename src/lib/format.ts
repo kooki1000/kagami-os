@@ -20,6 +20,21 @@ export function nameStem(name: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
+/**
+ * Elapsed/duration for Player's scrub bar ("3:07", "1:02:03"). `NaN`/negative
+ * inputs (a media element mid-load reports `NaN` duration) render as "0:00"
+ * rather than "NaN:NaN" — a media element's transient states, not a real
+ * duration to format.
+ */
+export function formatDuration(totalSeconds: number): string {
+  const seconds = Number.isFinite(totalSeconds) && totalSeconds > 0 ? Math.floor(totalSeconds) : 0;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
 const BYTE_UNITS = ["bytes", "KB", "MB", "GB"];
 
 /** Human file size ("512 bytes", "3.4 MB"). */
