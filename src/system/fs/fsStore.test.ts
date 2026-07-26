@@ -233,6 +233,34 @@ describe("create + rename", () => {
   });
 });
 
+describe("setLabel (U14 color labels)", () => {
+  it("sets a valid label", () => {
+    api().setLabel("note", "red");
+    expect(get("note").label).toBe("red");
+  });
+
+  it("clears a label when given undefined", () => {
+    api().setLabel("note", "red");
+    api().setLabel("note", undefined);
+    expect(get("note").label).toBeUndefined();
+  });
+
+  it("rejects an unknown label id, leaving the node unlabeled", () => {
+    api().setLabel("note", "chartreuse");
+    expect(get("note").label).toBeUndefined();
+  });
+
+  it("does not bump modifiedAt — a label is metadata, not a content change", () => {
+    const before = get("note").modifiedAt;
+    api().setLabel("note", "blue");
+    expect(get("note").modifiedAt).toBe(before);
+  });
+
+  it("no-ops on a missing node", () => {
+    expect(() => api().setLabel("does-not-exist", "red")).not.toThrow();
+  });
+});
+
 describe("move", () => {
   it("moves a node into another folder", () => {
     expect(api().move("note", "reports")).toBe(true);

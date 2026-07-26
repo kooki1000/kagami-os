@@ -8,6 +8,7 @@ import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
 import { blobStore } from "./blobStore";
 import { createIdbAdapter } from "./idbAdapter";
+import { isValidNodeLabel } from "./nodeLabels";
 import { createSeedNodes } from "./seed";
 import { createTauriAdapter } from "./tauriAdapter";
 import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
@@ -282,6 +283,8 @@ export interface FsStore {
    */
   touchFile: (id: string) => void;
   rename: (id: string, name: string) => void;
+  /** Set (or, with `undefined`, clear) a node's color label (U14). No-op on an invalid label id or a missing node. */
+  setLabel: (id: string, label: string | undefined) => void;
   /** Returns false when the move is invalid (into itself, a descendant, or a non-folder). */
   move: (id: string, newParentId: string) => boolean;
   /**
@@ -466,6 +469,18 @@ export const useFsStore = create<FsStore>()((set, get) => {
         return;
       const unique = uniqueChildName(get().nodes, node.parentId ?? "", trimmed, id);
       commit([{ ...node, name: unique, modifiedAt: Date.now() }]);
+    },
+
+    setLabel(id, label) {
+      const node = get().nodes[id];
+      if (!node || (label !== undefined && !isValidNodeLabel(label)))
+        return;
+      if ((node.label ?? undefined) === label)
+        return;
+      // A label is metadata, not content — unlike rename/move, this
+      // deliberately leaves `modifiedAt` untouched so labeling a file
+      // doesn't reorder a "date modified" sort.
+      commit([{ ...node, label }]);
     },
 
     move(id, newParentId) {
