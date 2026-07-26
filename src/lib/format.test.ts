@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClockTime, formatShortcut, matchesMacPlatform } from "./format";
+import { formatClockTime, formatDuration, formatShortcut, matchesMacPlatform } from "./format";
 
 describe("formatClockTime (U7)", () => {
   const morning = new Date(2026, 0, 1, 3, 5, 9); // 3:05:09 AM
@@ -58,5 +58,28 @@ describe("matchesMacPlatform", () => {
 
   it("defaults to true when no platform string is available", () => {
     expect(matchesMacPlatform(undefined)).toBe(true);
+  });
+});
+
+describe("formatDuration", () => {
+  it("formats under an hour as m:ss", () => {
+    expect(formatDuration(0)).toBe("0:00");
+    expect(formatDuration(7)).toBe("0:07");
+    expect(formatDuration(187)).toBe("3:07");
+    expect(formatDuration(3599)).toBe("59:59");
+  });
+
+  it("formats an hour or more as h:mm:ss", () => {
+    expect(formatDuration(3600)).toBe("1:00:00");
+    expect(formatDuration(3723)).toBe("1:02:03");
+  });
+
+  it("treats NaN/negative as 0:00 instead of crashing on a not-yet-loaded duration", () => {
+    expect(formatDuration(Number.NaN)).toBe("0:00");
+    expect(formatDuration(-1)).toBe("0:00");
+  });
+
+  it("truncates fractional seconds rather than rounding up", () => {
+    expect(formatDuration(7.9)).toBe("0:07");
   });
 });

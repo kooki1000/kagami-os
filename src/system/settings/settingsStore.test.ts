@@ -48,6 +48,25 @@ describe("settingsStore persistence", () => {
     const persisted = JSON.parse(localStorage.getItem("kagami-settings") ?? "{}");
     expect(persisted.state.uiScale).toBe("large");
   });
+
+  it("defaults playerVolume to 0.8 and persists a changed value", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    expect(useSettingsStore.getState().playerVolume).toBe(0.8);
+
+    useSettingsStore.getState().setPlayerVolume(0.3);
+    expect(useSettingsStore.getState().playerVolume).toBe(0.3);
+
+    const persisted = JSON.parse(localStorage.getItem("kagami-settings") ?? "{}");
+    expect(persisted.state.playerVolume).toBe(0.3);
+  });
+
+  it("clamps playerVolume to [0, 1]", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    useSettingsStore.getState().setPlayerVolume(1.5);
+    expect(useSettingsStore.getState().playerVolume).toBe(1);
+    useSettingsStore.getState().setPlayerVolume(-0.5);
+    expect(useSettingsStore.getState().playerVolume).toBe(0);
+  });
 });
 
 describe("u1 custom wallpaper", () => {
