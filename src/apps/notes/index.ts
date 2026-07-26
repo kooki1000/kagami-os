@@ -8,7 +8,7 @@ export const notesApp: AppManifest = {
   name: "Notes",
   icon: NotebookPen,
   tileGradient: ["#f2a24b", "#e8763b"],
-  defaultSize: { width: 720, height: 480 },
+  defaultSize: { width: 760, height: 480 },
   minSize: { width: 480, height: 320 },
   component: lazy(() => import("./NotesApp")),
   singleInstance: true,
@@ -21,6 +21,15 @@ export const notesApp: AppManifest = {
       items: [
         { label: "New Note", appCommand: "notes.new", shortcut: "⌘N", dividerAfter: true },
         { label: "Close Window", command: "window.close", shortcut: "⌘W" },
+      ],
+    },
+    {
+      title: "Edit",
+      items: [
+        { label: "Find…", appCommand: "notes.find", shortcut: "⌘F" },
+        { label: "Find Next", appCommand: "notes.findNext", shortcut: "⌘G" },
+        { label: "Find Previous", appCommand: "notes.findPrev", shortcut: "⇧⌘G", dividerAfter: true },
+        { label: "Toggle Focus Mode", appCommand: "notes.focusMode", shortcut: "⇧⌘D" },
       ],
     },
   ],

@@ -145,6 +145,44 @@ describe("create + rename", () => {
   });
 });
 
+describe("setFileBlob (review-backlog #11)", () => {
+  beforeEach(async () => {
+    await blobStore.delete(await blobStore.listHashes());
+  });
+
+  it("writes the blob, clears inline content, and points contentRef at it", async () => {
+    const before = get("note").modifiedAt;
+    await api().setFileBlob("note", new Blob(["blob bytes"], { type: "text/plain" }));
+
+    const node = get("note");
+    expect(node.content).toBeUndefined();
+    expect(node.contentRef).toMatchObject({ size: 10, mimeType: "text/plain" });
+    expect(node.modifiedAt).toBeGreaterThanOrEqual(before);
+    const stored = await blobStore.get(node.contentRef!.hash);
+    expect(await stored?.text()).toBe("blob bytes");
+  });
+
+  it("falls back to the node's existing mime type when the blob has none", async () => {
+    await api().setFileBlob("note", new Blob(["bytes"]));
+    expect(get("note").contentRef?.mimeType).toBe("text/markdown");
+  });
+
+  it("sweeps the previous blob once no node references it any more", async () => {
+    await api().setFileBlob("note", new Blob(["first"]));
+    const firstHash = get("note").contentRef!.hash;
+    expect(await blobStore.has(firstHash)).toBe(true);
+
+    await api().setFileBlob("note", new Blob(["second, replacing the first"]));
+    expect(await blobStore.has(firstHash)).toBe(false);
+  });
+
+  it("is a no-op for a missing id or a folder", async () => {
+    await api().setFileBlob("does-not-exist", new Blob(["x"]));
+    await api().setFileBlob(DOCUMENTS_ID, new Blob(["x"]));
+    expect(get(DOCUMENTS_ID).type).toBe("folder");
+  });
+});
+
 describe("move", () => {
   it("moves a node into another folder", () => {
     expect(api().move("note", "reports")).toBe(true);

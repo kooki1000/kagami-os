@@ -1,6 +1,6 @@
 import type { FileSystemProvider } from "./types";
 import { childrenOf, isDescendantOf, useFsStore } from "./fsStore";
-import { TRASH_ID } from "./types";
+import { BLOB_INLINE_THRESHOLD, TRASH_ID } from "./types";
 
 async function ready() {
   await useFsStore.getState().init();
@@ -31,16 +31,29 @@ export const fileSystem: FileSystemProvider = {
    * Replaces a same-named file rather than forking one: `createFile` runs the
    * name through `uniqueChildName`, so delegating straight to it would turn
    * every save of "note.txt" into "note 2.txt", "note 3.txt", …
+   *
+   * Routes through the blob store once `content` crosses
+   * `BLOB_INLINE_THRESHOLD` (review-backlog #11 — this used to store
+   * whatever size it was given inline, breaking the size contract
+   * `FsNode.content` documents). `setFileBlob` is the same size-crossing fix
+   * Notes' editor saves through.
    */
   async writeFile(parentId, name, content, mimeType) {
     const state = await ready();
     const existing = childrenOf(state.nodes, parentId).find(
       n => n.type === "file" && n.name.toLowerCase() === name.toLowerCase(),
     );
-    if (!existing)
-      return state.createFile(parentId, name, content, mimeType);
-    state.updateFileContent(existing.id, content);
-    // Re-read: `updateFileContent` commits a new node object.
+    const oversized = content.length > BLOB_INLINE_THRESHOLD;
+    if (!existing) {
+      return oversized
+        ? state.createBlobFile(parentId, name, new Blob([content], { type: mimeType }), mimeType)
+        : state.createFile(parentId, name, content, mimeType);
+    }
+    if (oversized)
+      await state.setFileBlob(existing.id, new Blob([content], { type: mimeType }));
+    else
+      state.updateFileContent(existing.id, content);
+    // Re-read: both paths above commit a new node object.
     return useFsStore.getState().nodes[existing.id];
   },
 
