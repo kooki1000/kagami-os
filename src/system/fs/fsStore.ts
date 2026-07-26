@@ -74,6 +74,21 @@ function byKey(a: FsNode, b: FsNode, key: SortKey): number {
   }
 }
 
+// T7: `childrenOf`'s own map/sort result, cached per `(nodes, parentId,
+// sort)` identity — not just the parent-id index above. Several call sites
+// (Desktop.tsx, siblingNav.ts, the Terminal shell, FilesApp's own render)
+// call `childrenOf` for the same folder/sort within a single `nodes`
+// commit, each of which would otherwise re-map-and-sort independently even
+// though `useMemo` at any *one* call site can't help the others share the
+// work. Keyed the same way as `childIdsByParentCache` (a `WeakMap` on
+// `nodes` identity, which every commit replaces wholesale), so it
+// self-invalidates for free and can never serve a stale entry.
+const childrenOfCache = new WeakMap<NodeMap, Map<string, FsNode[]>>();
+
+function childrenOfCacheKey(parentId: string, sort: SortSpec): string {
+  return `${parentId}|${sort.key}|${sort.dir}`;
+}
+
 /**
  * One folder's children. Folders always precede files (the desktop
  * convention); `sort` orders within each group. Direction applies to the
@@ -83,16 +98,28 @@ function byKey(a: FsNode, b: FsNode, key: SortKey): number {
  * T7: looks the folder's child ids up in {@link childIdsByParent}'s index
  * instead of scanning every node in the map — a full-map `Object.values`
  * scan cost the same whether the folder held 5 items or 5,000. The index
- * itself is cached per `nodes` identity (see there), so this is the only
- * per-call cost beyond the sort.
+ * itself is cached per `nodes` identity (see there); this function's own
+ * sorted result is additionally cached per `(nodes, parentId, sort)` (see
+ * `childrenOfCache` above), so repeat callers for the same folder/sort
+ * within one `nodes` commit share one sort instead of each re-deriving it.
  */
 export function childrenOf(
   nodes: NodeMap,
   parentId: string,
   sort: SortSpec = DEFAULT_SORT,
 ): FsNode[] {
+  let perNodes = childrenOfCache.get(nodes);
+  if (!perNodes) {
+    perNodes = new Map();
+    childrenOfCache.set(nodes, perNodes);
+  }
+  const key = childrenOfCacheKey(parentId, sort);
+  const cached = perNodes.get(key);
+  if (cached)
+    return cached;
+
   const ids = childIdsByParent(nodes).get(parentId) ?? [];
-  return ids
+  const result = ids
     .map(id => nodes[id])
     .filter((n): n is FsNode => !!n)
     .sort((a, b) => {
@@ -101,6 +128,8 @@ export function childrenOf(
       const primary = byKey(a, b, sort.key);
       return (sort.dir === "desc" ? -primary : primary) || byName(a, b);
     });
+  perNodes.set(key, result);
+  return result;
 }
 
 /** Path from the root down to (and including) the node. */

@@ -1,3 +1,4 @@
+import type { SortSpec } from "./fsStore";
 import type { FsNode } from "./types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useNotificationStore } from "@/system/notifications/notificationStore";
@@ -110,7 +111,8 @@ describe("tree helpers", () => {
   // reimplementation of the old behavior, across every sort key/direction —
   // faster, not different.
   describe("childrenOf matches a naive full-scan reimplementation (T7)", () => {
-    function naiveChildrenOf(nodes: ReturnType<typeof api>["nodes"], parentId: string, sort = DEFAULT_SORT_FOR_TEST) {
+    const DEFAULT_SORT_FOR_TEST: SortSpec = { key: "name", dir: "asc" };
+    function naiveChildrenOf(nodes: ReturnType<typeof api>["nodes"], parentId: string, sort: SortSpec = DEFAULT_SORT_FOR_TEST) {
       return Object.values(nodes)
         .filter(n => n.parentId === parentId)
         .sort((a, b) => {
@@ -125,7 +127,6 @@ describe("tree helpers", () => {
           return dirApplied || a.name.localeCompare(b.name, undefined, { numeric: true });
         });
     }
-    const DEFAULT_SORT_FOR_TEST = { key: "name" as const, dir: "asc" as const };
 
     it("for name/date/kind sort, both directions, on a mixed folder", () => {
       const map = indexNodes([
@@ -156,6 +157,38 @@ describe("tree helpers", () => {
     expect(childIdsByParent(nodes)).toBe(childIdsByParent(nodes));
     const other = { ...nodes };
     expect(childIdsByParent(other)).not.toBe(childIdsByParent(nodes));
+  });
+
+  // T7: childrenOf's own sorted result is cached per (nodes, parentId, sort)
+  // identity, not just the parent-id index it's built from — repeat callers
+  // for the same folder/sort (Desktop.tsx, siblingNav.ts, the Terminal
+  // shell, FilesApp) share one array instead of each re-sorting.
+  describe("childrenOf caches its sorted result per (nodes, parentId, sort) (T7)", () => {
+    it("returns the same array instance for repeat calls with the same nodes/folder/sort", () => {
+      const nodes = api().nodes;
+      expect(childrenOf(nodes, DOCUMENTS_ID)).toBe(childrenOf(nodes, DOCUMENTS_ID));
+    });
+
+    it("invalidates when `nodes` identity changes", () => {
+      const nodes = api().nodes;
+      const first = childrenOf(nodes, DOCUMENTS_ID);
+      const other = { ...nodes };
+      expect(childrenOf(other, DOCUMENTS_ID)).not.toBe(first);
+      // ...but is still equal in content, since nothing actually changed.
+      expect(childrenOf(other, DOCUMENTS_ID).map(n => n.id)).toEqual(first.map(n => n.id));
+    });
+
+    it("caches per folder id — a different folder under the same `nodes` gets its own entry", () => {
+      const nodes = api().nodes;
+      expect(childrenOf(nodes, DOCUMENTS_ID)).not.toBe(childrenOf(nodes, "reports"));
+    });
+
+    it("caches per sort spec — a different sort under the same `nodes`/folder gets its own entry", () => {
+      const nodes = api().nodes;
+      const asc = childrenOf(nodes, DOCUMENTS_ID, { key: "name", dir: "asc" });
+      const desc = childrenOf(nodes, DOCUMENTS_ID, { key: "name", dir: "desc" });
+      expect(asc).not.toBe(desc);
+    });
   });
 });
 
