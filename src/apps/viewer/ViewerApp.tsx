@@ -27,7 +27,7 @@ import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { notify } from "@/system/notifications/notificationStore";
 import { setWallpaperFromFile } from "@/system/settings/settingsStore";
-import { isEditableTarget } from "@/system/shortcuts";
+import { useBareArrowKeys } from "@/system/shortcuts";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { resolveFileBytes } from "../files/download";
 import { isImageNode } from "../files/fileMeta";
@@ -350,20 +350,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     }
   });
 
-  // Bare ←/→: shortcuts.ts's global handler only dispatches ⌘-letter chords,
-  // so this needs its own listener. Window-scoped and gated on `focused`
-  // rather than Files' B6 container+DOM-focus approach — Viewer has no
-  // focusable list to anchor to.
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent): void {
-      if (!focused || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || isEditableTarget(e.target))
-        return;
-      e.preventDefault();
-      step(e.key === "ArrowLeft" ? -1 : 1);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focused, step]);
+  useBareArrowKeys(focused, step);
 
   // Blob-backed images resolve their object URL asynchronously; a node with
   // a contentRef but no `src` yet is loading, not missing — don't flash the

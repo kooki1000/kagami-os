@@ -3,6 +3,7 @@ import type { UiScale } from "@/design/tokens";
 import type { ResolvedTheme } from "@/system/theme/themeStore";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { clamp01 } from "@/lib/math";
 import { useThemeStore } from "@/system/theme/themeStore";
 import {
   DEFAULT_ACCENT_ID,
@@ -124,10 +125,6 @@ interface SettingsStore {
   clearDefaultWindowSize: (appId: string) => void;
 }
 
-function clamp01(n: number): number {
-  return Math.min(1, Math.max(0, n));
-}
-
 /** Keeps the minimize/enter animation multiplier in a sane, non-zero range — a stray 0 or negative value would otherwise divide `Window.tsx`'s durations into `Infinity`/negative. */
 const MIN_ANIMATION_SPEED = 0.25;
 const MAX_ANIMATION_SPEED = 4;
@@ -177,7 +174,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setWallpaper: id => set({ wallpaperId: id, wallpaperFileId: { light: null, dark: null } }),
       setAutoEmptyTrash: value => set({ autoEmptyTrash: value }),
       setUiScale: value => set({ uiScale: value }),
-      setPlayerVolume: value => set({ playerVolume: Math.min(1, Math.max(0, value)) }),
+      setPlayerVolume: value => set({ playerVolume: clamp01(value) }),
       setTourDismissed: value => set({ tourDismissed: value }),
       setFileAssociation: (mimeType, appId) =>
         set({ fileAssociations: { ...get().fileAssociations, [mimeType]: appId } }),

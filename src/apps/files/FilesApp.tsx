@@ -537,45 +537,34 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     return gridColumnCount(container.clientWidth);
   }
 
-  // Roving tabIndex (review-backlog #8) means only the cursor item is ever a
-  // Tab stop — real DOM focus has to follow the keyboard cursor as it moves,
-  // not just the visual selection highlight, or the item that last had a
-  // click stays the one actually focused. The common case (small folder, or
-  // an item already on screen) still focuses synchronously, exactly as
-  // before virtualization — deliberately not deferred by even one frame,
-  // since a same-tick focus is what lets one keypress's synchronous state
-  // update (e.g. type-ahead) be immediately followed by another (Enter)
-  // without a race where focus is briefly nowhere (DOM focus falls back to
-  // `<body>`, off which a real bubbled keydown wouldn't reach `container`'s
-  // listener at all). Only when the target isn't in the DOM yet (genuinely
-  // scrolled out of the virtualizer's rendered range) does this fall back to
-  // asking FilesView's virtualizer to bring it into range (`scrollToIdRef`)
-  // and retrying a frame later, once react-virtual has mounted it.
-  function focusNode(id: string): void {
+  // Roving tabIndex (review-backlog #8) means DOM focus has to follow the
+  // keyboard cursor as it moves. Focuses synchronously when the item is
+  // already rendered; if it's scrolled out of the virtualizer's range, asks
+  // FilesView to bring it into range (`scrollToIdRef`) and retries a frame
+  // later, once react-virtual has mounted it.
+  function withNode(id: string, action: (el: HTMLElement) => void): void {
     const existing = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
     if (existing) {
-      existing.focus();
-      return;
-    }
-    scrollToIdRef.current(id);
-    requestAnimationFrame(() => {
-      container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`)?.focus();
-    });
-  }
-
-  /** Scrolls the item into view and focuses it in one query — see `focusNode` on the synchronous-first-try/deferred-fallback split. */
-  function focusAndScrollIntoView(id: string): void {
-    const existing = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
-    if (existing) {
-      existing.scrollIntoView({ block: "nearest", inline: "nearest" });
-      existing.focus();
+      action(existing);
       return;
     }
     scrollToIdRef.current(id);
     requestAnimationFrame(() => {
       const el = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
-      el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-      el?.focus();
+      if (el)
+        action(el);
+    });
+  }
+
+  function focusNode(id: string): void {
+    withNode(id, el => el.focus());
+  }
+
+  /** Scrolls the item into view and focuses it. */
+  function focusAndScrollIntoView(id: string): void {
+    withNode(id, (el) => {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+      el.focus();
     });
   }
 
@@ -648,10 +637,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       // The Get Info panel and Quick Look are modal dialogs with their own
       // focus trap and Escape/Space handling (#6) — while either is open,
       // this handler is a complete no-op rather than letting
-      // Delete/F2/arrows/type-ahead act on the hidden list. (In practice
-      // focus has already moved into the dialog by the time either is open,
-      // so real keydown events don't bubble here anyway — this is defense
-      // in depth, matching the existing `liveInfoNode` guard's own style.)
+      // Delete/F2/arrows/type-ahead act on the hidden list.
       if (liveInfoNode || quickLookNode)
         return;
       switch (e.key) {

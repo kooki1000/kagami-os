@@ -3,7 +3,7 @@ import type { SortKey, SortSpec } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { formatBytes, formatModified } from "@/lib/format";
 import { nodeLabelById } from "@/system/fs/nodeLabels";
@@ -144,12 +144,8 @@ export function FilesView(props: FilesViewProps) {
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
-  // U14: tracks the scroll container's live width so the grid can compute
-  // its own column count up front (`gridColumnCount`) instead of reading it
-  // back off a rendered grid — under virtualization most rows aren't
-  // rendered yet to measure. `FilesApp`'s roving-focus arrow-key math reads
-  // the same container's `clientWidth` through the same pure function, so
-  // the two agree without either depending on the other's render output.
+  // Tracks the container's live width so `gridColumnCount` can compute columns
+  // without a rendered grid to measure (see gridLayout.ts).
   useEffect(() => {
     const el = containerRef.current;
     if (!el)
@@ -170,7 +166,10 @@ export function FilesView(props: FilesViewProps) {
   }
 
   const columns = view === "grid" ? gridColumnCount(containerWidth, GRID_TILE_MIN_PX, GRID_GAP_PX) : 1;
-  const gridRows = view === "grid" ? chunkIntoRows(items, columns) : [];
+  const gridRows = useMemo(
+    () => (view === "grid" ? chunkIntoRows(items, columns) : []),
+    [view, items, columns],
+  );
 
   const gridVirtualizer = useVirtualizer({
     count: view === "grid" ? gridRows.length : 0,

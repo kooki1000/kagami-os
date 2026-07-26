@@ -414,7 +414,8 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
   const moveToTrash = useFsStore(s => s.moveToTrash);
   const duplicate = useFsStore(s => s.duplicate);
 
-  const pinnedIds = useNotesPrefsStore(s => s.pinnedIds);
+  const pinnedIdList = useNotesPrefsStore(s => s.pinnedIds);
+  const pinnedIds = useMemo(() => new Set(pinnedIdList), [pinnedIdList]);
   const togglePinned = useNotesPrefsStore(s => s.togglePinned);
   const scopeMode = useNotesPrefsStore(s => s.scopeMode);
   const setScopeMode = useNotesPrefsStore(s => s.setScopeMode);

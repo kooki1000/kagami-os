@@ -22,7 +22,7 @@ import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
 import { useSettingsStore } from "@/system/settings/settingsStore";
-import { isEditableTarget } from "@/system/shortcuts";
+import { useBareArrowKeys } from "@/system/shortcuts";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { isAudioNode, isVideoNode } from "../files/fileMeta";
 import { onEndedAction } from "./repeatMode";
@@ -221,28 +221,9 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
     }
   });
 
-  // Space toggles play/pause, bare ←/→ skip tracks — window-scoped and
-  // gated on `focused`/`isEditableTarget`, mirroring ViewerApp's identical
-  // bare-arrow-key listener (shortcuts.ts's global handler only dispatches
-  // ⌘-letter chords). The Slider's own arrow-key handling stops propagation
-  // before this ever sees it, so a focused scrub/volume slider isn't
-  // double-handled.
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent): void {
-      if (!focused || isEditableTarget(e.target))
-        return;
-      if (e.key === " " || e.code === "Space") {
-        e.preventDefault();
-        togglePlay();
-      }
-      else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        step(e.key === "ArrowLeft" ? -1 : 1);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focused, step, togglePlay]);
+  // The Slider's own arrow-key handling stops propagation before this ever
+  // sees it, so a focused scrub/volume slider isn't double-handled.
+  useBareArrowKeys(focused, step, togglePlay);
 
   // A node with a contentRef but no blob store entry is missing, not
   // loading — treat it the same as no track selected instead of spinning

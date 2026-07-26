@@ -1,34 +1,9 @@
 import type { AppWindowProps } from "@/system/apps/types";
 import { useState } from "react";
+import { Switch } from "@/components/ui/Switch";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { lastStepIndex, nextStepIndex, prevStepIndex, tourSteps } from "./tourSteps";
-
-/**
- * Small pill toggle matching Settings' `Switch`, duplicated locally rather
- * than imported cross-app (each app owns its own UI; the shell only shares
- * through the manifest/command seams per CLAUDE.md).
- */
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={`relative h-[calc(16px*var(--ui-scale))] w-7 flex-none rounded-full transition-colors ${
-        checked ? "bg-accent" : "bg-ph"
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 size-[calc(12px*var(--ui-scale))] rounded-full bg-white transition-[left] ${
-          checked ? "left-3.5" : "left-0.5"
-        }`}
-      />
-    </button>
-  );
-}
 
 export default function WelcomeApp({ windowId }: AppWindowProps) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -73,10 +48,11 @@ export default function WelcomeApp({ windowId }: AppWindowProps) {
 
       <div className="flex items-center justify-between gap-3 px-8 py-5 hairline-t">
         <label className="flex items-center gap-2 text-11.5 text-ink-2">
-          <Toggle
+          <Switch
             checked={tourDismissed}
             onChange={setTourDismissed}
             label="Don't show this tour again"
+            size="sm"
           />
           Don't show this again
         </label>

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { clamp01 } from "@/lib/math";
 import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 
 /**
@@ -25,14 +26,14 @@ export function Slider({
   className?: string;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
-  const clamped = Math.min(1, Math.max(0, value));
+  const clamped = clamp01(value);
 
   function ratioFromPointer(clientX: number): number {
     const track = trackRef.current;
     if (!track || track.clientWidth === 0)
       return clamped;
     const rect = track.getBoundingClientRect();
-    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return clamp01((clientX - rect.left) / rect.width);
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>): void {

@@ -11,6 +11,7 @@ import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
+import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { formatShortcut } from "@/lib/format";
@@ -453,35 +454,6 @@ function DockSection() {
         />
       </Row>
     </>
-  );
-}
-
-function Switch({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={`relative h-[calc(18px*var(--ui-scale))] w-8 flex-none rounded-full transition-colors ${
-        checked ? "bg-accent" : "bg-ph"
-      }`}
-      onClick={() => onChange(!checked)}
-    >
-      <span
-        className={`absolute top-0.5 size-[calc(14px*var(--ui-scale))] rounded-full bg-white transition-[left] ${
-          checked ? "left-4" : "left-0.5"
-        }`}
-      />
-    </button>
   );
 }
 
