@@ -13,6 +13,7 @@ import { useFsStore } from "./system/fs/fsStore";
 import { notify } from "./system/notifications/notificationStore";
 import { accentById, themeVariables, wallpaperById } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
+import { ensureWallpaperUrl, useWallpaperUrl } from "./system/settings/wallpaperBlobUrl";
 import { useGlobalShortcuts } from "./system/shortcuts";
 import { requestPersistentStorage } from "./system/storage/persistence";
 import { useThemeStore } from "./system/theme/themeStore";
@@ -25,14 +26,35 @@ export default function App() {
   const accentId = useSettingsStore(s => s.accentId);
   const wallpaperId = useSettingsStore(s => s.wallpaperId);
   const uiScale = useSettingsStore(s => s.uiScale);
+  const customAccentHex = useSettingsStore(s => s.customAccentHex);
+  const wallpaperFileId = useSettingsStore(s => s.wallpaperFileId);
+  const wallpaperFit = useSettingsStore(s => s.wallpaperFit);
+  const fsReady = useFsStore(s => s.ready);
   const setViewport = useWindowStore(s => s.setViewport);
 
   useGlobalShortcuts();
   useWindowManagementShortcuts();
 
+  // U1: keep each theme's resolved wallpaper blob URL in sync with its
+  // chosen VFS file id. Gated on `fsReady` — the fs store isn't hydrated
+  // yet on first mount, so resolving against it early would just resolve
+  // to "missing"; the effect re-runs once `init()` (below) flips `ready`.
+  useEffect(() => {
+    void ensureWallpaperUrl("light", fsReady ? wallpaperFileId.light : null);
+  }, [wallpaperFileId.light, fsReady]);
+  useEffect(() => {
+    void ensureWallpaperUrl("dark", fsReady ? wallpaperFileId.dark : null);
+  }, [wallpaperFileId.dark, fsReady]);
+
+  // Reactive read of the *active* theme's resolved custom-wallpaper URL —
+  // re-renders once the effects above settle it.
+  const customWallpaperUrl = useWallpaperUrl(resolved);
+
   // Reflect theme + accent + wallpaper onto the document root. Inline
   // custom properties override the static defaults in global.css, so the
-  // whole UI re-tints live when any of these change.
+  // whole UI re-tints live when any of these change. `customAccentHex`
+  // (U2) and `customWallpaperUrl`/`wallpaperFit` (U1) layer a user override
+  // on top of the preset the same way for both.
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = resolved;
@@ -40,10 +62,11 @@ export default function App() {
       accentById(accentId),
       wallpaperById(wallpaperId),
       resolved,
+      { customAccentHex, customWallpaperUrl, wallpaperFit },
     );
     for (const [key, value] of Object.entries(vars))
       root.style.setProperty(key, value);
-  }, [resolved, accentId, wallpaperId]);
+  }, [resolved, accentId, wallpaperId, customAccentHex, customWallpaperUrl, wallpaperFit]);
 
   // Interface density (U4): same inline-override mechanism as above, kept
   // as its own effect since it's an independent axis from theme/accent.

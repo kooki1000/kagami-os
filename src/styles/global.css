@@ -145,7 +145,17 @@ body {
 @utility wallpaper {
   position: absolute;
   inset: 0;
-  background: var(--wall);
+  /* U1: --wall-size/--wall-repeat/--wall-position are only set (by
+     themeVariables, App.tsx) once a custom wallpaper image replaces the
+     preset gradient in --wall — the "cover/no-repeat/center" fallbacks here
+     are inert for a gradient (a CSS gradient has no intrinsic size, so
+     background-size doesn't change how it renders). Separate longhands
+     (rather than the `background` shorthand) so each var's fallback applies
+     independently instead of one missing var blanking the others. */
+  background-image: var(--wall);
+  background-size: var(--wall-size, cover);
+  background-repeat: var(--wall-repeat, no-repeat);
+  background-position: var(--wall-position, center);
   overflow: hidden;
 
   &::before {

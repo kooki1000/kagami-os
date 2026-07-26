@@ -1,22 +1,28 @@
 import type { ChangeEvent, ReactNode } from "react";
 import type { UiScale } from "@/design/tokens";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
-import type { ThemePreference } from "@/system/theme/themeStore";
+import type { WallpaperFit } from "@/system/settings/palettes";
+import type { ReduceMotionPreference } from "@/system/settings/settingsStore";
+import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
+import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { useDockStore } from "@/system/dock/dockStore";
 import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
+import { PICTURES_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import {
+  accentById,
   ACCENTS,
   accentSwatch,
   WALLPAPERS,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
+import { useWallpaperUrl } from "@/system/settings/wallpaperBlobUrl";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
 
@@ -48,7 +54,7 @@ interface SegmentOption<T> {
   label: string;
 }
 
-function Segmented<T extends string>({
+function Segmented<T extends string | number>({
   options,
   value,
   onChange,
@@ -79,15 +85,176 @@ function Segmented<T extends string>({
   );
 }
 
+const WALLPAPER_FIT_OPTIONS: SegmentOption<WallpaperFit>[] = [
+  { value: "fill", label: "Fill" },
+  { value: "fit", label: "Fit" },
+  { value: "centre", label: "Centre" },
+  { value: "tile", label: "Tile" },
+];
+
+const REDUCE_MOTION_OPTIONS: SegmentOption<ReduceMotionPreference>[] = [
+  { value: "system", label: "System" },
+  { value: "on", label: "Reduce" },
+  { value: "off", label: "Full" },
+];
+
+const ANIMATION_SPEED_OPTIONS: SegmentOption<number>[] = [
+  { value: 0.5, label: "Slower" },
+  { value: 1, label: "Normal" },
+  { value: 2, label: "Faster" },
+];
+
+/**
+ * WCAG surface/ink hex per theme, for U2's contrast warning —
+ * `checkAccentContrast` needs literal hex, not a live `--surface`/`--text`
+ * CSS var, so these are transcribed from `global.css`'s `:root`/`[data-theme
+ * ='dark']` blocks. Keep in sync if those tokens ever change.
+ */
+const SURFACE_HEX: Record<ResolvedTheme, string> = { light: "#faf8f4", dark: "#201e1a" };
+const INK_HEX: Record<ResolvedTheme, string> = { light: "#2b2925", dark: "#efece5" };
+
+/**
+ * U2's picker: a native color input (styled as a round swatch, matching the
+ * preset dots next to it) plus a non-blocking WCAG AA contrast warning.
+ * Picking a preset (`setAccent`) clears this override in the store, so the
+ * two never fight over which one's "selected".
+ */
+function CustomAccentPicker() {
+  const accentId = useSettingsStore(s => s.accentId);
+  const customAccentHex = useSettingsStore(s => s.customAccentHex);
+  const setCustomAccentHex = useSettingsStore(s => s.setCustomAccentHex);
+  const resolvedTheme = useThemeStore(s => s.resolved);
+
+  const swatchHex = customAccentHex ?? accentSwatch(accentById(accentId));
+  const contrast = customAccentHex
+    ? checkAccentContrast(customAccentHex, SURFACE_HEX[resolvedTheme], INK_HEX[resolvedTheme])
+    : null;
+
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      <input
+        type="color"
+        aria-label="Custom accent color"
+        title="Custom accent color"
+        className={`size-[calc(26px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 bg-transparent p-0 ${
+          customAccentHex
+            ? "shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]"
+            : ""
+        }`}
+        value={swatchHex}
+        onChange={e => setCustomAccentHex(e.target.value)}
+      />
+      <span className="text-11.5 text-ink-2">Custom color</span>
+      {customAccentHex && (
+        <button
+          type="button"
+          className="text-11.5 font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline"
+          onClick={() => setCustomAccentHex(null)}
+        >
+          Reset to preset
+        </button>
+      )}
+      {contrast && !contrast.passes && (
+        <p className="basis-full text-11 text-accent-2">
+          Low contrast against the app background — may be hard to read (WCAG AA needs
+          {" "}
+          {WCAG_AA_NORMAL_TEXT}
+          :1).
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * U1's per-theme custom wallpaper slot: "Choose from Files…" reuses the
+ * same native-picker → VFS-write pattern as Settings' own disk import
+ * (`BackupSection` below) and Files' own upload flow — there's no separate
+ * in-app VFS browse dialog to reuse instead, so an image dropped here lands
+ * in Pictures like any other upload, and the resulting node id is what's
+ * actually stored (`wallpaperFileId`). The thumbnail is the same resolved
+ * blob URL `wallpaperBlobUrl.ts` feeds the desktop itself.
+ */
+function CustomWallpaperSlot({ theme, label }: { theme: ResolvedTheme; label: string }) {
+  const fileId = useSettingsStore(s => s.wallpaperFileId[theme]);
+  const setWallpaperFile = useSettingsStore(s => s.setWallpaperFile);
+  const url = useWallpaperUrl(theme);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handlePick(e: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!file)
+      return;
+    setBusy(true);
+    try {
+      const node = await useFsStore.getState().createBlobFile(PICTURES_ID, file.name, file, file.type || undefined);
+      setWallpaperFile(theme, node.id);
+    }
+    catch (error) {
+      notify({
+        title: "Couldn’t set wallpaper",
+        body: error instanceof Error ? error.message : `“${file.name}” couldn’t be used as a wallpaper.`,
+        tone: "danger",
+      });
+    }
+    finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-[calc(10px*var(--ui-scale))]">
+      <div
+        className="h-[calc(44px*var(--ui-scale))] w-[calc(68px*var(--ui-scale))] flex-none rounded-[9px] bg-ph bg-cover bg-center hairline"
+        style={url ? { backgroundImage: `url("${url}")` } : undefined}
+      />
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-11.5 font-medium text-ink-2">{label}</span>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-btn bg-ph px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11 font-medium text-ink hover:bg-ph-2 disabled:opacity-50"
+            onClick={() => inputRef.current?.click()}
+          >
+            {busy ? "Adding…" : "Choose from Files…"}
+          </button>
+          {fileId && (
+            <button
+              type="button"
+              className="rounded-btn px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11 font-medium text-ink-2 hover:bg-ph hover:text-ink"
+              onClick={() => setWallpaperFile(theme, null)}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" hidden onChange={e => void handlePick(e)} />
+    </div>
+  );
+}
+
 function AppearanceSection() {
   const preference = useThemeStore(s => s.preference);
   const setPreference = useThemeStore(s => s.setPreference);
   const accentId = useSettingsStore(s => s.accentId);
   const setAccent = useSettingsStore(s => s.setAccent);
+  const customAccentHex = useSettingsStore(s => s.customAccentHex);
   const wallpaperId = useSettingsStore(s => s.wallpaperId);
   const setWallpaper = useSettingsStore(s => s.setWallpaper);
+  const wallpaperFit = useSettingsStore(s => s.wallpaperFit);
+  const setWallpaperFit = useSettingsStore(s => s.setWallpaperFit);
   const uiScale = useSettingsStore(s => s.uiScale);
   const setUiScale = useSettingsStore(s => s.setUiScale);
+  const reduceMotion = useSettingsStore(s => s.reduceMotion);
+  const setReduceMotion = useSettingsStore(s => s.setReduceMotion);
+  const animationSpeed = useSettingsStore(s => s.animationSpeed);
+  const setAnimationSpeed = useSettingsStore(s => s.setAnimationSpeed);
+  const wallpaperDim = useSettingsStore(s => s.wallpaperDim);
+  const setWallpaperDim = useSettingsStore(s => s.setWallpaperDim);
 
   return (
     <>
@@ -107,7 +274,7 @@ function AppearanceSection() {
       <Row label="Accent color">
         <div className="flex gap-[calc(11px*var(--ui-scale))]">
           {ACCENTS.map((accent) => {
-            const selected = accent.id === accentId;
+            const selected = !customAccentHex && accent.id === accentId;
             return (
               <button
                 key={accent.id}
@@ -129,6 +296,7 @@ function AppearanceSection() {
             );
           })}
         </div>
+        <CustomAccentPicker />
       </Row>
 
       <Row label="Wallpaper">
@@ -154,6 +322,17 @@ function AppearanceSection() {
         </div>
       </Row>
 
+      <Row label="Custom wallpaper">
+        <div className="flex flex-col gap-3">
+          <CustomWallpaperSlot theme="light" label="Light" />
+          <CustomWallpaperSlot theme="dark" label="Dark" />
+          <div>
+            <span className="mb-1.5 block text-11.5 text-ink-2">Fit</span>
+            <Segmented<WallpaperFit> width={240} value={wallpaperFit} onChange={setWallpaperFit} options={WALLPAPER_FIT_OPTIONS} />
+          </div>
+        </div>
+      </Row>
+
       <Row label="Interface density">
         <Segmented<UiScale>
           width={240}
@@ -165,6 +344,44 @@ function AppearanceSection() {
             { value: "large", label: "Large" },
           ]}
         />
+      </Row>
+
+      <Row label="Reduce motion">
+        <Segmented<ReduceMotionPreference>
+          width={240}
+          value={reduceMotion}
+          onChange={setReduceMotion}
+          options={REDUCE_MOTION_OPTIONS}
+        />
+      </Row>
+
+      <Row label="Animation speed">
+        <Segmented<number>
+          width={240}
+          value={animationSpeed}
+          onChange={setAnimationSpeed}
+          options={ANIMATION_SPEED_OPTIONS}
+        />
+      </Row>
+
+      <Row label="Wallpaper dimming">
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={wallpaperDim}
+            aria-label="Wallpaper dimming"
+            style={{ accentColor: "var(--accent)" }}
+            className="h-1 w-[200px]"
+            onChange={e => setWallpaperDim(Number(e.target.value))}
+          />
+          <span className="w-9 text-11.5 text-ink-2 tabular-nums">
+            {Math.round(wallpaperDim * 100)}
+            %
+          </span>
+        </div>
       </Row>
     </>
   );

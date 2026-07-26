@@ -25,6 +25,19 @@ inline on `<html>` (inline vars beat the stylesheet defaults), recomputed
 whenever theme, accent, or wallpaper changes. Presets live in
 `system/settings/palettes.ts` (see Settings section below).
 
+Two further overrides layer on top of the chosen preset, same "falls through
+when unset" shape (`themeVariables`' `overrides` param, `palettes.ts`): a
+custom accent hex (`settingsStore.customAccentHex`) replaces `--accent` and
+re-derives `--accent-2`/`--ctl1-3` from it via `design/color.ts`'s
+`deriveAccentTone`; a custom wallpaper image
+(`settingsStore.wallpaperFileId`, separate per light/dark theme) replaces
+`--wall` with `url(...)` plus `--wall-size/--wall-repeat/--wall-position`
+per the chosen fit mode (`wallpaperFit`). The image's blob URL lifetime is
+owned by `system/settings/wallpaperBlobUrl.ts`, not any component — vars are
+written on `<html>` outside any mounted subtree, so nothing "owns" an
+unmount to revoke on; the module tracks one URL per theme itself and only
+revokes when that slot's file changes or is cleared.
+
 Binding design decisions from the prototype (do not drift toward
 macOS-typical treatments):
 
@@ -279,11 +292,21 @@ Three sections wired to live state:
 
 - **Appearance** — theme preference (`themeStore`, light/dark/auto) + accent
   - wallpaper. Accents and wallpapers are the prototype's three complete
-    "directions" (Lagoon/Iris/Meadow) in `palettes.ts`; each carries full
-    light/dark tones + the window-control triad (accent) or shape colors
-    (wallpaper). We expose these documented presets rather than inventing
-    partial ones, per the brief's "do not invent your own palette" rule.
-    Accent and wallpaper are chosen independently (`settingsStore`).
+    "directions" (Lagoon/Iris/Meadow), plus two more curated ones (Ember/
+    Slate), in `palettes.ts`; each carries full light/dark tones + the
+    window-control triad (accent) or shape colors (wallpaper). We expose
+    these documented presets rather than inventing partial ones, per the
+    brief's "do not invent your own palette" rule. Accent and wallpaper are
+    chosen independently (`settingsStore`). A custom accent color and a
+    custom (per-theme) wallpaper image can each override their preset — see
+    "Design tokens" above — with a non-blocking WCAG AA contrast warning
+    (`design/color.ts`'s `checkAccentContrast`) on the custom-accent picker.
+    Motion/window feel prefs live here too: `reduceMotion` (an explicit
+    override layered on `useReducedMotion`'s OS-query default, combined by
+    `useEffectiveReducedMotion`), `animationSpeed` (a multiplier
+    `Window.tsx`'s enter/minimize durations divide by), and `wallpaperDim`
+    (a scrim opacity `Desktop.tsx` renders behind its icons, separate from
+    window chrome's own glass `backdrop-filter`).
 - **Dock** — size (`DockSize` → tile px) and position (bottom/left/right);
   the `Dock` component reads both and relayouts (column vs row, hover-lift
   direction, tooltip/dot placement) from a per-position table.

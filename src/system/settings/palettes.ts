@@ -1,12 +1,14 @@
 import type { ResolvedTheme } from "@/system/theme/themeStore";
+import { deriveAccentTone } from "@/design/color";
 
 /**
  * Accent + wallpaper presets, transcribed verbatim from the KagamiOS.html
- * prototype's three "directions" (data-t a/b/c). Each direction is a
- * complete, considered palette — accent, accent-2, the monochrome window
- * control triad, and a light/dark wallpaper. We expose them as the
- * user-selectable options rather than inventing partial ones, per the
- * design brief's "do not invent your own palette" guardrail.
+ * prototype's three "directions" (data-t a/b/c), plus two more curated
+ * directions added for U3 (see the bottom of the ACCENTS/WALLPAPERS arrays).
+ * Each direction is a complete, considered palette — accent, accent-2, the
+ * monochrome window control triad, and a light/dark wallpaper. We expose
+ * them as the user-selectable options rather than inventing partial ones,
+ * per the design brief's "do not invent your own palette" guardrail.
  */
 
 export interface AccentTone {
@@ -38,6 +40,14 @@ export interface WallpaperPreset {
   swatch: string;
 }
 
+/**
+ * U1: how a custom wallpaper image is sized/positioned within the
+ * wallpaper layer. Presets ignore this entirely (they're CSS gradients,
+ * not images) — it only takes effect once a custom file is set for the
+ * active theme. See {@link wallpaperFitVars}.
+ */
+export type WallpaperFit = "fill" | "fit" | "centre" | "tile";
+
 export const ACCENTS: AccentPreset[] = [
   {
     id: "lagoon",
@@ -59,6 +69,23 @@ export const ACCENTS: AccentPreset[] = [
     light: { accent: "#8ba617", accent2: "#e2603f" },
     dark: { accent: "#c3e621", accent2: "#ff7a54" },
     controls: { close: "#e2603f", minimize: "#d8b42a", zoom: "#9dbd1c" },
+  },
+  // U3: two more curated directions, hand-authored in the same register as
+  // the three above (not run through deriveAccentTone — presets are
+  // considered, not formula-generated).
+  {
+    id: "ember",
+    name: "Ember",
+    light: { accent: "#b1552b", accent2: "#2f9b86" },
+    dark: { accent: "#e08a54", accent2: "#49c2a8" },
+    controls: { close: "#c1512f", minimize: "#3aa38d", zoom: "#256b5c" },
+  },
+  {
+    id: "slate",
+    name: "Slate",
+    light: { accent: "#3f6a8a", accent2: "#e0785a" },
+    dark: { accent: "#6fa8cf", accent2: "#ff9472" },
+    controls: { close: "#e0785a", minimize: "#4f8fb3", zoom: "#2c5470" },
   },
 ];
 
@@ -108,6 +135,36 @@ export const WALLPAPERS: WallpaperPreset[] = [
     },
     swatch: "linear-gradient(140deg,#2c2a24,#4b4840)",
   },
+  {
+    id: "ember",
+    name: "Ember",
+    light: {
+      wall: "linear-gradient(140deg,#b1552b 0%,#d98a4f 42%,#f0c896 100%)",
+      wsh1: "#2f9b86",
+      wsh2: "#f6e2c8",
+    },
+    dark: {
+      wall: "linear-gradient(140deg,#3a1f12 0%,#6b3a1f 55%,#2c160c 100%)",
+      wsh1: "#49c2a8",
+      wsh2: "#4a2a18",
+    },
+    swatch: "linear-gradient(140deg,#b1552b,#f0c896)",
+  },
+  {
+    id: "slate",
+    name: "Slate",
+    light: {
+      wall: "linear-gradient(140deg,#3f6a8a 0%,#6f97b8 46%,#c7d8e6 100%)",
+      wsh1: "#e0785a",
+      wsh2: "#dbe7f0",
+    },
+    dark: {
+      wall: "linear-gradient(140deg,#16232e 0%,#274154 55%,#101a22 100%)",
+      wsh1: "#d9694b",
+      wsh2: "#20313d",
+    },
+    swatch: "linear-gradient(140deg,#3f6a8a,#c7d8e6)",
+  },
 ];
 
 export const DEFAULT_ACCENT_ID = "lagoon";
@@ -126,27 +183,87 @@ export function accentSwatch(preset: AccentPreset): string {
   return preset.light.accent;
 }
 
+/** CSS background sizing/repeat/position per {@link WallpaperFit}. */
+const WALLPAPER_FIT_CSS: Record<WallpaperFit, { size: string; repeat: string; position: string }> = {
+  fill: { size: "cover", repeat: "no-repeat", position: "center" },
+  fit: { size: "contain", repeat: "no-repeat", position: "center" },
+  centre: { size: "auto", repeat: "no-repeat", position: "center" },
+  tile: { size: "auto", repeat: "repeat", position: "top left" },
+};
+
+/**
+ * The `--wall-size`/`--wall-repeat`/`--wall-position` vars a custom
+ * wallpaper image needs for a given fit mode. Pure — split out from
+ * `themeVariables` so the fit->CSS mapping itself is unit-testable without
+ * going through the accent/wallpaper preset machinery.
+ */
+export function wallpaperFitVars(fit: WallpaperFit): Record<string, string> {
+  const css = WALLPAPER_FIT_CSS[fit];
+  return {
+    "--wall-size": css.size,
+    "--wall-repeat": css.repeat,
+    "--wall-position": css.position,
+  };
+}
+
+/** U1/U2 overrides `themeVariables` falls through to instead of the preset accent/wallpaper. */
+export interface ThemeVariableOverrides {
+  /** A user-picked accent hex (U2); `null`/absent falls through to the preset accent. */
+  customAccentHex?: string | null;
+  /**
+   * A resolved URL for a custom wallpaper image (U1) — an object URL or an
+   * inline `data:` URL, whatever `wallpaperBlobUrl.ts` last resolved for the
+   * active theme. `null`/absent falls through to the preset gradient.
+   */
+  customWallpaperUrl?: string | null;
+  /** How the custom wallpaper image is sized/positioned; ignored unless `customWallpaperUrl` is set. */
+  wallpaperFit?: WallpaperFit;
+}
+
 /**
  * Compute the CSS custom properties that a given accent + wallpaper +
  * resolved theme should override. Returns a plain map so the caller can
  * write them onto the document root (inline vars win over the static
- * defaults in global.css).
+ * defaults in global.css). `overrides` layers U1's custom wallpaper image
+ * and U2's custom accent color on top of the preset — same "falls through
+ * to a custom override when set" shape for both.
  */
 export function themeVariables(
   accent: AccentPreset,
   wallpaper: WallpaperPreset,
   theme: ResolvedTheme,
+  overrides: ThemeVariableOverrides = {},
 ): Record<string, string> {
   const tone = accent[theme];
   const wall = wallpaper[theme];
-  return {
-    "--accent": tone.accent,
-    "--accent-2": tone.accent2,
-    "--ctl1": accent.controls.close,
-    "--ctl2": accent.controls.minimize,
-    "--ctl3": accent.controls.zoom,
-    "--wall": wall.wall,
-    "--wsh1": wall.wsh1,
-    "--wsh2": wall.wsh2,
+
+  const customAccentHex = overrides.customAccentHex ?? null;
+  const derived = customAccentHex ? deriveAccentTone(customAccentHex) : null;
+
+  const vars: Record<string, string> = {
+    "--accent": customAccentHex ?? tone.accent,
+    "--accent-2": derived ? derived.accent2 : tone.accent2,
+    "--ctl1": derived ? derived.controls.close : accent.controls.close,
+    "--ctl2": derived ? derived.controls.minimize : accent.controls.minimize,
+    "--ctl3": derived ? derived.controls.zoom : accent.controls.zoom,
   };
+
+  if (overrides.customWallpaperUrl) {
+    Object.assign(
+      vars,
+      {
+        "--wall": `url("${overrides.customWallpaperUrl}")`,
+        "--wsh1": wall.wsh1,
+        "--wsh2": wall.wsh2,
+      },
+      wallpaperFitVars(overrides.wallpaperFit ?? "fill"),
+    );
+  }
+  else {
+    vars["--wall"] = wall.wall;
+    vars["--wsh1"] = wall.wsh1;
+    vars["--wsh2"] = wall.wsh2;
+  }
+
+  return vars;
 }
