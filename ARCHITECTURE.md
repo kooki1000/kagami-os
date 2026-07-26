@@ -256,9 +256,21 @@ the focused app subscribes to with `useAppCommand`. This is how Files'
 View/Go menus, Notes' New Note, and the Viewer's zoom/rotate reach the
 focused instance without the shell knowing app internals.
 
-- **Notes** (`src/apps/notes/`) — single-instance; sidebar lists every
-  `text/*` document on the drive, debounced autosave (flushed on
-  note-switch and unmount), inline rename, move-to-trash.
+- **Notes** (`src/apps/notes/`) — single-instance; sidebar scopes to a
+  current folder (a "this folder" / "+ subfolders" toggle, `notesFilter.ts`'s
+  pure `scopedDocs`/`filterDocs`/`sortDocs`/`splitPinned`), with a filter
+  input, sort control, and pinning (`notesPrefsStore.ts`, a `Set<string>` of
+  pinned ids persisted the same shape as `viewPrefsStore`). Editor: debounced
+  autosave (flushed on note-switch and unmount) that migrates between
+  `node.content` and the blob store as the byte size crosses
+  `BLOB_INLINE_THRESHOLD` in either direction (`fsStore.setFileBlob`, the
+  mirror of `updateFileContent`), find-and-replace (`findReplace.ts`,
+  Cmd+F/Cmd+G), word/char count, a persisted font size, soft-wrap toggle, and
+  a focus mode that hides the sidebar/chrome. Blob-backed text over 5 MB
+  stays a read-only "too large" placeholder; at or under that it's read via
+  `blobStore.get(...).then(b => b.text())` and edited normally. Inline
+  rename, duplicate, reveal-in-Files, move-to-trash, and a couple of starter
+  templates (`noteTemplates.ts`) round out the context menu.
 - **Viewer** (`src/apps/viewer/`) — multi-instance image viewer with
   zoom/fit/rotate; fit recomputes via a `ResizeObserver` on the window.
 
