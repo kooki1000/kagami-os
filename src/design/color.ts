@@ -4,22 +4,13 @@
  * formula deriving a full accent tone (accent2 + window-control duotone)
  * from a single user-picked base color.
  *
- * No dependency on an external color library by design — see the plan doc
- * for U2: culori/colorjs.io were considered and passed over as more
- * surface than this needs, matching the project's existing preference for
- * small hand-rolled/vendored utilities (the raw IndexedDB adapter in
- * `system/fs/idbAdapter.ts` is the precedent). Every formula below is a
- * direct transcription of a published spec:
- *
- * - sRGB EOTF/inverse: the standard piecewise sRGB transfer function.
- * - Linear sRGB <-> OKLab: Björn Ottosson's published matrices
- *   (https://bottosson.github.io/posts/oklab/).
- * - OKLab <-> OKLCH: the standard Cartesian/polar conversion.
- * - Relative luminance / contrast ratio: WCAG 2.1 §1.4.3
- *   (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance).
- *
- * This module is pure and framework-agnostic (no DOM) — see color.test.ts.
+ * No external color library by design (see the U2 plan doc) — every formula
+ * is a direct transcription of a published spec (sRGB transfer function,
+ * Björn Ottosson's OKLab matrices, OKLCH conversion, WCAG 2.1 §1.4.3
+ * contrast). Pure and framework-agnostic (no DOM) — see color.test.ts.
  */
+
+import { clamp01 } from "@/lib/math";
 
 export interface Oklch {
   /** Lightness, 0-1. */
@@ -239,36 +230,18 @@ export interface DerivedAccentTone {
 /**
  * Derives an `accent2` and a 3-color window-control duotone from a single
  * base accent color, in OKLCH space. Per ROADMAP.md §6.5's guardrail, the
- * control triad must stay *derived* from one user-picked color rather than
- * letting a user set three independent control colors — so every constant
- * below is a fixed hue/lightness/chroma offset from the base, not an
- * independent free variable, and the whole module only ever produces *two*
- * hues (the base hue, and one derived "warm" hue), never three arbitrary
- * ones.
+ * control triad must stay *derived* from one user-picked color, not three
+ * independent ones — so every constant below is a fixed hue/lightness/chroma
+ * offset from the base, and the module only ever produces two hues (the base
+ * hue, and one derived "warm" hue).
  *
- * Constants were calibrated directly against the hand-tuned "Lagoon" preset
- * (accent #0f9b8e, accent2 #f2765b, controls close #f2765b / minimize
- * #17b0a1 / zoom #0c8074) since it's the worked example the plan calls out
- * in detail. In OKLCH, Lagoon's accent is L 0.62 C 0.107 H 184 and its
- * accent2 is L 0.71 C 0.159 H 34 — roughly a -150 degree hue rotation (a
- * warm, complementary-ish tone rather than a literal -180 degree opposite,
- * which reads as more "harmonious" than a mechanical complement), a +0.085
- * lightness lift, and a +0.05 chroma boost (warm hues read as less
- * saturated than cool ones at equal chroma). Lagoon's own `close` is
- * identical to its `accent2` (confirmed from the literal hex values), so
- * `close` here simply reuses the derived accent2 tone rather than adding a
- * third independent color. Lagoon's `minimize`/`zoom` stay on the base
- * accent's hue, one step lighter (+0.061 L, +0.010 C) and one step darker
- * (-0.081 L, -0.014 C) respectively — the constants below reproduce that
- * relationship.
- *
- * Checked the other two hand-tuned presets (Iris, Meadow) for sanity: their
- * composers made bespoke per-color hue choices for accent2/zoom that a
- * single fixed-offset formula can't reproduce exactly (e.g. Iris's accent2
- * barely shifts hue at all) — expected, since these are hand-tuned, not
- * formula-driven. The derived output for those bases still lands in a
- * plausible, harmonious neighborhood (a lighter/darker step on-hue, plus a
- * warm complementary swing), which is what the brief asks for.
+ * Constants were calibrated against the hand-tuned "Lagoon" preset (accent
+ * #0f9b8e → accent2 #f2765b): roughly a -150° hue rotation (warmer/more
+ * "harmonious" than a literal -180° complement), a +0.085 lightness lift, and
+ * a +0.05 chroma boost. Lagoon's `close` reuses its `accent2` tone rather
+ * than being a third independent color; `minimize`/`zoom` stay on the base
+ * hue, one step lighter (+0.061 L, +0.010 C) and one step darker (-0.081 L,
+ * -0.014 C) respectively.
  */
 export function deriveAccentTone(baseHex: string): DerivedAccentTone {
   const base = hexToOklch(baseHex);
@@ -306,10 +279,6 @@ export function deriveAccentTone(baseHex: string): DerivedAccentTone {
       zoom: oklchToHex(zoom),
     },
   };
-}
-
-function clamp01(n: number): number {
-  return Math.min(1, Math.max(0, n));
 }
 
 function normalizeHue(h: number): number {

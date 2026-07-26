@@ -35,6 +35,13 @@ const PLACES: Array<{ id: string; label: string; icon: LucideIcon }> = [
   { id: PICTURES_ID, label: "Pictures", icon: Image },
 ];
 
+const SIDEBAR_ROW_BASE = "flex w-full items-center gap-[9px] rounded-[8px] px-[9px] py-[calc(6px*var(--ui-scale))] text-left text-12.5 font-medium";
+function sidebarRowTone(active: boolean): string {
+  return active
+    ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent"
+    : "text-ink-2 hover:bg-ph";
+}
+
 interface SidebarItemProps {
   id: string;
   label: string;
@@ -65,11 +72,7 @@ function SidebarItem({
     <button
       type="button"
       title={title}
-      className={`flex w-full items-center gap-[9px] rounded-[8px] px-[9px] py-[calc(6px*var(--ui-scale))] text-left text-12.5 font-medium ${
-        active
-          ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent"
-          : "text-ink-2 hover:bg-ph"
-      } ${isDropTarget ? "ring-1 ring-accent" : ""}`}
+      className={`${SIDEBAR_ROW_BASE} ${sidebarRowTone(active)} ${isDropTarget ? "ring-1 ring-accent" : ""}`}
       onClick={() => onNavigate(id)}
       onDragOver={(e) => {
         if (!hasNodeDrag(e))
@@ -104,11 +107,7 @@ interface FavouriteRowProps {
 function FavouriteRow({ node, active, onOpenNode, onUnpin }: FavouriteRowProps) {
   return (
     <div
-      className={`group flex w-full items-center gap-[9px] rounded-[8px] px-[9px] py-[calc(6px*var(--ui-scale))] text-left text-12.5 font-medium ${
-        active
-          ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent"
-          : "text-ink-2 hover:bg-ph"
-      }`}
+      className={`group ${SIDEBAR_ROW_BASE} ${sidebarRowTone(active)}`}
     >
       <button
         type="button"

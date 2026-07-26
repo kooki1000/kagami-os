@@ -1,7 +1,7 @@
 import type { SortSpec } from "@/system/fs/fsStore";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEFAULT_SORT, useFsStore } from "@/system/fs/fsStore";
+import { DEFAULT_SORT, onFsReady } from "@/system/fs/fsStore";
 
 /** Ring-buffer cap for U14's "Recents" place — mirrors terminalStore-style small persisted lists. */
 export const RECENT_FILES_MAX = 30;
@@ -107,9 +107,8 @@ export function pushRecent(recentIds: string[], id: string, max: number): string
  * recently-opened node that's since been deleted forever), so this prunes
  * all three in one pass.
  */
-function prunePersistedRefs(): void {
+function prunePersistedRefs(liveIds: Set<string>): void {
   const { sortByFolder, favouriteIds, recentIds } = useViewPrefsStore.getState();
-  const liveIds = new Set(Object.keys(useFsStore.getState().nodes));
   const prunedSort = withoutStaleFolders(sortByFolder, liveIds);
   const prunedFavourites = withoutStaleIds(favouriteIds, liveIds);
   const prunedRecents = withoutStaleIds(recentIds, liveIds);
@@ -124,7 +123,4 @@ function prunePersistedRefs(): void {
     useViewPrefsStore.setState(patch);
 }
 
-// `init()` is memoized (`fsStore.ts`'s `initPromise`), so kicking it off
-// again here — regardless of whether App.tsx's own boot call has already
-// run — just joins the same promise rather than booting twice.
-void useFsStore.getState().init().then(prunePersistedRefs);
+onFsReady(prunePersistedRefs);

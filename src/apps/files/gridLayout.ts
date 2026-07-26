@@ -1,18 +1,8 @@
 /**
- * U14 grid virtualization: `FilesView`'s icon grid uses
- * `grid-cols-[repeat(auto-fill,minmax(minTilePx, 1fr))]`. Virtualizing rows
- * (via `@tanstack/react-virtual`) means the row-slicing code needs to know
- * the column *count* up front, rather than reading it back off a rendered
- * `<div>` the way the pre-virtualization `columnCount()` in `FilesApp.tsx`
- * did — under virtualization, most rows aren't rendered yet to measure.
- *
- * This replicates CSS Grid's `auto-fill` track-count algorithm directly:
- * the number of `minTilePx`-or-wider tracks (separated by `gapPx`) that fit
- * in `containerWidthPx`, minimum 1. Every virtual row shares the exact same
- * `grid-cols-[...]` class as the reference implementation, so as long as
- * this returns the same count CSS itself would compute, each row's tracks
- * line up with every other row's — the row above and below don't need to
- * agree on anything except how many items each holds.
+ * Replicates CSS Grid's `auto-fill` track-count algorithm — the number of
+ * `minTilePx`-or-wider tracks (separated by `gapPx`) that fit in
+ * `containerWidthPx`, minimum 1 — so virtualized rows (which can't measure a
+ * rendered `<div>` up front) still line up with the grid's real column count.
  */
 export function gridColumnCount(containerWidthPx: number, minTilePx = 120, gapPx = 12): number {
   if (containerWidthPx <= 0)

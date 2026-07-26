@@ -1,6 +1,6 @@
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
-import { childIdsByParent, collator, isDescendantOf } from "@/system/fs/fsStore";
+import { childIdsByParent, collator } from "@/system/fs/fsStore";
 import { TRASH_ID } from "@/system/fs/types";
 
 export type NotesSortKey = "name" | "date";
@@ -14,6 +14,22 @@ export const DEFAULT_NOTES_SORT: NotesSortSpec = { key: "date", dir: "desc" };
 
 export type NotesScopeMode = "folder" | "subtree";
 
+/** Every descendant id of `rootId` (not including `rootId` itself), walked via the shared `childIdsByParent` index. */
+function descendantIds(childIds: Map<string, string[]>, rootId: string): Set<string> {
+  const result = new Set<string>();
+  const stack = [...(childIds.get(rootId) ?? [])];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (result.has(id))
+      continue;
+    result.add(id);
+    const children = childIds.get(id);
+    if (children)
+      stack.push(...children);
+  }
+  return result;
+}
+
 /**
  * Every text file under `folderId` (U11): `"folder"` scopes to direct
  * children only, `"subtree"` includes every descendant folder too. Trash
@@ -21,12 +37,15 @@ export type NotesScopeMode = "folder" | "subtree";
  * text doc on the drive" listing did.
  */
 export function scopedDocs(nodes: NodeMap, folderId: string, mode: NotesScopeMode): FsNode[] {
+  const childIds = childIdsByParent(nodes);
+  const trashIds = descendantIds(childIds, TRASH_ID);
+  const subtreeIds = mode === "subtree" ? descendantIds(childIds, folderId) : null;
   return Object.values(nodes).filter((n) => {
     if (n.type !== "file" || !(n.mimeType?.startsWith("text/") ?? false))
       return false;
-    if (isDescendantOf(nodes, n.id, TRASH_ID))
+    if (trashIds.has(n.id))
       return false;
-    return mode === "folder" ? n.parentId === folderId : n.parentId === folderId || isDescendantOf(nodes, n.id, folderId);
+    return mode === "folder" ? n.parentId === folderId : subtreeIds!.has(n.id);
   });
 }
 

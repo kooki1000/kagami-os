@@ -40,12 +40,9 @@ export const SHELL_CHORD_DESCRIPTIONS: ChordDescriptor[] = [
 ];
 
 /**
- * Display form of `windowShortcuts.ts`'s window-management chords
- * (`isHideChord`/`arrowSnapDirection`/`isSwitcherChord`/`isAppCycleChord`) —
- * those are matched via `KeyboardEvent.code` predicates, not menu-style
- * chord strings, so there's nowhere else these read as plain text.
- * Hand-transcribed to mirror the predicates exactly; keep in sync if those
- * chords ever change.
+ * Display form of `windowShortcuts.ts`'s window-management chords, which are
+ * matched via `KeyboardEvent.code` predicates rather than menu-style chord
+ * strings. Hand-transcribed — keep in sync if those chords ever change.
  */
 export const WINDOW_CHORDS: ChordDescriptor[] = [
   { shortcut: "⌃⌥H", description: "Hide the focused app" },
@@ -80,6 +77,32 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement))
     return false;
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
+
+/**
+ * Bare ←/→ (and optionally Space) as a window-scoped media transport —
+ * shortcuts.ts's global handler above only dispatches ⌘-letter chords, so
+ * Player/Viewer need their own listener for this. Gated on `focused` and
+ * skipped over editable targets so it doesn't hijack typing elsewhere.
+ */
+export function useBareArrowKeys(focused: boolean, onStep: (direction: -1 | 1) => void, onSpace?: () => void): void {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (!focused || isEditableTarget(e.target))
+        return;
+      if (onSpace && (e.key === " " || e.code === "Space")) {
+        e.preventDefault();
+        onSpace();
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        onStep(e.key === "ArrowLeft" ? -1 : 1);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focused, onStep, onSpace]);
 }
 
 export function useGlobalShortcuts(): void {

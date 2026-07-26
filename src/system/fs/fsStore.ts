@@ -157,10 +157,7 @@ export function isDescendantOf(nodes: NodeMap, id: string, ancestorId: string): 
 // T7: every commit replaces `nodes` with a fresh object (see `commit`/
 // `removeIds` below), so a `WeakMap` keyed on that identity is a correct,
 // self-invalidating cache — the same `nodes` reference always yields the
-// same index, and a stale entry can never outlive the map it was built
-// from. This is what turns "every caller (childrenOf, folderSizes,
-// duplicate, uniqueChildName's future callers, …) rebuilds its own index"
-// into "built once per render/commit, shared by all of them."
+// same index, and a stale entry can never outlive the map it was built from.
 const childIdsByParentCache = new WeakMap<NodeMap, Map<string, string[]>>();
 
 /** parentId → child ids, built in one pass over the map. Cached per `nodes` identity — see above. */
@@ -650,6 +647,19 @@ export const useFsStore = create<FsStore>()((set, get) => {
     },
   };
 });
+
+/**
+ * Runs `callback` once the fs store has finished booting, with the live node
+ * ids at that moment — the shape every persisted store's stale-id GC needs
+ * (`viewPrefsStore`'s favourites/recents, `notesPrefsStore`'s pins, …).
+ * `init()` is memoized, so this just joins whatever boot is already
+ * underway rather than kicking off a second one.
+ */
+export function onFsReady(callback: (liveIds: Set<string>) => void): void {
+  void useFsStore.getState().init().then(() => {
+    callback(new Set(Object.keys(useFsStore.getState().nodes)));
+  });
+}
 
 /** Test-only: clear state and the memoized init so `init()` runs fresh. */
 export function __resetFsStoreForTest(): void {
