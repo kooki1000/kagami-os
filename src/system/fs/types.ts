@@ -30,6 +30,15 @@ export interface FsNode {
   modifiedAt: number;
   /** Original parent id, present while the node sits in the trash. */
   trashedFrom?: string;
+  /**
+   * U14: a single color-label id (one of `nodeLabels.ts`'s `NODE_LABELS`),
+   * or absent for "no label." Additive/optional — existing persisted nodes
+   * simply lack the field and read as unlabeled; no IndexedDB schema
+   * migration needed (`idbAdapter.ts`'s `DB_VERSION` governs object-store
+   * creation, not record shape, and IndexedDB records aren't schema-checked
+   * per field).
+   */
+  label?: string;
 }
 
 /**

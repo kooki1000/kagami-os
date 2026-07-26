@@ -2,6 +2,7 @@ import type { FsNode } from "../fs/types";
 import type { FilePayload } from "./filePayload";
 import { notify } from "../notifications/notificationStore";
 import { useSettingsStore } from "../settings/settingsStore";
+import { useViewPrefsStore } from "../settings/viewPrefsStore";
 import { useWindowStore } from "../windows/windowStore";
 import { payloadFileId } from "./filePayload";
 import { launchApp } from "./launch";
@@ -25,6 +26,17 @@ function familyDefaultAppId(mime: string): string | null {
 }
 
 /**
+ * Every app capable of opening this exact mime type, built-in default
+ * first. The mime-type-only half of `candidateAppsForFile`, for callers
+ * (e.g. Settings' Default Apps pane, U5) that want to offer a mime type
+ * no file on disk happens to have right now.
+ */
+export function candidateAppsForMime(mime: string): string[] {
+  const appId = familyDefaultAppId(mime);
+  return appId ? [appId] : [];
+}
+
+/**
  * Every app capable of opening this file's mime type, built-in default
  * first. Powers the Files "Open With ▸" submenu; today every family has
  * exactly one built-in candidate, but the list shape is what lets a
@@ -33,8 +45,7 @@ function familyDefaultAppId(mime: string): string | null {
 export function candidateAppsForFile(node: FsNode): string[] {
   if (node.type !== "file")
     return [];
-  const appId = familyDefaultAppId(node.mimeType ?? "");
-  return appId ? [appId] : [];
+  return candidateAppsForMime(node.mimeType ?? "");
 }
 
 /** Which app opens this file? A user override (settingsStore) wins over the built-in mime-family table. */
@@ -58,6 +69,12 @@ function launchFileInApp(node: FsNode, appId: string): boolean {
     });
     return false;
   }
+
+  // U14 "Recents": every successful open of a file (regardless of which app
+  // or launch path — Files double-click, Desktop, Search) bumps it to the
+  // front of the ring buffer. Recorded here, not in Files' `openNode`, so
+  // every entry point shares one "recently opened" history.
+  useViewPrefsStore.getState().recordRecent(node.id);
 
   // Multi-instance apps (e.g. the image viewer, the player) get one window
   // per file; focus an existing one instead of opening a duplicate.

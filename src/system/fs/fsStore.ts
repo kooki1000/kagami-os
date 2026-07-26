@@ -8,6 +8,7 @@ import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
 import { blobStore } from "./blobStore";
 import { createIdbAdapter } from "./idbAdapter";
+import { isValidNodeLabel } from "./nodeLabels";
 import { createSeedNodes } from "./seed";
 import { createTauriAdapter } from "./tauriAdapter";
 import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
@@ -74,25 +75,62 @@ function byKey(a: FsNode, b: FsNode, key: SortKey): number {
   }
 }
 
+// T7: `childrenOf`'s own map/sort result, cached per `(nodes, parentId,
+// sort)` identity — not just the parent-id index above. Several call sites
+// (Desktop.tsx, siblingNav.ts, the Terminal shell, FilesApp's own render)
+// call `childrenOf` for the same folder/sort within a single `nodes`
+// commit, each of which would otherwise re-map-and-sort independently even
+// though `useMemo` at any *one* call site can't help the others share the
+// work. Keyed the same way as `childIdsByParentCache` (a `WeakMap` on
+// `nodes` identity, which every commit replaces wholesale), so it
+// self-invalidates for free and can never serve a stale entry.
+const childrenOfCache = new WeakMap<NodeMap, Map<string, FsNode[]>>();
+
+function childrenOfCacheKey(parentId: string, sort: SortSpec): string {
+  return `${parentId}|${sort.key}|${sort.dir}`;
+}
+
 /**
  * One folder's children. Folders always precede files (the desktop
  * convention); `sort` orders within each group. Direction applies to the
  * key only — ties always resolve by name ascending, so reversing the order
  * doesn't scramble same-key items.
+ *
+ * T7: looks the folder's child ids up in {@link childIdsByParent}'s index
+ * instead of scanning every node in the map — a full-map `Object.values`
+ * scan cost the same whether the folder held 5 items or 5,000. The index
+ * itself is cached per `nodes` identity (see there); this function's own
+ * sorted result is additionally cached per `(nodes, parentId, sort)` (see
+ * `childrenOfCache` above), so repeat callers for the same folder/sort
+ * within one `nodes` commit share one sort instead of each re-deriving it.
  */
 export function childrenOf(
   nodes: NodeMap,
   parentId: string,
   sort: SortSpec = DEFAULT_SORT,
 ): FsNode[] {
-  return Object.values(nodes)
-    .filter(n => n.parentId === parentId)
+  let perNodes = childrenOfCache.get(nodes);
+  if (!perNodes) {
+    perNodes = new Map();
+    childrenOfCache.set(nodes, perNodes);
+  }
+  const key = childrenOfCacheKey(parentId, sort);
+  const cached = perNodes.get(key);
+  if (cached)
+    return cached;
+
+  const ids = childIdsByParent(nodes).get(parentId) ?? [];
+  const result = ids
+    .map(id => nodes[id])
+    .filter((n): n is FsNode => !!n)
     .sort((a, b) => {
       if (a.type !== b.type)
         return a.type === "folder" ? -1 : 1;
       const primary = byKey(a, b, sort.key);
       return (sort.dir === "desc" ? -primary : primary) || byName(a, b);
     });
+  perNodes.set(key, result);
+  return result;
 }
 
 /** Path from the root down to (and including) the node. */
@@ -116,8 +154,21 @@ export function isDescendantOf(nodes: NodeMap, id: string, ancestorId: string): 
   return false;
 }
 
-/** parentId → child ids, built in one pass over the map. */
+// T7: every commit replaces `nodes` with a fresh object (see `commit`/
+// `removeIds` below), so a `WeakMap` keyed on that identity is a correct,
+// self-invalidating cache — the same `nodes` reference always yields the
+// same index, and a stale entry can never outlive the map it was built
+// from. This is what turns "every caller (childrenOf, folderSizes,
+// duplicate, uniqueChildName's future callers, …) rebuilds its own index"
+// into "built once per render/commit, shared by all of them."
+const childIdsByParentCache = new WeakMap<NodeMap, Map<string, string[]>>();
+
+/** parentId → child ids, built in one pass over the map. Cached per `nodes` identity — see above. */
 export function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
+  const cached = childIdsByParentCache.get(nodes);
+  if (cached)
+    return cached;
+
   const index = new Map<string, string[]>();
   for (const node of Object.values(nodes)) {
     if (node.parentId === null)
@@ -127,6 +178,7 @@ export function childIdsByParent(nodes: NodeMap): Map<string, string[]> {
       siblings.push(node.id);
     else index.set(node.parentId, [node.id]);
   }
+  childIdsByParentCache.set(nodes, index);
   return index;
 }
 
@@ -226,11 +278,26 @@ export interface FsStore {
   createBlobFile: (parentId: string, name: string, blob: Blob, mimeType?: string) => Promise<FsNode>;
   updateFileContent: (id: string, content: string) => void;
   /**
+   * Replace a file's bytes with blob-backed content — the mirror of
+   * `updateFileContent` for content that belongs in the blob store rather
+   * than inline (review-backlog #11: `provider.writeFile` used to store
+   * whatever size it was given inline, breaking the ≤`BLOB_INLINE_THRESHOLD`
+   * contract on overwrite). Same blob-before-node ordering as
+   * `createBlobFile`: the bytes are durably written (skipping the put if an
+   * identical blob already exists) before the node is committed, so a
+   * failure here can only leave an orphan blob, never a dangling reference.
+   * `content` and `contentRef` are mutually exclusive, so this always clears
+   * any prior inline `content`. A no-op if `id` isn't a file.
+   */
+  setFileBlob: (id: string, blob: Blob) => Promise<void>;
+  /**
    * Bump `modifiedAt` only — Terminal `touch`. Not `updateFileContent`, which
    * would clear a blob-backed file's `contentRef` and drop its bytes.
    */
   touchFile: (id: string) => void;
   rename: (id: string, name: string) => void;
+  /** Set (or, with `undefined`, clear) a node's color label (U14). No-op on an invalid label id or a missing node. */
+  setLabel: (id: string, label: string | undefined) => void;
   /** Returns false when the move is invalid (into itself, a descendant, or a non-folder). */
   move: (id: string, newParentId: string) => boolean;
   /**
@@ -401,6 +468,26 @@ export const useFsStore = create<FsStore>()((set, get) => {
         sweepUnreferencedBlobs(get().nodes, blobStore).catch(logPersistError);
     },
 
+    async setFileBlob(id, blob) {
+      const node = get().nodes[id];
+      if (!node || node.type !== "file")
+        return;
+      const hash = await hashBlob(blob);
+      if (!(await blobStore.has(hash)))
+        await blobStore.put(hash, blob);
+      // A previous ref may now be unreferenced (a same-hash overwrite is a
+      // no-op here, mirroring `createBlobFile`'s skip-if-present write).
+      const releasedRef = node.contentRef !== undefined && node.contentRef.hash !== hash;
+      commit([{
+        ...node,
+        content: undefined,
+        contentRef: { hash, size: blob.size, mimeType: blob.type || node.mimeType },
+        modifiedAt: Date.now(),
+      }]);
+      if (releasedRef)
+        sweepUnreferencedBlobs(get().nodes, blobStore).catch(logPersistError);
+    },
+
     touchFile(id) {
       const node = get().nodes[id];
       if (!node || node.type !== "file")
@@ -415,6 +502,18 @@ export const useFsStore = create<FsStore>()((set, get) => {
         return;
       const unique = uniqueChildName(get().nodes, node.parentId ?? "", trimmed, id);
       commit([{ ...node, name: unique, modifiedAt: Date.now() }]);
+    },
+
+    setLabel(id, label) {
+      const node = get().nodes[id];
+      if (!node || (label !== undefined && !isValidNodeLabel(label)))
+        return;
+      if ((node.label ?? undefined) === label)
+        return;
+      // A label is metadata, not content — unlike rename/move, this
+      // deliberately leaves `modifiedAt` untouched so labeling a file
+      // doesn't reorder a "date modified" sort.
+      commit([{ ...node, label }]);
     },
 
     move(id, newParentId) {

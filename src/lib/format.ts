@@ -14,10 +14,45 @@ export function formatModified(timestamp: number): string {
   });
 }
 
+/**
+ * Menu-bar clock time ("3:45", "15:45:12") — the math `MenuBar.tsx`'s
+ * `Clock` used to hardcode inline, extracted so U7's hour12/showSeconds
+ * settings can drive it. `hour12` matches the original inline logic
+ * exactly (a bare 1–12 hour, no AM/PM marker — this codebase never showed
+ * one) so the default settings (`hour12: true`, `showSeconds: false`)
+ * reproduce the pre-U7 output byte for byte; `false` renders a zero-padded
+ * 24-hour hour instead.
+ */
+export function formatClockTime(date: Date, opts: { hour12: boolean; showSeconds: boolean }): string {
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const hourStr = opts.hour12
+    ? String(((date.getHours() + 11) % 12) + 1)
+    : date.getHours().toString().padStart(2, "0");
+  let time = `${hourStr}:${minutes}`;
+  if (opts.showSeconds)
+    time += `:${date.getSeconds().toString().padStart(2, "0")}`;
+  return time;
+}
+
 /** File name without its extension ("welcome.md" → "welcome"). */
 export function nameStem(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/**
+ * Elapsed/duration for Player's scrub bar ("3:07", "1:02:03"). `NaN`/negative
+ * inputs (a media element mid-load reports `NaN` duration) render as "0:00"
+ * rather than "NaN:NaN" — a media element's transient states, not a real
+ * duration to format.
+ */
+export function formatDuration(totalSeconds: number): string {
+  const seconds = Number.isFinite(totalSeconds) && totalSeconds > 0 ? Math.floor(totalSeconds) : 0;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 const BYTE_UNITS = ["bytes", "KB", "MB", "GB"];

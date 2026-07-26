@@ -12,14 +12,14 @@ test.describe("Files download (B3)", () => {
     // item's own hook rather than ambiguous text.
     await page.locator("[data-node-name=\"Documents\"]").dblclick();
 
-    await page.getByText("welcome.md", { exact: true }).click({ button: "right" });
+    await page.getByText("ideas.md", { exact: true }).click({ button: "right" });
     const [download] = await Promise.all([
       page.waitForEvent("download"),
       // Non-exact name matching would also hit the sidebar's "Downloads"
       // Places entry, since it contains "Download" as a prefix.
       page.getByRole("menuitem", { name: "Download", exact: true }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe("welcome.md");
+    expect(download.suggestedFilename()).toBe("ideas.md");
   });
 
   test("downloads a folder as a zip", async ({ page }) => {

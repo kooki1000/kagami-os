@@ -13,6 +13,8 @@ export interface ContextMenuEntry {
   dividerAfter?: boolean;
   /** Presence turns this row into an "Open With ▸"-style flyout opener. */
   children?: ContextMenuEntry[];
+  /** U14 color labels: a small color dot rendered before the label text (any CSS color). */
+  swatch?: string;
 }
 
 interface ContextMenuProps {
@@ -68,7 +70,7 @@ function EntryRow({ entry, onClose }: {
   const submenuRef = useRef<HTMLDivElement>(null);
   const pos = useClampedPosition(submenuRef, anchor, open);
 
-  const rowClass = `block w-full rounded-btn px-2.5 py-1 text-left text-[13px] ${
+  const rowClass = `block w-full rounded-btn px-[calc(10px*var(--ui-scale))] py-1 text-left text-13 ${
     entry.disabled
       ? "text-ink-2 opacity-50"
       : entry.danger
@@ -98,6 +100,13 @@ function EntryRow({ entry, onClose }: {
           onClose();
         }}
       >
+        {entry.swatch && (
+          <span
+            aria-hidden="true"
+            className="mr-[calc(6px*var(--ui-scale))] inline-block size-[9px] rounded-full align-middle"
+            style={{ backgroundColor: entry.swatch }}
+          />
+        )}
         {entry.label}
         {entry.children && <span className="float-right text-ink-2">▸</span>}
       </button>
@@ -159,7 +168,7 @@ export function ContextMenu({ x, y, header, entries, onClose }: ContextMenuProps
         }}
       >
         {header && (
-          <div className="px-2.5 py-1 text-[11px] font-semibold text-ink-2">
+          <div className="px-[calc(10px*var(--ui-scale))] py-1 text-11 font-semibold text-ink-2">
             {header}
           </div>
         )}

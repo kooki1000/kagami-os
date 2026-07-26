@@ -40,17 +40,17 @@ export function NodeInfoPanel({ node, size, location, onClose }: NodeInfoPanelPr
         tabIndex={-1}
         className="fixed top-1/2 left-1/2 z-50 w-72 -translate-1/2 rounded-window p-4 shadow-(--shadow-deep) chrome hairline"
       >
-        <div className="flex items-center gap-2.5 pb-3">
+        <div className="flex items-center gap-[calc(10px*var(--ui-scale))] pb-3">
           <NodeGlyph
             node={node}
             className={`size-8 flex-none ${node.type === "folder" ? "text-accent" : "text-ink-2"}`}
             strokeWidth={1.4}
           />
-          <span className="truncate text-[13px] font-semibold text-ink">{node.name}</span>
+          <span className="truncate text-13 font-semibold text-ink">{node.name}</span>
         </div>
         <dl className="space-y-1.5">
           {rows.map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-3 text-[11.5px]">
+            <div key={label} className="flex justify-between gap-3 text-11.5">
               <dt className="flex-none text-ink-2">{label}</dt>
               <dd className="truncate text-right text-ink">{value}</dd>
             </div>
@@ -58,7 +58,7 @@ export function NodeInfoPanel({ node, size, location, onClose }: NodeInfoPanelPr
         </dl>
         <button
           type="button"
-          className="mt-4 w-full rounded-btn bg-ph px-2 py-1.5 text-[12px] font-medium text-ink hover:bg-ph-2"
+          className="mt-4 w-full rounded-btn bg-ph px-2 py-[calc(6px*var(--ui-scale))] text-12 font-medium text-ink hover:bg-ph-2"
           onClick={onClose}
         >
           Close

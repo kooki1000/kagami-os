@@ -18,12 +18,10 @@ test.describe("Viewer zoom / fit / rotate / refit", () => {
     await page.locator("[data-node-name=\"Pictures\"]").dblclick();
     await page.getByText("lagoon-dusk.svg", { exact: true }).dblclick();
 
-    // The Files window (still open behind Viewer) renders its own <img>
-    // thumbnails for every image in the current folder, so scope to the
-    // most recently opened window — new windows always append last, both
-    // in the store's array and therefore in DOM order (windowStore.ts's
-    // openWindow: `windows: [...state.windows, win]`).
-    const img = page.locator("img").last();
+    // Both the Files window (still open behind Viewer) and Viewer's own
+    // filmstrip (U13) render <img> thumbnails, so a plain `img` locator is
+    // ambiguous — target the main viewer image's own marker attribute.
+    const img = page.locator("[data-viewer-image]");
     await expect(img).toBeVisible();
 
     // Matched by content ("Fit" or a rounded percentage), not styling —
@@ -121,7 +119,9 @@ test.describe("Viewer prev/next + slideshow (D2)", () => {
 
     // Bare arrow keys drive the same cursor — click the image body first so
     // the key events target the window rather than the Files list behind it.
-    await viewer.locator("img").click();
+    // The filmstrip (U13) also renders <img> thumbnails within this same
+    // window, so target the main image's own marker attribute.
+    await viewer.locator("[data-viewer-image]").click();
     await page.keyboard.press("ArrowRight");
     await expect(title).toHaveText(firstName);
     await page.keyboard.press("ArrowLeft");

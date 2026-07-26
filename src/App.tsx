@@ -7,11 +7,13 @@ import { NotificationCenter } from "./components/shell/NotificationCenter";
 import { SearchOverlay } from "./components/shell/SearchOverlay";
 import { ToastStack } from "./components/shell/ToastStack";
 import { WindowLayer } from "./components/shell/WindowLayer";
+import { uiScaleMultipliers } from "./design/tokens";
 import { launchApp } from "./system/apps/launch";
 import { useFsStore } from "./system/fs/fsStore";
 import { notify } from "./system/notifications/notificationStore";
 import { accentById, themeVariables, wallpaperById } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
+import { ensureWallpaperUrl, useWallpaperUrl } from "./system/settings/wallpaperBlobUrl";
 import { useGlobalShortcuts } from "./system/shortcuts";
 import { requestPersistentStorage } from "./system/storage/persistence";
 import { useThemeStore } from "./system/theme/themeStore";
@@ -23,14 +25,36 @@ export default function App() {
   const resolved = useThemeStore(s => s.resolved);
   const accentId = useSettingsStore(s => s.accentId);
   const wallpaperId = useSettingsStore(s => s.wallpaperId);
+  const uiScale = useSettingsStore(s => s.uiScale);
+  const customAccentHex = useSettingsStore(s => s.customAccentHex);
+  const wallpaperFileId = useSettingsStore(s => s.wallpaperFileId);
+  const wallpaperFit = useSettingsStore(s => s.wallpaperFit);
+  const fsReady = useFsStore(s => s.ready);
   const setViewport = useWindowStore(s => s.setViewport);
 
   useGlobalShortcuts();
   useWindowManagementShortcuts();
 
+  // U1: keep each theme's resolved wallpaper blob URL in sync with its
+  // chosen VFS file id. Gated on `fsReady` — the fs store isn't hydrated
+  // yet on first mount, so resolving against it early would just resolve
+  // to "missing"; the effect re-runs once `init()` (below) flips `ready`.
+  useEffect(() => {
+    void ensureWallpaperUrl("light", fsReady ? wallpaperFileId.light : null);
+  }, [wallpaperFileId.light, fsReady]);
+  useEffect(() => {
+    void ensureWallpaperUrl("dark", fsReady ? wallpaperFileId.dark : null);
+  }, [wallpaperFileId.dark, fsReady]);
+
+  // Reactive read of the *active* theme's resolved custom-wallpaper URL —
+  // re-renders once the effects above settle it.
+  const customWallpaperUrl = useWallpaperUrl(resolved);
+
   // Reflect theme + accent + wallpaper onto the document root. Inline
   // custom properties override the static defaults in global.css, so the
-  // whole UI re-tints live when any of these change.
+  // whole UI re-tints live when any of these change. `customAccentHex`
+  // (U2) and `customWallpaperUrl`/`wallpaperFit` (U1) layer a user override
+  // on top of the preset the same way for both.
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = resolved;
@@ -38,10 +62,20 @@ export default function App() {
       accentById(accentId),
       wallpaperById(wallpaperId),
       resolved,
+      { customAccentHex, customWallpaperUrl, wallpaperFit },
     );
     for (const [key, value] of Object.entries(vars))
       root.style.setProperty(key, value);
-  }, [resolved, accentId, wallpaperId]);
+  }, [resolved, accentId, wallpaperId, customAccentHex, customWallpaperUrl, wallpaperFit]);
+
+  // Interface density (U4): same inline-override mechanism as above, kept
+  // as its own effect since it's an independent axis from theme/accent.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--ui-scale",
+      String(uiScaleMultipliers[uiScale]),
+    );
+  }, [uiScale]);
 
   useEffect(() => {
     const update = () =>
@@ -83,19 +117,34 @@ export default function App() {
         url.searchParams.delete("fresh");
         window.history.replaceState(null, "", url);
       }
-      const hadSession = fresh ? false : restoreSession();
+      // U9: restoreSessionOnBoot (default on) gates the restore call itself —
+      // off, this is exactly like `?fresh`, a boot with no prior session.
+      const restoreOnBoot = useSettingsStore.getState().restoreSessionOnBoot;
+      const hadSession = (fresh || !restoreOnBoot) ? false : restoreSession();
 
       // First-ever boot (no session was ever saved, even an empty one):
-      // greet with the Welcome window. A session that restored to zero
+      // greet with the Welcome tour. A session that restored to zero
       // windows means the user closed everything on purpose — don't
-      // resurrect Welcome every time they do that.
-      if (useWindowStore.getState().windows.length === 0 && !hadSession) {
+      // resurrect Welcome every time they do that. `tourDismissed` (U16's
+      // "don't show this again") is a second, independent gate — it can
+      // replay later from Settings › About regardless of either check here.
+      if (
+        useWindowStore.getState().windows.length === 0
+        && !hadSession
+        && !useSettingsStore.getState().tourDismissed
+      ) {
         launchApp("welcome");
         notify({
           title: "Welcome to Kagami OS",
           body: "Open apps from the dock. Try ⌘W to close a window.",
         });
       }
+
+      // U9: apps the user has chosen to always launch at boot, in addition
+      // to whatever session restore brought back (empty by default, so this
+      // is a no-op for everyone who hasn't opted in).
+      for (const appId of useSettingsStore.getState().startupApps)
+        launchApp(appId);
 
       unwatch = watchSessionForSave();
     });

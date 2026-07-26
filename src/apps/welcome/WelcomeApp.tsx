@@ -1,59 +1,127 @@
 import type { AppWindowProps } from "@/system/apps/types";
-import { lagoon } from "@/design/tokens";
+import { useState } from "react";
+import { useSettingsStore } from "@/system/settings/settingsStore";
+import { useWindowStore } from "@/system/windows/windowStore";
+import { lastStepIndex, nextStepIndex, prevStepIndex, tourSteps } from "./tourSteps";
 
-const swatches = [
-  { name: "accent", value: lagoon.light.accent },
-  { name: "accent-2", value: lagoon.light.accent2 },
-  { name: "close", value: lagoon.controls.close },
-  { name: "minimize", value: lagoon.controls.minimize },
-  { name: "zoom", value: lagoon.controls.zoom },
-];
-
-export default function WelcomeApp(_props: AppWindowProps) {
+/**
+ * Small pill toggle matching Settings' `Switch`, duplicated locally rather
+ * than imported cross-app (each app owns its own UI; the shell only shares
+ * through the manifest/command seams per CLAUDE.md).
+ */
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
   return (
-    <div className="h-full overflow-auto p-8 select-none">
-      <div className="mb-1 flex items-center gap-3">
-        <span
-          className="size-5 rotate-45 rounded-[5px]"
-          style={{ background: "var(--accent)" }}
-        />
-        <h1 className="text-[28px] font-bold tracking-tight text-ink">
-          Kagami OS
-        </h1>
-      </div>
-      <p className="text-[15px] font-medium text-ink-2">
-        A desktop that lives in your browser.
-      </p>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-[calc(16px*var(--ui-scale))] w-7 flex-none rounded-full transition-colors ${
+        checked ? "bg-accent" : "bg-ph"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 size-[calc(12px*var(--ui-scale))] rounded-full bg-white transition-[left] ${
+          checked ? "left-3.5" : "left-0.5"
+        }`}
+      />
+    </button>
+  );
+}
 
-      <div className="mt-6 space-y-4 text-[13px] leading-relaxed text-ink">
-        <p>
-          Drag this window by its title bar, resize it from any edge,
-          double-click the title bar to zoom, or drag it against the left or
-          right edge of the screen to tile it. Press ⌘W to close a window.
-        </p>
-        <p className="text-ink-2">
-          Files, Notes, the image viewer, and a sandboxed Terminal are all
-          live — double-click a document or picture in Files to open it.
-          Everything is stored in a virtual file system in your browser, so it
-          survives refreshes. Tune the accent, wallpaper, theme, and dock in
-          Settings.
-        </p>
-      </div>
+export default function WelcomeApp({ windowId }: AppWindowProps) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const tourDismissed = useSettingsStore(s => s.tourDismissed);
+  const setTourDismissed = useSettingsStore(s => s.setTourDismissed);
 
-      <div className="mt-7">
-        <div className="mb-2.5 font-mono text-[10px] font-semibold tracking-[0.7px] text-ink-2 uppercase">
-          Lagoon palette
+  const total = tourSteps.length;
+  const step = tourSteps[stepIndex];
+  const isLast = stepIndex === lastStepIndex(total);
+
+  function finish() {
+    useWindowStore.getState().closeWindow(windowId);
+  }
+
+  return (
+    <div className="flex h-full flex-col select-none">
+      <div className="flex-1 overflow-auto p-8">
+        <div className="mb-1 flex items-center gap-3">
+          <span
+            className="size-5 rotate-45 rounded-[5px]"
+            style={{ background: "var(--accent)" }}
+          />
+          <h1 className="text-[calc(24px*var(--ui-scale))] font-bold tracking-tight text-ink">
+            {step.title}
+          </h1>
         </div>
-        <div className="flex gap-2.5">
-          {swatches.map(s => (
-            <div key={s.name} className="flex flex-col items-center gap-1.5">
-              <span
-                className="size-9 rounded-[9px] hairline"
-                style={{ background: s.value }}
-              />
-              <span className="text-[10px] font-medium text-ink-2">{s.name}</span>
-            </div>
+
+        <p className="mt-4 max-w-md text-13/relaxed text-ink-2">
+          {step.body}
+        </p>
+
+        {step.action && (
+          <button
+            type="button"
+            className="mt-5 rounded-btn bg-accent px-[calc(14px*var(--ui-scale))] py-[calc(8px*var(--ui-scale))] text-12.5 font-semibold text-white"
+            onClick={step.action}
+          >
+            {step.actionLabel}
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 px-8 py-5 hairline-t">
+        <label className="flex items-center gap-2 text-11.5 text-ink-2">
+          <Toggle
+            checked={tourDismissed}
+            onChange={setTourDismissed}
+            label="Don't show this tour again"
+          />
+          Don't show this again
+        </label>
+
+        <div className="flex items-center gap-1.5" role="tablist" aria-label="Tour progress">
+          {tourSteps.map((s, i) => (
+            <button
+              key={s.title}
+              type="button"
+              role="tab"
+              aria-selected={i === stepIndex}
+              aria-label={`Go to step ${i + 1}: ${s.title}`}
+              onClick={() => setStepIndex(i)}
+              className={`h-1.5 rounded-full transition-all ${
+                i === stepIndex ? "w-5 bg-accent" : "w-1.5 bg-ph"
+              }`}
+            />
           ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!isLast && (
+            <button
+              type="button"
+              className="rounded-btn px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-12 font-medium text-ink-2 hover:bg-ph hover:text-ink"
+              onClick={() => setStepIndex(lastStepIndex(total))}
+            >
+              Skip
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={stepIndex === 0}
+            className="rounded-btn bg-ph px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-12 font-medium text-ink hover:bg-ph-2 disabled:opacity-40"
+            onClick={() => setStepIndex(i => prevStepIndex(i))}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            className="rounded-btn bg-ink px-[calc(12px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-surface"
+            onClick={() => (isLast ? finish() : setStepIndex(i => nextStepIndex(i, total)))}
+          >
+            {isLast ? "Done" : "Next"}
+          </button>
         </div>
       </div>
     </div>

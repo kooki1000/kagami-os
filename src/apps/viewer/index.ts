@@ -30,7 +30,16 @@ export const viewerApp: AppManifest = {
         { label: "Rotate Left", appCommand: "viewer.rotateLeft", shortcut: "⌘L" },
         { label: "Rotate Right", appCommand: "viewer.rotateRight", shortcut: "⌘R", dividerAfter: true },
         { label: "Previous Image", appCommand: "viewer.previous", shortcut: "⌘[" },
-        { label: "Next Image", appCommand: "viewer.next", shortcut: "⌘]" },
+        { label: "Next Image", appCommand: "viewer.next", shortcut: "⌘]", dividerAfter: true },
+        { label: "Show Info", appCommand: "viewer.toggleInfo", shortcut: "⌘I" },
+        { label: "Full Screen", appCommand: "viewer.toggleFullscreen", shortcut: "⇧⌘F" },
+      ],
+    },
+    {
+      title: "Image",
+      items: [
+        { label: "Copy Image", appCommand: "viewer.copyImage", shortcut: "⌘C" },
+        { label: "Set as Wallpaper", appCommand: "viewer.setWallpaper" },
       ],
     },
   ],

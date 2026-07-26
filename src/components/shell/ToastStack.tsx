@@ -18,22 +18,22 @@ function Toast({ notification }: { notification: KagamiNotification }) {
 
   return (
     <div
-      className="pointer-events-auto flex w-80 animate-toast-in items-start gap-2.5 rounded-tile p-3 shadow-(--shadow-deep) chrome hairline"
+      className="pointer-events-auto flex w-80 animate-toast-in items-start gap-[calc(10px*var(--ui-scale))] rounded-tile p-3 shadow-(--shadow-deep) chrome hairline"
       onPointerEnter={() => pauseToast(notification.id)}
       onPointerLeave={() => resumeToast(notification.id)}
     >
       <NotificationGlyph notification={notification} />
       <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-semibold text-ink">{notification.title}</div>
+        <div className="text-12.5 font-semibold text-ink">{notification.title}</div>
         {notification.body && (
-          <div className="mt-0.5 text-[11.5px] leading-snug text-ink-2">
+          <div className="mt-0.5 text-11.5/snug text-ink-2">
             {notification.body}
           </div>
         )}
         {notification.action && (
           <button
             type="button"
-            className="mt-1.5 rounded-btn bg-ph px-2 py-0.75 text-[11px] font-semibold text-accent hover:bg-ph-2"
+            className="mt-1.5 rounded-btn bg-ph px-2 py-[calc(3px*var(--ui-scale))] text-11 font-semibold text-accent hover:bg-ph-2"
             onClick={() => {
               notification.action?.run();
               dismissToast(notification.id);

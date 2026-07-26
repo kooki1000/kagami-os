@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetFsStoreForTest, childrenOf, useFsStore } from "./fsStore";
 import { fileSystem } from "./provider";
-import { DOCUMENTS_ID, TRASH_ID } from "./types";
+import { BLOB_INLINE_THRESHOLD, DOCUMENTS_ID, TRASH_ID } from "./types";
 
 // The async, non-reactive seam from CLAUDE.md. No in-tree consumers yet, which
 // is why it needs pinning. Each call awaits `init()`, which without indexedDB
@@ -33,6 +33,37 @@ describe("writeFile", () => {
     const created = await fileSystem.writeFile(DOCUMENTS_ID, "fresh.txt", "hi", "text/plain");
     expect(created.name).toBe("fresh.txt");
     expect(created.content).toBe("hi");
+  });
+
+  // review-backlog #11: content over BLOB_INLINE_THRESHOLD used to land in
+  // `node.content` regardless of size, on both the create and overwrite path.
+  it("routes an oversized create through the blob store instead of inlining it", async () => {
+    const big = "x".repeat(BLOB_INLINE_THRESHOLD + 1);
+    const created = await fileSystem.writeFile(DOCUMENTS_ID, "big.txt", big, "text/plain");
+    expect(created.content).toBeUndefined();
+    expect(created.contentRef).toMatchObject({ size: big.length, mimeType: "text/plain" });
+  });
+
+  it("migrates an existing small file to the blob store when an overwrite crosses the threshold", async () => {
+    const first = await fileSystem.writeFile(DOCUMENTS_ID, "grows.txt", "small", "text/plain");
+    expect(first.content).toBe("small");
+
+    const big = "y".repeat(BLOB_INLINE_THRESHOLD + 1);
+    const second = await fileSystem.writeFile(DOCUMENTS_ID, "grows.txt", big, "text/plain");
+    expect(second.id).toBe(first.id);
+    expect(second.content).toBeUndefined();
+    expect(second.contentRef?.size).toBe(big.length);
+  });
+
+  it("migrates a blob-backed file back to inline content when an overwrite shrinks below the threshold", async () => {
+    const big = "z".repeat(BLOB_INLINE_THRESHOLD + 1);
+    const first = await fileSystem.writeFile(DOCUMENTS_ID, "shrinks.txt", big, "text/plain");
+    expect(first.contentRef).toBeDefined();
+
+    const second = await fileSystem.writeFile(DOCUMENTS_ID, "shrinks.txt", "small again", "text/plain");
+    expect(second.id).toBe(first.id);
+    expect(second.contentRef).toBeUndefined();
+    expect(second.content).toBe("small again");
   });
 });
 

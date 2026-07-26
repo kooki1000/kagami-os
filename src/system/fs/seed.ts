@@ -44,24 +44,18 @@ const tealFields = svgDataUrl(
   + `</svg>`,
 );
 
-const welcomeMd = `# Welcome to your Kagami drive
-
-Everything you see in Files lives in a virtual file system stored right in
-your browser (IndexedDB) — it survives refreshes without any backend.
-
-Things to try:
-
-- Make a folder with the toolbar button or the File menu
-- Rename things (right-click, or via the context menu)
-- Drag files onto folders, sidebar places, or the Trash
-- Deleted items sit in the Trash until you empty it
-`;
-
 const ideasMd = `# Ideas
 
 - A terminal that speaks to this same file system
 - Markdown preview in Notes
 - Wallpaper picker fed from the Pictures folder
+`;
+
+const todoMd = `# To-do
+
+- Try the Terminal
+- Peek at Settings
+- Drag a file into the Trash
 `;
 
 const paletteTxt = `Lagoon palette
@@ -91,8 +85,8 @@ const SPECS: SeedSpec[] = [
   { id: DOWNLOADS_ID, parentId: HOME_ID, name: "Downloads", type: "folder", age: 40_000 },
   { id: PICTURES_ID, parentId: HOME_ID, name: "Pictures", type: "folder", age: 40_000 },
   { id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder", age: 40_000 },
-  { parentId: DOCUMENTS_ID, name: "welcome.md", type: "file", mimeType: "text/markdown", content: welcomeMd, age: 3000 },
   { parentId: DOCUMENTS_ID, name: "ideas.md", type: "file", mimeType: "text/markdown", content: ideasMd, age: 1400 },
+  { parentId: DOCUMENTS_ID, name: "todo.md", type: "file", mimeType: "text/markdown", content: todoMd, age: 1200 },
   { parentId: DOCUMENTS_ID, name: "Projects", type: "folder", age: 9000 },
   { parentId: DOWNLOADS_ID, name: "palette.txt", type: "file", mimeType: "text/plain", content: paletteTxt, age: 300 },
   { parentId: PICTURES_ID, name: "lagoon-dusk.svg", type: "file", mimeType: "image/svg+xml", content: lagoonDusk, age: 7000 },

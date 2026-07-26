@@ -3,25 +3,51 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_SORT, useFsStore } from "@/system/fs/fsStore";
 
+/** Ring-buffer cap for U14's "Recents" place — mirrors terminalStore-style small persisted lists. */
+export const RECENT_FILES_MAX = 30;
+
 interface ViewPrefsStore {
   /** Sort choice per folder id; absent folders fall back to DEFAULT_SORT. */
   sortByFolder: Record<string, SortSpec>;
   setSort: (folderId: string, sort: SortSpec) => void;
+  /** U14: user-pinned favourite node ids, most-recently-pinned last (sidebar renders them in this order). */
+  favouriteIds: string[];
+  toggleFavourite: (id: string) => void;
+  /** U14: last-opened file ids, most-recent first, capped at {@link RECENT_FILES_MAX}. */
+  recentIds: string[];
+  recordRecent: (id: string) => void;
+  clearRecents: () => void;
 }
 
 /**
- * Per-folder view preferences (currently just sort). Kept out of the fs
- * store — it's a small UI pref, not document data — and persisted to
+ * Per-folder view preferences (currently just sort), plus a couple of
+ * small Files-only persisted lists (favourites, recents) that share the
+ * same "small UI pref, not document data" home. Kept out of the fs store —
+ * favouriting/opening a file doesn't touch the VFS — and persisted to
  * localStorage like the other appearance stores.
  */
 export const useViewPrefsStore = create<ViewPrefsStore>()(
   persist(
-    set => ({
+    (set, get) => ({
       sortByFolder: {},
       setSort: (folderId, sort) =>
         set(state => ({
           sortByFolder: { ...state.sortByFolder, [folderId]: sort },
         })),
+      favouriteIds: [],
+      toggleFavourite: (id) => {
+        const { favouriteIds } = get();
+        set({
+          favouriteIds: favouriteIds.includes(id)
+            ? favouriteIds.filter(existing => existing !== id)
+            : [...favouriteIds, id],
+        });
+      },
+      recentIds: [],
+      recordRecent: (id) => {
+        set(state => ({ recentIds: pushRecent(state.recentIds, id, RECENT_FILES_MAX) }));
+      },
+      clearRecents: () => set({ recentIds: [] }),
     }),
     { name: "kagami-view-prefs", version: 1 },
   ),
@@ -53,21 +79,52 @@ export function withoutStaleFolders(
 }
 
 /**
+ * Same idea as {@link withoutStaleFolders}, for the plain id lists
+ * (favourites, recents) — drop anything whose node no longer exists.
+ */
+export function withoutStaleIds(ids: string[], liveIds: ReadonlySet<string>): string[] {
+  const filtered = ids.filter(id => liveIds.has(id));
+  return filtered.length === ids.length ? ids : filtered;
+}
+
+/**
+ * Push `id` to the front of a most-recent-first ring buffer, de-duping any
+ * earlier occurrence (re-opening a file bumps it to the top rather than
+ * listing it twice) and capping the result at `max`. Pure — unit-tested
+ * without the store.
+ */
+export function pushRecent(recentIds: string[], id: string, max: number): string[] {
+  return [id, ...recentIds.filter(existing => existing !== id)].slice(0, max);
+}
+
+/**
  * Idle-time GC (review-backlog #13): `setSort` never has a removal path, so
  * a folder's entry outlives the folder itself — Move to Trash, then Empty
  * Trash, and the uuid still sits in `localStorage["kagami-view-prefs"]`
  * forever. Same shape as `fsStore.ts`'s `sweepUnreferencedBlobs`: run once,
  * after the fs store finishes booting, dropping anything with no live node.
+ * U14's `favouriteIds`/`recentIds` are the same shape of leak (a pinned or
+ * recently-opened node that's since been deleted forever), so this prunes
+ * all three in one pass.
  */
-function pruneSortByFolder(): void {
-  const { sortByFolder } = useViewPrefsStore.getState();
+function prunePersistedRefs(): void {
+  const { sortByFolder, favouriteIds, recentIds } = useViewPrefsStore.getState();
   const liveIds = new Set(Object.keys(useFsStore.getState().nodes));
-  const pruned = withoutStaleFolders(sortByFolder, liveIds);
-  if (Object.keys(pruned).length !== Object.keys(sortByFolder).length)
-    useViewPrefsStore.setState({ sortByFolder: pruned });
+  const prunedSort = withoutStaleFolders(sortByFolder, liveIds);
+  const prunedFavourites = withoutStaleIds(favouriteIds, liveIds);
+  const prunedRecents = withoutStaleIds(recentIds, liveIds);
+  const patch: Partial<ViewPrefsStore> = {};
+  if (Object.keys(prunedSort).length !== Object.keys(sortByFolder).length)
+    patch.sortByFolder = prunedSort;
+  if (prunedFavourites !== favouriteIds)
+    patch.favouriteIds = prunedFavourites;
+  if (prunedRecents !== recentIds)
+    patch.recentIds = prunedRecents;
+  if (Object.keys(patch).length > 0)
+    useViewPrefsStore.setState(patch);
 }
 
 // `init()` is memoized (`fsStore.ts`'s `initPromise`), so kicking it off
 // again here — regardless of whether App.tsx's own boot call has already
 // run — just joins the same promise rather than booting twice.
-void useFsStore.getState().init().then(pruneSortByFolder);
+void useFsStore.getState().init().then(prunePersistedRefs);

@@ -10,14 +10,17 @@ test.describe("Global search (⌘K)", () => {
     const input = page.getByPlaceholder("Search files and folders");
     await expect(input).toBeVisible();
 
-    await input.fill("welcome");
-    await expect(page.getByText("welcome.md")).toBeVisible();
+    await input.fill("ideas");
+    await expect(page.getByText("ideas.md")).toBeVisible();
     await expect(page.getByText("Home/Documents")).toBeVisible();
 
     await input.press("Enter");
     await expect(input).not.toBeVisible();
     await expect(page.locator("[data-window-id]")).toHaveCount(1);
-    await expect(page.getByRole("textbox")).toBeVisible();
+    // Notes' own Filter <input> is also an implicit textbox, so
+    // `getByRole("textbox")` alone is ambiguous — the editor is the only
+    // <textarea> on the page.
+    await expect(page.locator("textarea")).toBeVisible();
   });
 
   test("Escape closes the overlay without opening anything", async ({ page }) => {
