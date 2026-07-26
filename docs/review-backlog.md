@@ -7,9 +7,10 @@ shipped then are in commits `a9a6546`, `399993c`, `dfa2fa3`, `164eca2`.
 > **Closed out by step 14 (`ROADMAP.md`), 2026-07-25.** The H1 accessibility
 > pass in Phase 11 had already closed several of these incidentally, without
 > updating this file. Step 14 then fixed everything else that was
-> genuinely still open. **Every numbered entry and `§18` sub-item below is
-> now resolved**, except §11, which was reclassified rather than fixed —
-> see its entry. Nothing in this file is open work.
+> genuinely still open, except §11 (reclassified rather than fixed at the
+> time — see its entry), which step 15's Notes work (`feat/notes-depth`)
+> then closed for real. **Every numbered entry and `§18` sub-item below is
+> now resolved.** Nothing in this file is open work.
 >
 > - **§1 and §2 — context-menu and dock-menu clipping.** Fixed by Phase 11.
 >   `ContextMenu.tsx` now measures after mount and clamps
@@ -34,10 +35,8 @@ shipped then are in commits `a9a6546`, `399993c`, `dfa2fa3`, `164eca2`.
 >   `viewport` rather than `window.innerWidth`. No changes were needed for
 >   either — noted so nobody goes looking for a step-14 commit that doesn't
 >   exist.
-> - **§11 was reclassified, not fixed** — it needs a new `setFileBlob`
->   fsStore action, which is real scope beyond a bug-fix pass. Deferred to
->   step 15/16, alongside the Player rewrite (U12) already touching this
->   area. See its entry.
+> - **§11 was reclassified at step 14, then fixed for real in step 15**
+>   (`feat/notes-depth`, alongside U11's Notes work) — see its entry.
 
 Each entry records where the bug is, how to reproduce it, and a concrete fix.
 Severity is about user impact, not effort. "Verified" means someone drove the
@@ -392,36 +391,30 @@ expect.
 
 ## 11. `provider.writeFile` bypasses the inline-content size contract
 
-**Reclassified, not fixed, in step 14.** Still real and still open — this
-needs a new `setFileBlob` fsStore action (symmetric with
-`updateFileContent`), which is more scope than a bug-fix pass. Deferred to
-step 15/16, alongside the Player rewrite (U12) already touching this area.
+**✅ Resolved in step 15** (`feat/notes-depth`, alongside U11's Notes work).
+Reclassified rather than fixed in step 14 because it needed a new store
+action — that action now exists: `fsStore.setFileBlob(id, blob)`, symmetric
+with `updateFileContent`, writes the blob before committing the node (same
+ordering as `createBlobFile`) and clears any prior inline `content`.
+`provider.writeFile` now picks a path on `content.length` against
+`BLOB_INLINE_THRESHOLD` on both the create and overwrite branch, and Notes'
+editor saves through the same action so an edit that crosses the threshold
+in either direction (small→large or large→small) migrates correctly between
+`node.content` and the blob store. Covered by
+`src/system/fs/fsStore.test.ts`'s `setFileBlob` suite and
+`src/system/fs/provider.test.ts`'s oversized-write cases.
 
-**LOW (latent — no in-tree consumers) · verified · `src/system/fs/provider.ts`**
+**Was LOW (latent — no in-tree consumers) · verified · `src/system/fs/provider.ts`**
 
 `FsNode.content` is documented as "kept only for small text
-(≤ `BLOB_INLINE_THRESHOLD`)", but `writeFile` stores whatever string it's
-given inline. `writeFile(..., "x".repeat(200_000))` yields a node with
-`content.length === 200000` and no `contentRef`. That 200 KB string lands in
-the `nodes` object store and is re-read on every `loadAll` — exactly what B1
-was built to prevent.
+(≤ `BLOB_INLINE_THRESHOLD`)", but `writeFile` used to store whatever string
+it was given inline. `writeFile(..., "x".repeat(200_000))` used to yield a
+node with `content.length === 200000` and no `contentRef`. That 200 KB
+string would land in the `nodes` object store and be re-read on every
+`loadAll` — exactly what B1 was built to prevent.
 
-This does **not** break the `content` xor `contentRef` invariant (only one is
-ever set); it breaks the size contract.
-
-**This one is a design question, not a mechanical fix** — which is why it was
-deferred rather than patched:
-
-- Routing oversized writes to `createBlobFile` is easy on the _create_ path,
-  but overwriting an existing node needs a store action that replaces inline
-  content with a blob ref (the mirror of what `updateFileContent` now does).
-  That action doesn't exist yet.
-- Delete-then-recreate would avoid the new action but changes the node id on
-  every oversized save, which breaks any window holding that file open.
-
-Recommendation: add `setFileBlob(id, blob)` to `fsStore` — symmetric with
-`updateFileContent`, ~10 lines, and independently useful for Notes saving a
-large document. Then `writeFile` picks a path on `content.length`.
+This never broke the `content` xor `contentRef` invariant (only one was ever
+set); it broke the size contract.
 
 ---
 

@@ -226,6 +226,19 @@ export interface FsStore {
   createBlobFile: (parentId: string, name: string, blob: Blob, mimeType?: string) => Promise<FsNode>;
   updateFileContent: (id: string, content: string) => void;
   /**
+   * Replace a file's bytes with blob-backed content — the mirror of
+   * `updateFileContent` for content that belongs in the blob store rather
+   * than inline (review-backlog #11: `provider.writeFile` used to store
+   * whatever size it was given inline, breaking the ≤`BLOB_INLINE_THRESHOLD`
+   * contract on overwrite). Same blob-before-node ordering as
+   * `createBlobFile`: the bytes are durably written (skipping the put if an
+   * identical blob already exists) before the node is committed, so a
+   * failure here can only leave an orphan blob, never a dangling reference.
+   * `content` and `contentRef` are mutually exclusive, so this always clears
+   * any prior inline `content`. A no-op if `id` isn't a file.
+   */
+  setFileBlob: (id: string, blob: Blob) => Promise<void>;
+  /**
    * Bump `modifiedAt` only — Terminal `touch`. Not `updateFileContent`, which
    * would clear a blob-backed file's `contentRef` and drop its bytes.
    */
@@ -397,6 +410,26 @@ export const useFsStore = create<FsStore>()((set, get) => {
       // prefer the ref, so keeping it would serve pre-edit bytes forever.
       const releasedRef = node.contentRef !== undefined;
       commit([{ ...node, content, contentRef: undefined, modifiedAt: Date.now() }]);
+      if (releasedRef)
+        sweepUnreferencedBlobs(get().nodes, blobStore).catch(logPersistError);
+    },
+
+    async setFileBlob(id, blob) {
+      const node = get().nodes[id];
+      if (!node || node.type !== "file")
+        return;
+      const hash = await hashBlob(blob);
+      if (!(await blobStore.has(hash)))
+        await blobStore.put(hash, blob);
+      // A previous ref may now be unreferenced (a same-hash overwrite is a
+      // no-op here, mirroring `createBlobFile`'s skip-if-present write).
+      const releasedRef = node.contentRef !== undefined && node.contentRef.hash !== hash;
+      commit([{
+        ...node,
+        content: undefined,
+        contentRef: { hash, size: blob.size, mimeType: blob.type || node.mimeType },
+        modifiedAt: Date.now(),
+      }]);
       if (releasedRef)
         sweepUnreferencedBlobs(get().nodes, blobStore).catch(logPersistError);
     },
