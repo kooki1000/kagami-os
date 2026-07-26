@@ -7,9 +7,12 @@ test.describe("Notes persistence", () => {
 
     await boot(page);
 
-    // Open Notes; the newest document is selected into the editor.
+    // Open Notes; the newest document is selected into the editor. Notes'
+    // own Filter <input> is also an implicit textbox and stays mounted
+    // alongside it, so `getByRole("textbox")` alone is ambiguous — the
+    // editor is the only <textarea> on the page.
     await openApp(page, "notes");
-    const editor = page.getByRole("textbox");
+    const editor = page.locator("textarea");
     await expect(editor).toBeVisible();
 
     // Replace the content and wait for the debounced autosave to land.
@@ -25,6 +28,6 @@ test.describe("Notes persistence", () => {
     // to "just-edited note is newest" would pass either way, so this checks
     // the window came back at all first.)
     await expect(page.locator("[data-window-id]")).toHaveCount(1);
-    await expect(page.getByRole("textbox")).toHaveValue(marker);
+    await expect(page.locator("textarea")).toHaveValue(marker);
   });
 });

@@ -491,6 +491,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
               }}
             >
               <img
+                data-viewer-image
                 src={src}
                 alt={node?.name}
                 draggable={false}
@@ -517,7 +518,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
             </div>
           </div>
 
-          {siblings.length > 0 && (
+          {siblings.length > 1 && (
             <Filmstrip siblings={siblings} activeId={activeId} onSelect={setActiveId} />
           )}
         </div>

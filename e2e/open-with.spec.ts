@@ -13,14 +13,14 @@ test.describe("Open with → Notes reuse and payload identity", () => {
     // item's own hook rather than ambiguous text.
     await page.locator("[data-node-name=\"Documents\"]").dblclick();
 
-    await page.getByText("welcome.md", { exact: true }).dblclick();
+    await page.getByText("todo.md", { exact: true }).dblclick();
     // Files' own Filter <input> is also an implicit textbox and stays
     // mounted (in the still-open Files window) alongside Notes, so
     // `getByRole("textbox")` alone is ambiguous — Notes' editor is the only
     // <textarea> on the page.
     const editor = page.locator("textarea");
     await expect(editor).toBeVisible();
-    await expect(editor).toHaveValue(/^# Welcome to your Kagami drive/);
+    await expect(editor).toHaveValue(/^# To-do/);
 
     // Refocus Files (still inside Documents) and open a second file.
     await openApp(page, "files");
@@ -32,8 +32,8 @@ test.describe("Open with → Notes reuse and payload identity", () => {
 
     // Re-open the first file — the same window re-selects it.
     await openApp(page, "files");
-    await page.getByText("welcome.md", { exact: true }).dblclick();
-    await expect(editor).toHaveValue(/^# Welcome to your Kagami drive/);
+    await page.getByText("todo.md", { exact: true }).dblclick();
+    await expect(editor).toHaveValue(/^# To-do/);
     await expect(page.locator("[data-window-control]")).toHaveCount(2);
   });
 });

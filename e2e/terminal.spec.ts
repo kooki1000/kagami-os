@@ -61,11 +61,11 @@ test.describe("Terminal engine v2 (D3)", () => {
     }
 
     await run("cd Documents");
-    await run("cp welcome.md welcome-copy.md");
+    await run("cp todo.md todo-copy.md");
     await run("mv ideas.md notes.md");
 
-    await run("head -n 1 welcome-copy.md");
-    await expect(page.getByText("# Welcome to your Kagami drive", { exact: true })).toBeVisible();
+    await run("head -n 1 todo-copy.md");
+    await expect(page.getByText("# To-do", { exact: true })).toBeVisible();
 
     await run("cat notes.md | grep terminal");
     await expect(page.getByText("- A terminal that speaks to this same file system", { exact: true })).toBeVisible();
@@ -74,7 +74,7 @@ test.describe("Terminal engine v2 (D3)", () => {
     // and the pre-rename name is gone.
     await openApp(page, "files");
     await page.locator("[data-node-name=\"Documents\"]").dblclick();
-    await expect(page.locator("[data-node-name=\"welcome-copy.md\"]")).toBeVisible();
+    await expect(page.locator("[data-node-name=\"todo-copy.md\"]")).toBeVisible();
     await expect(page.locator("[data-node-name=\"notes.md\"]")).toBeVisible();
     await expect(page.locator("[data-node-name=\"ideas.md\"]")).toHaveCount(0);
   });
@@ -84,12 +84,12 @@ test.describe("Terminal engine v2 (D3)", () => {
     await openApp(page, "terminal");
 
     const input = page.locator("input");
-    await input.fill("open Documents/welcome.md");
+    await input.fill("open Documents/todo.md");
     await input.press("Enter");
 
     const notesWindow = page.locator("[data-window-focused=\"true\"]");
     await expect(notesWindow.locator("[data-window-title]")).toHaveText("Notes");
-    await expect(notesWindow.locator("textarea")).toHaveValue(/Everything you see in Files lives/);
+    await expect(notesWindow.locator("textarea")).toHaveValue(/Try the Terminal/);
   });
 
   test("Tab completes a unique command name and a unique path segment", async ({ page }) => {

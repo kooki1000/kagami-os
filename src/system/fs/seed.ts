@@ -51,6 +51,13 @@ const ideasMd = `# Ideas
 - Wallpaper picker fed from the Pictures folder
 `;
 
+const todoMd = `# To-do
+
+- Try the Terminal
+- Peek at Settings
+- Drag a file into the Trash
+`;
+
 const paletteTxt = `Lagoon palette
 accent    #0f9b8e
 accent-2  #f2765b
@@ -79,6 +86,7 @@ const SPECS: SeedSpec[] = [
   { id: PICTURES_ID, parentId: HOME_ID, name: "Pictures", type: "folder", age: 40_000 },
   { id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder", age: 40_000 },
   { parentId: DOCUMENTS_ID, name: "ideas.md", type: "file", mimeType: "text/markdown", content: ideasMd, age: 1400 },
+  { parentId: DOCUMENTS_ID, name: "todo.md", type: "file", mimeType: "text/markdown", content: todoMd, age: 1200 },
   { parentId: DOCUMENTS_ID, name: "Projects", type: "folder", age: 9000 },
   { parentId: DOWNLOADS_ID, name: "palette.txt", type: "file", mimeType: "text/plain", content: paletteTxt, age: 300 },
   { parentId: PICTURES_ID, name: "lagoon-dusk.svg", type: "file", mimeType: "image/svg+xml", content: lagoonDusk, age: 7000 },
