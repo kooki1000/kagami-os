@@ -29,8 +29,8 @@ import {
   WALLPAPERS,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
-import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { useWallpaperUrl } from "@/system/settings/wallpaperBlobUrl";
+import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
 
