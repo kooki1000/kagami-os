@@ -2,6 +2,7 @@ import type { FsNode } from "../fs/types";
 import type { FilePayload } from "./filePayload";
 import { notify } from "../notifications/notificationStore";
 import { useSettingsStore } from "../settings/settingsStore";
+import { useViewPrefsStore } from "../settings/viewPrefsStore";
 import { useWindowStore } from "../windows/windowStore";
 import { payloadFileId } from "./filePayload";
 import { launchApp } from "./launch";
@@ -58,6 +59,12 @@ function launchFileInApp(node: FsNode, appId: string): boolean {
     });
     return false;
   }
+
+  // U14 "Recents": every successful open of a file (regardless of which app
+  // or launch path — Files double-click, Desktop, Search) bumps it to the
+  // front of the ring buffer. Recorded here, not in Files' `openNode`, so
+  // every entry point shares one "recently opened" history.
+  useViewPrefsStore.getState().recordRecent(node.id);
 
   // Multi-instance apps (e.g. the image viewer, the player) get one window
   // per file; focus an existing one instead of opening a duplicate.

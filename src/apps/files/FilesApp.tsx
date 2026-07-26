@@ -1,5 +1,5 @@
 import type { ChangeEvent, MouseEvent } from "react";
-import type { SelectMode } from "./FilesView";
+import type { FilesViewMode, SelectMode } from "./FilesView";
 import type { UploadEntry } from "./upload";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
@@ -9,6 +9,7 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   FolderPlus,
   LayoutGrid,
   List,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { RenameInput } from "@/components/ui/RenameInput";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
@@ -29,6 +31,7 @@ import {
   pathOf,
   useFsStore,
 } from "@/system/fs/fsStore";
+import { NODE_LABELS } from "@/system/fs/nodeLabels";
 import { isCommittableRename } from "@/system/fs/renameCommit";
 import {
   DOCUMENTS_ID,
@@ -38,20 +41,30 @@ import {
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
+import { pathString, resolveFolderPath } from "./breadcrumbPath";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
 import { fileBytes, folderSizes } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
+import { gridColumnCount } from "./gridLayout";
 import { NodeInfoPanel } from "./NodeInfoPanel";
+import { isVirtualPlace, RECENTS_ID } from "./places";
+import { QuickLookOverlay } from "./QuickLookOverlay";
 import { entriesFromDataTransfer, entriesFromFileList, uploadEntries } from "./upload";
 
-type ViewMode = "grid" | "list";
+type ViewMode = FilesViewMode;
 
 const SORT_LABELS: Record<SortKey, string> = {
   name: "Name",
   date: "Date Added",
   kind: "Kind",
+};
+
+const VIEW_MODE_ICONS: Record<ViewMode, typeof LayoutGrid> = {
+  grid: LayoutGrid,
+  list: List,
+  detail: Columns3,
 };
 
 /** Letters typed further apart than this start a fresh type-ahead search (B6) rather than extending the previous one. */
@@ -97,8 +110,18 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const emptyTrash = useFsStore(s => s.emptyTrash);
   const deleteForever = useFsStore(s => s.deleteForever);
 
+  const setLabel = useFsStore(s => s.setLabel);
+
   const sortByFolder = useViewPrefsStore(s => s.sortByFolder);
   const setSortPref = useViewPrefsStore(s => s.setSort);
+  // U14 "Recents": a synthetic place (`RECENTS_ID`), not a real folder —
+  // `visible` below reads straight off this ring buffer instead of
+  // `childrenOf` when `cwd` is it.
+  const recentIds = useViewPrefsStore(s => s.recentIds);
+  // U14 favourites: the context menu's "Add/Remove Favourites" toggle reads
+  // and writes the same store the sidebar's Favourites section renders.
+  const favouriteIds = useViewPrefsStore(s => s.favouriteIds);
+  const toggleFavourite = useViewPrefsStore(s => s.toggleFavourite);
 
   const clipboardIds = useClipboardStore(s => s.ids);
   const clipboardMode = useClipboardStore(s => s.mode);
@@ -119,15 +142,23 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [infoNode, setInfoNode] = useState<FsNode | null>(null);
+  // U14 Quick Look (Space key).
+  const [quickLookNode, setQuickLookNode] = useState<FsNode | null>(null);
+  // U14 editable breadcrumb — click-to-edit-as-text-path.
+  const [editingPath, setEditingPath] = useState(false);
   const { armed: confirmEmpty, arm: armEmptyTrash, disarm: disarmEmptyTrash } = useArmedConfirm<true>(EMPTY_TRASH_CONFIRM_MS);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  // State, not a plain ref: `view` toggling grid/list swaps the container's
-  // DOM node (FilesView renders a different one for each), and the keydown
-  // listener needs to re-attach to whichever is current.
+  // State, not a plain ref: `view` toggling grid/list/detail swaps the
+  // container's DOM node (FilesView renders a different one for each), and
+  // the keydown listener needs to re-attach to whichever is current.
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const typeAheadRef = useRef({ text: "", at: 0 });
+  // U14: FilesView's virtualizer needs a nudge to bring an off-screen item
+  // into range before the existing querySelector-based focus logic below
+  // can find it in the DOM — see `focusAndScrollIntoView`.
+  const scrollToIdRef = useRef<(id: string) => void>(() => {});
   // `webkitdirectory` has no React prop; stamp it on the DOM node directly.
   useEffect(() => {
     folderInputRef.current?.setAttribute("webkitdirectory", "");
@@ -135,6 +166,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
   const cwd = history[historyIndex] ?? HOME_ID;
   const inTrash = cwd === TRASH_ID;
+  // U14 "Recents": a synthetic place, not a real folder — gates the same
+  // folder-only affordances (New Folder, upload, drop-to-move) `inTrash`
+  // already gates.
+  const inRecents = cwd === RECENTS_ID;
+  const noRealFolder = inTrash || inRecents;
   const sort = sortForFolder(sortByFolder, cwd);
 
   /** Pick a sort key for the current folder; re-picking it flips direction. */
@@ -157,7 +193,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // a store somehow missing HOME_ID too would render-loop resetting `cwd`
   // to a still-missing HOME_ID forever. With the guard it just settles on
   // `cwd === HOME_ID` and renders through the empty `visible` list.
-  if (ready && cwd !== HOME_ID && !nodes[cwd]) {
+  if (ready && cwd !== HOME_ID && !nodes[cwd] && !isVirtualPlace(cwd)) {
     setHistory([HOME_ID]);
     setHistoryIndex(0);
     if (selectedIds.size > 0)
@@ -169,7 +205,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   }
 
   function navigate(id: string): void {
-    if (id === cwd || !nodes[id])
+    if (id === cwd || (!nodes[id] && !isVirtualPlace(id)))
       return;
     const next = [...history.slice(0, historyIndex + 1), id];
     setHistory(next);
@@ -281,7 +317,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   async function handleUpload(targetFolderId: string, entries: UploadEntry[]): Promise<void> {
     if (entries.length === 0)
       return;
-    if (targetFolderId === TRASH_ID) {
+    if (targetFolderId === TRASH_ID || isVirtualPlace(targetFolderId)) {
       notify({ title: "Can’t upload here", body: "Items can’t be uploaded directly into the Trash.", tone: "danger" });
       return;
     }
@@ -343,7 +379,13 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // every row in FilesView's list view instead of each row recursing/
   // rescanning `nodes` for its own folder size.
   const sizes = useMemo(() => folderSizes(nodes), [nodes]);
-  const children = useMemo(() => childrenOf(nodes, cwd, sort), [nodes, cwd, sort]);
+  // U14 "Recents": not a real folder, so its listing comes straight off the
+  // ring buffer (most-recent-first) instead of `childrenOf` — sort doesn't
+  // apply here, recency order *is* the point of the place.
+  const children = useMemo(
+    () => (inRecents ? nodesForIds(nodes, recentIds) : childrenOf(nodes, cwd, sort)),
+    [nodes, cwd, sort, inRecents, recentIds],
+  );
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? children.filter(n => n.name.toLowerCase().includes(q)) : children;
@@ -351,7 +393,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // Shared by both "Select All" and range-selection below — no need for either
   // to re-derive its own copy of the same id list.
   const visibleIds = useMemo(() => visible.map(n => n.id), [visible]);
-  const crumbs = useMemo(() => pathOf(nodes, cwd).slice(1), [nodes, cwd]);
+  const crumbs = useMemo(
+    () => (inRecents ? [{ id: RECENTS_ID, name: "Recents" }] : pathOf(nodes, cwd).slice(1)),
+    [nodes, cwd, inRecents],
+  );
   // A plain count, so a full childrenOf sort (which we'd throw away anyway) is skipped.
   const trashCount = useMemo(
     () => Object.values(nodes).filter(n => n.parentId === TRASH_ID).length,
@@ -383,6 +428,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
         break;
       case "files.viewList":
         setView("list");
+        break;
+      case "files.viewDetail":
+        setView("detail");
         break;
       case "files.sortName":
         applySort("name");
@@ -477,31 +525,58 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     setCursorId(last);
   }
 
-  // Live grid column count (B6), read from the actual laid-out CSS grid
-  // rather than guessed from viewport width, so it tracks window resizes and
-  // the `auto-fill` track count exactly. 1 in list view (a single column).
+  // Live grid column count (B6). Pre-virtualization this read the actual
+  // laid-out CSS grid's track count off the container; under virtualization
+  // most rows aren't rendered to measure, so it now runs the same pure
+  // `gridColumnCount` math FilesView uses to decide its own row chunking —
+  // both read `container`'s `clientWidth`, so the two always agree. 1 in
+  // list/detail view (a single column).
   function columnCount(): number {
     if (view !== "grid" || !container)
       return 1;
-    const tracks = getComputedStyle(container).gridTemplateColumns.split(" ").filter(Boolean);
-    return tracks.length || 1;
+    return gridColumnCount(container.clientWidth);
   }
 
   // Roving tabIndex (review-backlog #8) means only the cursor item is ever a
   // Tab stop — real DOM focus has to follow the keyboard cursor as it moves,
   // not just the visual selection highlight, or the item that last had a
-  // click stays the one actually focused.
+  // click stays the one actually focused. The common case (small folder, or
+  // an item already on screen) still focuses synchronously, exactly as
+  // before virtualization — deliberately not deferred by even one frame,
+  // since a same-tick focus is what lets one keypress's synchronous state
+  // update (e.g. type-ahead) be immediately followed by another (Enter)
+  // without a race where focus is briefly nowhere (DOM focus falls back to
+  // `<body>`, off which a real bubbled keydown wouldn't reach `container`'s
+  // listener at all). Only when the target isn't in the DOM yet (genuinely
+  // scrolled out of the virtualizer's rendered range) does this fall back to
+  // asking FilesView's virtualizer to bring it into range (`scrollToIdRef`)
+  // and retrying a frame later, once react-virtual has mounted it.
   function focusNode(id: string): void {
-    container
-      ?.querySelector<HTMLElement>(`[data-node-id="${id}"]`)
-      ?.focus();
+    const existing = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
+    if (existing) {
+      existing.focus();
+      return;
+    }
+    scrollToIdRef.current(id);
+    requestAnimationFrame(() => {
+      container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`)?.focus();
+    });
   }
 
-  /** Scrolls the item into view and focuses it in one query. */
+  /** Scrolls the item into view and focuses it in one query — see `focusNode` on the synchronous-first-try/deferred-fallback split. */
   function focusAndScrollIntoView(id: string): void {
-    const el = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
-    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    el?.focus();
+    const existing = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
+    if (existing) {
+      existing.scrollIntoView({ block: "nearest", inline: "nearest" });
+      existing.focus();
+      return;
+    }
+    scrollToIdRef.current(id);
+    requestAnimationFrame(() => {
+      const el = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
+      el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      el?.focus();
+    });
   }
 
   // Arrow-key roving focus (B6): move the cursor `delta` positions through
@@ -570,12 +645,23 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useLayoutEffect(() => {
     keyHandlerRef.current = (e: KeyboardEvent) => {
-      // The Get Info panel is a modal dialog with its own focus trap and
-      // Escape handler (#6) — while open, this handler is a complete no-op
-      // rather than letting Delete/F2/arrows/type-ahead act on the hidden list.
-      if (liveInfoNode)
+      // The Get Info panel and Quick Look are modal dialogs with their own
+      // focus trap and Escape/Space handling (#6) — while either is open,
+      // this handler is a complete no-op rather than letting
+      // Delete/F2/arrows/type-ahead act on the hidden list. (In practice
+      // focus has already moved into the dialog by the time either is open,
+      // so real keydown events don't bubble here anyway — this is defense
+      // in depth, matching the existing `liveInfoNode` guard's own style.)
+      if (liveInfoNode || quickLookNode)
         return;
       switch (e.key) {
+        case " ": {
+          e.preventDefault();
+          const target = primaryTarget();
+          if (target)
+            setQuickLookNode(target);
+          return;
+        }
         case "Escape":
           if (selectedIds.size > 0) {
             e.preventDefault();
@@ -650,8 +736,8 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     const node = state.node;
     if (!node) {
       return [
-        { label: "New Folder", run: newFolder, disabled: inTrash, dividerAfter: true },
-        { label: "Paste", run: pasteClipboard, disabled: inTrash || clipboardIds.length === 0 },
+        { label: "New Folder", run: newFolder, disabled: noRealFolder, dividerAfter: true },
+        { label: "Paste", run: pasteClipboard, disabled: noRealFolder || clipboardIds.length === 0 },
       ];
     }
     const multi = selectedIds.has(node.id) && selectedIds.size > 1;
@@ -685,6 +771,8 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             })),
           }]
         : []),
+      // U14 Quick Look — only meaningful for a single target.
+      ...(!multi ? [{ label: "Quick Look", run: () => setQuickLookNode(node) }] : []),
       { label: multi ? `Copy ${targets.length} Items` : "Copy", run: copySelection },
       { label: multi ? `Cut ${targets.length} Items` : "Cut", run: cutSelection, disabled: system, dividerAfter: true },
       {
@@ -692,6 +780,31 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           ? `Download ${targets.length} Items as Zip`
           : node.type === "folder" ? "Download as Zip" : "Download",
         run: () => handleDownload(targets),
+        dividerAfter: true,
+      },
+      // U14 favourites: single target toggles; a multi-selection can only
+      // add (an per-item toggle reading one "current" state wouldn't mean
+      // anything across a mixed selection).
+      multi
+        ? {
+            label: `Add ${targets.length} Items to Favourites`,
+            run: () => targets.forEach(t => !favouriteIds.includes(t.id) && toggleFavourite(t.id)),
+          }
+        : {
+            label: favouriteIds.includes(node.id) ? "Remove from Favourites" : "Add to Favourites",
+            run: () => toggleFavourite(node.id),
+          },
+      // U14 color labels: a submenu of the fixed swatch set + "None" to clear.
+      {
+        label: "Label",
+        children: [
+          { label: "None", run: () => targets.forEach(t => setLabel(t.id, undefined)) },
+          ...NODE_LABELS.map(l => ({
+            label: l.name,
+            swatch: l.hex,
+            run: () => targets.forEach(t => setLabel(t.id, l.id)),
+          })),
+        ],
         dividerAfter: true,
       },
       ...(multi
@@ -766,10 +879,17 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           onClose={() => setInfoNode(null)}
         />
       )}
+      {quickLookNode && nodes[quickLookNode.id] && (
+        <QuickLookOverlay
+          node={nodes[quickLookNode.id]}
+          onClose={() => setQuickLookNode(null)}
+        />
+      )}
       <FilesSidebar
         cwd={cwd}
         trashCount={trashCount}
         onNavigate={navigate}
+        onOpenNode={openNode}
         onDropNode={handleDrop}
       />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -792,23 +912,50 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           >
             <ChevronRight className="size-4" />
           </button>
-          <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-            {crumbs.map((crumb, i) => (
-              <span key={crumb.id} className="flex items-center gap-1">
-                {i > 0 && <span className="opacity-50">›</span>}
-                <button
-                  type="button"
-                  className={`max-w-32 truncate rounded-[5px] px-1 py-[calc(2px*var(--ui-scale))] ${
-                    i === crumbs.length - 1
-                      ? "font-semibold text-ink"
-                      : "hover:bg-ph"
-                  }`}
-                  onClick={() => navigate(crumb.id)}
-                >
-                  {crumb.name}
-                </button>
-              </span>
-            ))}
+          {/* U14 editable breadcrumb: click the blank part of the bar to edit
+              the whole path as text (Enter navigates, Escape cancels) —
+              individual crumb buttons still navigate directly on click and
+              stop the click from also opening the editor. Virtual places
+              (Recents) have no real path to edit. */}
+          <div
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+            onClick={() => !inRecents && setEditingPath(true)}
+          >
+            {editingPath
+              ? (
+                  <RenameInput
+                    value={pathString(nodes, cwd)}
+                    className="max-w-72"
+                    onCommit={(text) => {
+                      const target = resolveFolderPath(nodes, text);
+                      if (target === null)
+                        return false;
+                      navigate(target);
+                      setEditingPath(false);
+                      return true;
+                    }}
+                    onCancel={() => setEditingPath(false)}
+                  />
+                )
+              : crumbs.map((crumb, i) => (
+                  <span key={crumb.id} className="flex items-center gap-1">
+                    {i > 0 && <span className="opacity-50">›</span>}
+                    <button
+                      type="button"
+                      className={`max-w-32 truncate rounded-[5px] px-1 py-[calc(2px*var(--ui-scale))] ${
+                        i === crumbs.length - 1
+                          ? "font-semibold text-ink"
+                          : "hover:bg-ph"
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(crumb.id);
+                      }}
+                    >
+                      {crumb.name}
+                    </button>
+                  </span>
+                ))}
           </div>
           <div className="ml-auto flex items-center gap-2">
             {inTrash && trashCount > 0 && (
@@ -858,7 +1005,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             >
               <ArrowUpDown className="size-4" />
             </button>
-            {!inTrash && (
+            {!noRealFolder && (
               <button
                 type="button"
                 aria-label="Upload files"
@@ -869,7 +1016,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                 <Upload className="size-4" />
               </button>
             )}
-            {!inTrash && (
+            {!noRealFolder && (
               <button
                 type="button"
                 aria-label="New folder"
@@ -880,8 +1027,8 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
               </button>
             )}
             <div className="flex gap-[calc(2px*var(--ui-scale))] rounded-btn bg-ph p-0.5">
-              {(["grid", "list"] as const).map((mode) => {
-                const Icon = mode === "grid" ? LayoutGrid : List;
+              {(["grid", "list", "detail"] as const).map((mode) => {
+                const Icon = VIEW_MODE_ICONS[mode];
                 return (
                   <button
                     key={mode}
@@ -906,6 +1053,8 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           items={visible}
           folderSizes={sizes}
           view={view}
+          sort={sort}
+          onSortColumn={applySort}
           selectedIds={selectedIds}
           cursorId={cursorId}
           cutIds={cutIds}
@@ -915,7 +1064,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
               ? `Nothing matches “${query}”`
               : inTrash
                 ? "The Trash is empty"
-                : "This folder is empty"
+                : inRecents
+                  ? "No recently opened files yet"
+                  : "This folder is empty"
           }
           onSelectNode={handleSelectNode}
           onClearSelection={() => setSelectedIds(new Set())}
@@ -935,6 +1086,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           onUploadInto={onUploadInto}
           cwdId={cwd}
           registerContainer={setContainer}
+          registerScrollToId={fn => (scrollToIdRef.current = fn)}
         />
 
         <div className="flex h-6 flex-none items-center px-3 text-11 text-ink-2 select-none hairline-t">

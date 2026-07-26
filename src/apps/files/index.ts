@@ -36,7 +36,8 @@ export const filesApp: AppManifest = {
       title: "View",
       items: [
         { label: "As Icons", appCommand: "files.viewGrid" },
-        { label: "As List", appCommand: "files.viewList", dividerAfter: true },
+        { label: "As List", appCommand: "files.viewList" },
+        { label: "As Columns", appCommand: "files.viewDetail", dividerAfter: true },
         { label: "Sort by Name", appCommand: "files.sortName" },
         { label: "Sort by Date Added", appCommand: "files.sortDate" },
         { label: "Sort by Kind", appCommand: "files.sortKind" },
