@@ -44,6 +44,10 @@ export interface ShellContext {
   /** Launch the file's associated app; false when nothing is associated. */
   openPath: (node: FsNode) => boolean;
   user: string;
+  /** Alias name -> the command string it expands to (e.g. "ll" -> "ls"). */
+  aliases: Record<string, string>;
+  /** Persist a new/updated alias — write-through to the same store `aliases` reads from. */
+  setAlias: (name: string, expansion: string) => void;
 }
 
 const COMMAND_NAMES = [
@@ -66,6 +70,8 @@ const COMMAND_NAMES = [
   "grep",
   "open",
   "tree",
+  "find",
+  "alias",
 ] as const;
 
 const HELP_TEXT = [
@@ -85,6 +91,9 @@ const HELP_TEXT = [
   "  open <path>         open a file in its associated app",
   "  rm <name>           move an item to the Trash",
   "  tree                show the tree below the current directory",
+  "  find [path] [-name <pattern>]  list everything under path, optionally",
+  "                      filtered by a *?-glob name pattern (default path: .)",
+  "  alias [name[=value] [value...]]  show/define a command alias",
   "  whoami              print the current user",
   "  date                print the current date and time",
   "  clear               clear the screen",
@@ -302,6 +311,26 @@ function parse(input: string): ParsedCommand {
   return { command: rest[0] ?? "", args: rest.slice(1), redirect };
 }
 
+/**
+ * Expand a leading alias into its command + args, splicing the invocation's
+ * own args after the alias's own (e.g. alias `ll`="ls", `ll Documents` runs
+ * `ls Documents`). Expansion happens once — an alias's own expansion isn't
+ * re-checked against `aliases` again — so a self-referential alias can't
+ * loop; it just runs the builtin under that name with its extra args, same
+ * as any other typo-shaped user error.
+ */
+export function expandAlias(
+  command: string,
+  args: string[],
+  aliases: Record<string, string>,
+): { command: string; args: string[] } {
+  const expansion = aliases[command];
+  if (!expansion)
+    return { command, args };
+  const parsed = parse(expansion);
+  return { command: parsed.command, args: [...parsed.args, ...args] };
+}
+
 /** Split a command line on top-level `|`, ignoring `|` inside quotes. */
 function splitPipeline(input: string): string[] {
   const parts: string[] = [];
@@ -327,6 +356,47 @@ function splitPipeline(input: string): string[] {
   }
   parts.push(current);
   return parts.map(s => s.trim());
+}
+
+/**
+ * Compile a `find -name` glob pattern (`*` any run, `?` single char) into a
+ * whole-name, case-insensitive matcher — the same subset plain `find`'s
+ * `-name` supports, not a full glob library.
+ */
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+/**
+ * Depth-first listing of `id` and everything beneath it, as display paths
+ * rooted at `displayRoot` (mirroring plain `find`'s output — the starting
+ * path itself is included first, then each descendant's path). `matcher`
+ * (when given) filters every entry, root included, by its own name.
+ */
+function findLines(
+  nodes: Record<string, FsNode>,
+  id: string,
+  displayRoot: string,
+  matcher: RegExp | null,
+): string[] {
+  const results: string[] = [];
+  function walk(nodeId: string, displayPath: string): void {
+    const node = nodes[nodeId];
+    if (!node)
+      return;
+    if (!matcher || matcher.test(node.name))
+      results.push(displayPath);
+    if (node.type === "folder") {
+      for (const kid of childrenOf(nodes, nodeId))
+        walk(kid.id, `${displayPath}/${kid.name}`);
+    }
+  }
+  walk(id, displayRoot);
+  return results;
 }
 
 function treeLines(
@@ -376,7 +446,8 @@ function execSingle(input: string, ctx: ShellContext, stdin: string | undefined)
     return { lines: [] };
 
   const parsed = parse(trimmed);
-  const result = runBuiltin(parsed.command, parsed.args, ctx, stdin);
+  const expanded = expandAlias(parsed.command, parsed.args, ctx.aliases);
+  const result = runBuiltin(expanded.command, expanded.args, ctx, stdin);
 
   if (!parsed.redirect || result.lines.some(l => l.kind === "error"))
     return result;
@@ -598,6 +669,59 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     case "tree": {
       const lines = treeLines(nodes, cwd, "");
       return out([".", ...lines].join("\n"));
+    }
+
+    case "find": {
+      // `find [path] [-name <pattern>]` — path is optional (defaults to
+      // cwd, shown as "."), unlike plain find where it's required; every
+      // other command here that takes an optional leading path (ls, cat's
+      // stdin fallback) does the same, so this matches the shell's own
+      // convention rather than POSIX find's.
+      let path: string | undefined;
+      let rest = args;
+      if (args[0] && !args[0].startsWith("-")) {
+        path = args[0];
+        rest = args.slice(1);
+      }
+      let pattern: string | undefined;
+      if (rest[0] === "-name") {
+        if (rest[1] === undefined)
+          return err("find: -name requires a pattern");
+        pattern = rest[1];
+        rest = rest.slice(2);
+      }
+      if (rest.length > 0)
+        return err(`find: unknown argument '${rest[0]}'`);
+      const rootId = path ? resolvePath(nodes, cwd, path) : cwd;
+      if (rootId === null || !nodes[rootId])
+        return err(`find: ${path ?? "."}: no such file or directory`);
+      const matcher = pattern ? globToRegExp(pattern) : null;
+      const lines = findLines(nodes, rootId, path ?? ".", matcher);
+      return out(lines.join("\n"));
+    }
+
+    case "alias": {
+      if (args.length === 0) {
+        const names = Object.keys(ctx.aliases).sort();
+        if (names.length === 0)
+          return out("no aliases defined");
+        return out(names.map(name => `alias ${name}='${ctx.aliases[name]}'`).join("\n"));
+      }
+      // Two accepted shapes: `alias name=value` (single-token, no spaces in
+      // value — this shell's tokenizer only treats a *whole* token as
+      // quoted, so `name="multi word"` would mis-tokenize) and
+      // `alias name value...` (space-joined, no quoting needed at all).
+      const first = args[0];
+      const eq = first.indexOf("=");
+      const name = eq === -1 ? first : first.slice(0, eq);
+      const valueParts = eq === -1 ? args.slice(1) : [first.slice(eq + 1), ...args.slice(1)];
+      const expansion = valueParts.join(" ");
+      if (!name)
+        return err("alias: missing name");
+      if (!expansion)
+        return err(`alias: ${name}: missing command`);
+      ctx.setAlias(name, expansion);
+      return { lines: [] };
     }
 
     default:
