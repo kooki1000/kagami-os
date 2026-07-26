@@ -3,7 +3,8 @@ import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
 import { memo, Suspense, useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "@/components/ui/useFocusTrap";
 import { getApp } from "@/system/apps/registry";
-import { useReducedMotion } from "@/system/theme/useReducedMotion";
+import { useSettingsStore } from "@/system/settings/settingsStore";
+import { useEffectiveReducedMotion } from "@/system/theme/useReducedMotion";
 import { TITLE_BAR_HEIGHT, useWindowStore, zoneForPointer } from "@/system/windows/windowStore";
 import { WindowErrorBoundary } from "./WindowErrorBoundary";
 
@@ -94,9 +95,13 @@ export const Window = memo(({ win, focused }: { win: OsWindow; focused: boolean 
   const snapWindow = useWindowStore(s => s.snapWindow);
   const restoreToRect = useWindowStore(s => s.restoreToRect);
   const setSnapPreview = useWindowStore(s => s.setSnapPreview);
-  const reducedMotion = useReducedMotion();
-  const minimizeMs = reducedMotion ? REDUCED_MOTION_MS : MINIMIZE_MS;
-  const enterMs = reducedMotion ? REDUCED_MOTION_MS : ENTER_MS;
+  const reducedMotion = useEffectiveReducedMotion();
+  // U6: animationSpeed is a multiplier (already clamped to a sane non-zero
+  // range in settingsStore) — 2 halves the duration, 0.5 doubles it. Ignored
+  // once motion is reduced, same as the base constants above.
+  const animationSpeed = useSettingsStore(s => s.animationSpeed);
+  const minimizeMs = reducedMotion ? REDUCED_MOTION_MS : MINIMIZE_MS / animationSpeed;
+  const enterMs = reducedMotion ? REDUCED_MOTION_MS : ENTER_MS / animationSpeed;
 
   // Tab stays within the focused window's own controls instead of leaking
   // into a background window or the browser chrome — no auto-focus/restore

@@ -19,6 +19,7 @@ import { childrenOf, isSystemNode, pathOf, useFsStore } from "@/system/fs/fsStor
 import { isCommittableRename } from "@/system/fs/renameCommit";
 import { DESKTOP_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
+import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useWindowStore } from "@/system/windows/windowStore";
 
 // B7: the Desktop folder's direct children rendered as icons on the
@@ -52,6 +53,7 @@ interface DragState {
 export function Desktop() {
   const blurAll = useWindowStore(s => s.blurAll);
   const viewport = useWindowStore(s => s.viewport);
+  const wallpaperDim = useSettingsStore(s => s.wallpaperDim);
   const nodes = useFsStore(s => s.nodes);
   const ready = useFsStore(s => s.ready);
   const rename = useFsStore(s => s.rename);
@@ -256,6 +258,18 @@ export function Desktop() {
       }}
     >
       <div className="wallpaper-ring" />
+
+      {/* U6: a scrim between the wallpaper and the window layer, separate
+          from window chrome's own glass `backdrop-filter` — dims the
+          wallpaper (and desktop icons sitting on it) so focused windows
+          read more clearly against it. 0 opacity (the default) renders
+          nothing. */}
+      {wallpaperDim > 0 && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: `rgba(0, 0, 0, ${wallpaperDim})` }}
+        />
+      )}
 
       {ready && children.map((node, index) => {
         const pos = positionFor(node, index);
