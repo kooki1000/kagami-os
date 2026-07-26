@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 import { useAppCommand } from "@/system/appCommands";
-import { payloadFileId } from "@/system/apps/openFile";
+import { usePayloadFileId } from "@/system/apps/filePayload";
 import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { useFsStore } from "@/system/fs/fsStore";
 import { useBlobUrl } from "@/system/fs/useBlobUrl";
@@ -36,10 +36,12 @@ interface NaturalSize {
 
 export default function ViewerApp({ windowId, payload, focused }: AppWindowProps) {
   // Next/Previous move this cursor within the window rather than opening a
-  // new one — same caveat as Player's identical pattern (D5): openFile.ts's
-  // window-reuse match is keyed off the *opening* payload, so re-opening a
-  // since-navigated-to image from Files still spawns a second window.
-  const [activeId, setActiveId] = useState<string | null>(() => payloadFileId(payload));
+  // new one — same shape as Player's identical pattern (D5). Adopting the
+  // payload during render (rather than only on mount) is what lets a
+  // re-launch from Files re-focus and re-target this window instead of
+  // spawning a duplicate (review-backlog #7, fixed here the same way Player
+  // already was).
+  const [activeId, setActiveId] = usePayloadFileId(payload);
   const nodes = useFsStore(s => s.nodes);
   const node = activeId ? nodes[activeId] : undefined;
   const { url: blobUrl, status: blobStatus } = useBlobUrl(node?.contentRef);
@@ -71,7 +73,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   });
   const step = useCallback((delta: number): void => {
     setActiveId(prev => stepSibling(siblingsRef.current, prev, delta) ?? prev);
-  }, []);
+  }, [setActiveId]);
 
   // `playing` can stay stale-true once the folder no longer has enough
   // images to cycle through — nothing renders or acts on it directly, only
