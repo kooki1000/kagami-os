@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
+import type { DesktopIconSize } from "@/system/desktop/desktopLayout";
 import type { FsNode } from "@/system/fs/types";
 import { useMemo, useRef, useState } from "react";
 import { useClipboardStore } from "@/apps/files/clipboardStore";
@@ -12,7 +13,7 @@ import { RenameInput } from "@/components/ui/RenameInput";
 import { launchApp } from "@/system/apps/launch";
 import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@/system/apps/openFile";
 import { getApp } from "@/system/apps/registry";
-import { autoPosition, clampIconPosition, DESKTOP_CELL_W } from "@/system/desktop/desktopLayout";
+import { autoPosition, cellSizeFor, clampIconPosition, snapToGridPoint } from "@/system/desktop/desktopLayout";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { blobStore } from "@/system/fs/blobStore";
 import { childrenOf, isSystemNode, pathOf, useFsStore } from "@/system/fs/fsStore";
@@ -32,6 +33,16 @@ import { useWindowStore } from "@/system/windows/windowStore";
 // rather than duplicated.
 
 const DRAG_THRESHOLD_PX = 4;
+
+/** Icon glyph tile size (px) per U8's iconSize preset — "medium" matches the pre-U8 fixed size-12/size-7 classes exactly. */
+function glyphSizeFor(iconSize: DesktopIconSize): { tile: number; glyph: number } {
+  switch (iconSize) {
+    case "small": return { tile: 40, glyph: 22 };
+    case "large": return { tile: 60, glyph: 34 };
+    case "medium":
+    default: return { tile: 48, glyph: 28 };
+  }
+}
 
 interface MenuState {
   x: number;
@@ -64,6 +75,12 @@ export function Desktop() {
   const restoreFromTrash = useFsStore(s => s.restoreFromTrash);
   const positions = useDesktopLayoutStore(s => s.positions);
   const setPosition = useDesktopLayoutStore(s => s.setPosition);
+  const iconSize = useDesktopLayoutStore(s => s.iconSize);
+  const gridSnap = useDesktopLayoutStore(s => s.gridSnap);
+  const autoArrange = useDesktopLayoutStore(s => s.autoArrange);
+  const sortOrder = useDesktopLayoutStore(s => s.sortOrder);
+  const cell = useMemo(() => cellSizeFor(iconSize), [iconSize]);
+  const glyph = useMemo(() => glyphSizeFor(iconSize), [iconSize]);
   const clipboardIds = useClipboardStore(s => s.ids);
   const clipboardMode = useClipboardStore(s => s.mode);
   const setClipboard = useClipboardStore(s => s.setClipboard);
@@ -77,8 +94,8 @@ export function Desktop() {
   const dragRef = useRef<DragState | null>(null);
 
   const children = useMemo(
-    () => (ready ? childrenOf(nodes, DESKTOP_ID) : []),
-    [nodes, ready],
+    () => (ready ? childrenOf(nodes, DESKTOP_ID, { key: sortOrder, dir: "asc" }) : []),
+    [nodes, ready, sortOrder],
   );
 
   // Memoized so re-renders while the Get Info panel is open (selection,
@@ -89,10 +106,15 @@ export function Desktop() {
   );
 
   function positionFor(node: FsNode, index: number) {
+    // Auto-arrange (U8) always wins: every icon sits at its deterministic
+    // grid slot, and any stored drag position is left alone (not cleared)
+    // so switching the toggle back off restores it.
+    if (autoArrange)
+      return autoPosition(index, viewport.height, cell);
     const stored = positions[node.id];
     return stored
-      ? clampIconPosition(stored, viewport)
-      : autoPosition(index, viewport.height);
+      ? clampIconPosition(stored, viewport, cell)
+      : autoPosition(index, viewport.height, cell);
   }
 
   function openNode(node: FsNode): void {
@@ -226,15 +248,18 @@ export function Desktop() {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId)
       return;
+    // Auto-arrange owns every icon's slot while it's on — dragging is a
+    // no-op rather than writing a position that positionFor() would just
+    // ignore anyway.
+    if (autoArrange)
+      return;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX)
       return;
     drag.moved = true;
-    setPosition(
-      drag.id,
-      clampIconPosition({ x: drag.originX + dx, y: drag.originY + dy }, viewport),
-    );
+    const dropped = clampIconPosition({ x: drag.originX + dx, y: drag.originY + dy }, viewport, cell);
+    setPosition(drag.id, gridSnap ? snapToGridPoint(dropped, cell) : dropped);
   }
 
   // Also wired to pointercancel, which fires *instead of* pointerup when the
@@ -278,7 +303,7 @@ export function Desktop() {
             key={node.id}
             data-desktop-icon={node.id}
             className="absolute flex flex-col items-center gap-1 select-none"
-            style={{ left: pos.x, top: pos.y, width: DESKTOP_CELL_W }}
+            style={{ left: pos.x, top: pos.y, width: cell.w }}
             onPointerDown={e => onIconPointerDown(e, node, pos)}
             onPointerMove={onIconPointerMove}
             onPointerUp={onIconPointerUp}
@@ -303,8 +328,16 @@ export function Desktop() {
                 )
               : (
                   <>
-                    <div className={`grid size-12 place-items-center rounded-tile ${selectedId === node.id ? "bg-white/25" : ""}`}>
-                      <NodeGlyph node={node} className="size-7 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]" strokeWidth={1.4} />
+                    <div
+                      className={`grid place-items-center rounded-tile ${selectedId === node.id ? "bg-white/25" : ""}`}
+                      style={{ width: glyph.tile, height: glyph.tile }}
+                    >
+                      <NodeGlyph
+                        node={node}
+                        className="text-white drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]"
+                        style={{ width: glyph.glyph, height: glyph.glyph }}
+                        strokeWidth={1.4}
+                      />
                     </div>
                     <span
                       className={`max-w-full truncate rounded-[4px] px-1 text-11 text-white [text-shadow:0_1px_2px_rgba(0,0,0,.6)] ${

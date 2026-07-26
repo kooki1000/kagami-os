@@ -3,7 +3,7 @@ import type { MenuItem, MenuSection } from "@/system/apps/types";
 import type { ThemePreference } from "@/system/theme/themeStore";
 import { Bell, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { currentLocale, formatShortcut } from "@/lib/format";
+import { currentLocale, formatClockTime, formatShortcut } from "@/lib/format";
 import { emitAppCommand } from "@/system/appCommands";
 import { getApp } from "@/system/apps/registry";
 import { executeCommand } from "@/system/commands";
@@ -13,6 +13,7 @@ import {
 } from "@/system/notifications/notificationStore";
 import { useOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { useSearchStore } from "@/system/search/searchStore";
+import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useThemeStore } from "@/system/theme/themeStore";
 import { MENU_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { OfflineIndicator } from "./OfflineIndicator";
@@ -87,21 +88,21 @@ function stepHighlight(items: BarMenuItem[], current: number, direction: 1 | -1)
 }
 
 function Clock() {
+  const hour12 = useSettingsStore(s => s.clockHour12);
+  const showSeconds = useSettingsStore(s => s.clockShowSeconds);
+  const showDate = useSettingsStore(s => s.clockShowDate);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const t = window.setInterval(() => setNow(new Date()), 15_000);
+    // Tick every second once seconds are visible — the old fixed 15s
+    // interval left a stale :SS on screen for up to 15 seconds otherwise.
+    const t = window.setInterval(() => setNow(new Date()), showSeconds ? 1000 : 15_000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [showSeconds]);
   const weekday = now.toLocaleDateString(currentLocale(), { weekday: "short" });
-  const hours = ((now.getHours() + 11) % 12) + 1;
-  const minutes = now.getMinutes().toString().padStart(2, "0");
   return (
     <span className="tabular-nums">
-      {weekday}
-      {" "}
-      {hours}
-      :
-      {minutes}
+      {showDate && `${weekday} `}
+      {formatClockTime(now, { hour12, showSeconds })}
     </span>
   );
 }
@@ -124,6 +125,7 @@ export function MenuBar() {
   const openCenter = useNotificationStore(s => s.openCenter);
   const closeCenter = useNotificationStore(s => s.closeCenter);
   const openSearch = useSearchStore(s => s.openSearch);
+  const statusItems = useSettingsStore(s => s.statusItems);
 
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState(-1);
@@ -202,6 +204,12 @@ export function MenuBar() {
                   },
                 ]
               : []),
+            {
+              id: "app-remember-size",
+              label: "Remember Window Size",
+              dividerAfter: true,
+              action: () => executeCommand("window.rememberSize"),
+            },
             {
               id: "app-hide",
               label: `Hide ${app.name}`,
@@ -343,43 +351,49 @@ export function MenuBar() {
         </div>
 
         <div className="ml-auto flex items-center gap-[calc(14px*var(--ui-scale))] text-12.5 opacity-80">
-          <OfflineIndicator />
-          <button
-            type="button"
-            aria-label="Search"
-            className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
-            onClick={openSearch}
-          >
-            <Search className="size-[calc(13px*var(--ui-scale))]" />
-          </button>
-          <button
-            type="button"
-            aria-label="Toggle appearance"
-            className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
-            onClick={toggleResolved}
-          >
-            {resolved === "dark"
-              ? (
-                  <Sun className="size-[calc(13px*var(--ui-scale))]" />
-                )
-              : (
-                  <Moon className="size-[calc(13px*var(--ui-scale))]" />
-                )}
-          </button>
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="relative grid place-items-center rounded-md p-0.5 hover:bg-ph"
-            onClick={() => (centerOpen ? closeCenter() : openCenter())}
-          >
-            <Bell className="size-[calc(13px*var(--ui-scale))]" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-3 rounded-full bg-accent-2 px-[calc(3px*var(--ui-scale))] text-center text-[calc(8px*var(--ui-scale))]/3 font-bold text-white tabular-nums">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </button>
-          <Clock />
+          {statusItems.offline && <OfflineIndicator />}
+          {statusItems.search && (
+            <button
+              type="button"
+              aria-label="Search"
+              className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
+              onClick={openSearch}
+            >
+              <Search className="size-[calc(13px*var(--ui-scale))]" />
+            </button>
+          )}
+          {statusItems.appearance && (
+            <button
+              type="button"
+              aria-label="Toggle appearance"
+              className="grid place-items-center rounded-md p-0.5 hover:bg-ph"
+              onClick={toggleResolved}
+            >
+              {resolved === "dark"
+                ? (
+                    <Sun className="size-[calc(13px*var(--ui-scale))]" />
+                  )
+                : (
+                    <Moon className="size-[calc(13px*var(--ui-scale))]" />
+                  )}
+            </button>
+          )}
+          {statusItems.notifications && (
+            <button
+              type="button"
+              aria-label="Notifications"
+              className="relative grid place-items-center rounded-md p-0.5 hover:bg-ph"
+              onClick={() => (centerOpen ? closeCenter() : openCenter())}
+            >
+              <Bell className="size-[calc(13px*var(--ui-scale))]" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-3 rounded-full bg-accent-2 px-[calc(3px*var(--ui-scale))] text-center text-[calc(8px*var(--ui-scale))]/3 font-bold text-white tabular-nums">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
+          {statusItems.clock && <Clock />}
         </div>
       </div>
     </>

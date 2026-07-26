@@ -16,6 +16,22 @@ import {
  */
 export type ReduceMotionPreference = "system" | "on" | "off";
 
+/** Optional menu-bar status items (U7) — whether each appears at all, independent of the clock's own format toggles below. */
+export type MenuBarStatusItem = "offline" | "search" | "appearance" | "notifications" | "clock";
+
+const DEFAULT_STATUS_ITEMS: Record<MenuBarStatusItem, boolean> = {
+  offline: true,
+  search: true,
+  appearance: true,
+  notifications: true,
+  clock: true,
+};
+
+export interface WindowSize {
+  width: number;
+  height: number;
+}
+
 interface SettingsStore {
   accentId: string;
   wallpaperId: string;
@@ -52,6 +68,24 @@ interface SettingsStore {
   /** U6: opacity (0-1) of a dark scrim between the wallpaper and the window layer. */
   wallpaperDim: number;
 
+  // U7 — menu bar & clock.
+  /** 12-hour clock (default) vs. 24-hour. */
+  clockHour12: boolean;
+  /** Show a trailing :SS in the clock. */
+  clockShowSeconds: boolean;
+  /** Show the weekday before the time — the Clock component always did this pre-U7, so this defaults to `true` to leave untouched settings' output unchanged. */
+  clockShowDate: boolean;
+  /** Which optional menu-bar status items are shown at all. */
+  statusItems: Record<MenuBarStatusItem, boolean>;
+
+  // U9 — startup behaviour.
+  /** Gates the boot-time `restoreSession()` call in App.tsx (default on — unchanged behavior). The `?fresh` URL param still bypasses restore regardless of this. */
+  restoreSessionOnBoot: boolean;
+  /** App ids launched at boot, in addition to whatever session restore brings back. */
+  startupApps: string[];
+  /** Per-app "Remember this size" override, consulted by launchApp before an app's own `defaultSize`. */
+  defaultWindowSize: Record<string, WindowSize>;
+
   setAccent: (id: string) => void;
   setWallpaper: (id: string) => void;
   setAutoEmptyTrash: (value: boolean) => void;
@@ -67,6 +101,16 @@ interface SettingsStore {
   setReduceMotion: (value: ReduceMotionPreference) => void;
   setAnimationSpeed: (value: number) => void;
   setWallpaperDim: (value: number) => void;
+
+  setClockHour12: (value: boolean) => void;
+  setClockShowSeconds: (value: boolean) => void;
+  setClockShowDate: (value: boolean) => void;
+  setStatusItemEnabled: (item: MenuBarStatusItem, value: boolean) => void;
+
+  setRestoreSessionOnBoot: (value: boolean) => void;
+  setStartupAppEnabled: (appId: string, value: boolean) => void;
+  setDefaultWindowSize: (appId: string, size: WindowSize) => void;
+  clearDefaultWindowSize: (appId: string) => void;
 }
 
 function clamp01(n: number): number {
@@ -103,6 +147,15 @@ export const useSettingsStore = create<SettingsStore>()(
       animationSpeed: 1,
       wallpaperDim: 0,
 
+      clockHour12: true,
+      clockShowSeconds: false,
+      clockShowDate: true,
+      statusItems: DEFAULT_STATUS_ITEMS,
+
+      restoreSessionOnBoot: true,
+      startupApps: [],
+      defaultWindowSize: {},
+
       // Picking a preset is a "use this instead" action — it clears whatever
       // custom override (U1/U2) was layered on top, otherwise the preset
       // click would appear to do nothing while the custom color/image kept
@@ -125,6 +178,28 @@ export const useSettingsStore = create<SettingsStore>()(
       setReduceMotion: value => set({ reduceMotion: value }),
       setAnimationSpeed: value => set({ animationSpeed: clampAnimationSpeed(value) }),
       setWallpaperDim: value => set({ wallpaperDim: clamp01(value) }),
+      setClockHour12: value => set({ clockHour12: value }),
+      setClockShowSeconds: value => set({ clockShowSeconds: value }),
+      setClockShowDate: value => set({ clockShowDate: value }),
+      setStatusItemEnabled: (item, value) =>
+        set({ statusItems: { ...get().statusItems, [item]: value } }),
+
+      setRestoreSessionOnBoot: value => set({ restoreSessionOnBoot: value }),
+      setStartupAppEnabled: (appId, value) => {
+        const current = get().startupApps;
+        const has = current.includes(appId);
+        if (value === has)
+          return;
+        set({
+          startupApps: value ? [...current, appId] : current.filter(id => id !== appId),
+        });
+      },
+      setDefaultWindowSize: (appId, size) =>
+        set({ defaultWindowSize: { ...get().defaultWindowSize, [appId]: size } }),
+      clearDefaultWindowSize: (appId) => {
+        const { [appId]: _removed, ...rest } = get().defaultWindowSize;
+        set({ defaultWindowSize: rest });
+      },
     }),
     { name: "kagami-settings", version: 1 },
   ),

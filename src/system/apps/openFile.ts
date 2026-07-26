@@ -25,6 +25,17 @@ function familyDefaultAppId(mime: string): string | null {
 }
 
 /**
+ * Every app capable of opening this exact mime type, built-in default
+ * first. The mime-type-only half of `candidateAppsForFile`, for callers
+ * (e.g. Settings' Default Apps pane, U5) that want to offer a mime type
+ * no file on disk happens to have right now.
+ */
+export function candidateAppsForMime(mime: string): string[] {
+  const appId = familyDefaultAppId(mime);
+  return appId ? [appId] : [];
+}
+
+/**
  * Every app capable of opening this file's mime type, built-in default
  * first. Powers the Files "Open With ▸" submenu; today every family has
  * exactly one built-in candidate, but the list shape is what lets a
@@ -33,8 +44,7 @@ function familyDefaultAppId(mime: string): string | null {
 export function candidateAppsForFile(node: FsNode): string[] {
   if (node.type !== "file")
     return [];
-  const appId = familyDefaultAppId(node.mimeType ?? "");
-  return appId ? [appId] : [];
+  return candidateAppsForMime(node.mimeType ?? "");
 }
 
 /** Which app opens this file? A user override (settingsStore) wins over the built-in mime-family table. */

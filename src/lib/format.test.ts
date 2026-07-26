@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { formatShortcut, matchesMacPlatform } from "./format";
+import { formatClockTime, formatShortcut, matchesMacPlatform } from "./format";
+
+describe("formatClockTime (U7)", () => {
+  const morning = new Date(2026, 0, 1, 3, 5, 9); // 3:05:09 AM
+  const afternoon = new Date(2026, 0, 1, 15, 45, 0); // 3:45:00 PM
+  const midnight = new Date(2026, 0, 1, 0, 30, 0); // 12:30:00 AM
+
+  it("matches the original hardcoded 12-hour, no-seconds output by default", () => {
+    expect(formatClockTime(afternoon, { hour12: true, showSeconds: false })).toBe("3:45");
+    expect(formatClockTime(morning, { hour12: true, showSeconds: false })).toBe("3:05");
+  });
+
+  it("wraps hour 0 to 12 in 12-hour mode (no AM/PM marker, matching the pre-U7 behavior)", () => {
+    expect(formatClockTime(midnight, { hour12: true, showSeconds: false })).toBe("12:30");
+  });
+
+  it("zero-pads a 24-hour hour", () => {
+    expect(formatClockTime(morning, { hour12: false, showSeconds: false })).toBe("03:05");
+    expect(formatClockTime(afternoon, { hour12: false, showSeconds: false })).toBe("15:45");
+  });
+
+  it("appends zero-padded seconds when requested", () => {
+    expect(formatClockTime(morning, { hour12: true, showSeconds: true })).toBe("3:05:09");
+    expect(formatClockTime(afternoon, { hour12: false, showSeconds: true })).toBe("15:45:00");
+  });
+});
 
 describe("formatShortcut", () => {
   it("passes shortcuts through unchanged on Mac", () => {

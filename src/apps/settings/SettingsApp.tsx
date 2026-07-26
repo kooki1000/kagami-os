@@ -1,14 +1,21 @@
 import type { ChangeEvent, ReactNode } from "react";
 import type { UiScale } from "@/design/tokens";
+import type { DesktopIconSize } from "@/system/desktop/desktopLayout";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
+import type { SortKey } from "@/system/fs/fsStore";
 import type { WallpaperFit } from "@/system/settings/palettes";
-import type { ReduceMotionPreference } from "@/system/settings/settingsStore";
+import type { MenuBarStatusItem, ReduceMotionPreference } from "@/system/settings/settingsStore";
+import type { ChordDescriptor } from "@/system/shortcuts";
 import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
-import { Check, Info, Monitor, Palette, SlidersHorizontal } from "lucide-react";
+import { Check, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
+import { formatShortcut } from "@/lib/format";
+import { candidateAppsForMime } from "@/system/apps/openFile";
+import { apps, getApp } from "@/system/apps/registry";
+import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { useDockStore } from "@/system/dock/dockStore";
 import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import { blobStore } from "@/system/fs/blobStore";
@@ -22,15 +29,21 @@ import {
   WALLPAPERS,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
+import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { useWallpaperUrl } from "@/system/settings/wallpaperBlobUrl";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
 
-type Section = "appearance" | "dock" | "general" | "about";
+type Section = "appearance" | "dock" | "desktop" | "defaultApps" | "menuBar" | "startup" | "shortcuts" | "general" | "about";
 
 const NAV: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "dock", label: "Dock", icon: Monitor },
+  { id: "desktop", label: "Desktop", icon: LayoutGrid },
+  { id: "defaultApps", label: "Default Apps", icon: FileType },
+  { id: "menuBar", label: "Menu Bar", icon: Clock },
+  { id: "startup", label: "Startup", icon: Power },
+  { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "about", label: "About", icon: Info },
 ];
@@ -452,6 +465,327 @@ function Switch({
   );
 }
 
+/** A hairline-bordered list matching FlagsDebug/AboutSection's row shape, for any section listing several like items with a control on the right. */
+function ListRow({ children }: { children: ReactNode }) {
+  return <div className="overflow-hidden rounded-[12px] bg-surface-2 hairline">{children}</div>;
+}
+
+function ListRowItem({ index, length, children }: { index: number; length: number; children: ReactNode }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 px-[calc(14px*var(--ui-scale))] py-[calc(9px*var(--ui-scale))] ${dividerExceptLast(index, length)}`}>
+      {children}
+    </div>
+  );
+}
+
+/** U8 — desktop icon layout preferences (size, sort, auto-arrange, grid snap). */
+function DesktopSection() {
+  const iconSize = useDesktopLayoutStore(s => s.iconSize);
+  const setIconSize = useDesktopLayoutStore(s => s.setIconSize);
+  const sortOrder = useDesktopLayoutStore(s => s.sortOrder);
+  const setSortOrder = useDesktopLayoutStore(s => s.setSortOrder);
+  const autoArrange = useDesktopLayoutStore(s => s.autoArrange);
+  const setAutoArrange = useDesktopLayoutStore(s => s.setAutoArrange);
+  const gridSnap = useDesktopLayoutStore(s => s.gridSnap);
+  const setGridSnap = useDesktopLayoutStore(s => s.setGridSnap);
+
+  return (
+    <>
+      <Row label="Icon size">
+        <Segmented<DesktopIconSize>
+          width={240}
+          value={iconSize}
+          onChange={setIconSize}
+          options={[
+            { value: "small", label: "Small" },
+            { value: "medium", label: "Medium" },
+            { value: "large", label: "Large" },
+          ]}
+        />
+      </Row>
+      <Row label="Sort by">
+        <Segmented<SortKey>
+          width={240}
+          value={sortOrder}
+          onChange={setSortOrder}
+          options={[
+            { value: "name", label: "Name" },
+            { value: "date", label: "Date" },
+            { value: "kind", label: "Kind" },
+          ]}
+        />
+      </Row>
+      <Row label="Auto-arrange">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-12/relaxed text-ink-2">
+            Keep icons snapped to a tidy grid in sort order, ignoring any
+            manual dragging.
+          </p>
+          <Switch checked={autoArrange} onChange={setAutoArrange} label="Auto-arrange desktop icons" />
+        </div>
+      </Row>
+      <Row label="Snap to grid">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-12/relaxed text-ink-2">
+            Snap a dragged icon to the nearest grid cell instead of dropping
+            it exactly where you release it.
+          </p>
+          <Switch checked={gridSnap} onChange={setGridSnap} label="Snap dragged icons to grid" />
+        </div>
+      </Row>
+    </>
+  );
+}
+
+// U5 — representative mime types shown even before any "Open With" override
+// exists anywhere, one per built-in family default (openFile.ts's
+// FAMILY_DEFAULTS). A real per-file "Open With" pick elsewhere adds its own
+// row below these for the exact mime type it set.
+const FILE_ASSOCIATION_TYPES: Array<{ mime: string; label: string }> = [
+  { mime: "text/plain", label: "Text documents" },
+  { mime: "image/png", label: "Images" },
+  { mime: "audio/mpeg", label: "Audio" },
+  { mime: "video/mp4", label: "Video" },
+];
+
+/** U5 — default app per file type, mirroring Files/Desktop's "Open With" picker. */
+function DefaultAppsSection() {
+  const fileAssociations = useSettingsStore(s => s.fileAssociations);
+  const setFileAssociation = useSettingsStore(s => s.setFileAssociation);
+  const clearFileAssociation = useSettingsStore(s => s.clearFileAssociation);
+
+  const extraMimes = Object.keys(fileAssociations).filter(
+    mime => !FILE_ASSOCIATION_TYPES.some(t => t.mime === mime),
+  );
+  const rows = [...FILE_ASSOCIATION_TYPES, ...extraMimes.map(mime => ({ mime, label: mime }))];
+
+  return (
+    <Row label="Default apps">
+      <p className="mb-3 text-12/relaxed text-ink-2">
+        Choose which app opens each kind of file by default. Using "Open
+        With" on an individual file elsewhere adds its own row here.
+      </p>
+      <ListRow>
+        {rows.map((row, i) => {
+          const candidates = candidateAppsForMime(row.mime);
+          const current = fileAssociations[row.mime] ?? candidates[0] ?? "";
+          const overridden = row.mime in fileAssociations;
+          return (
+            <ListRowItem key={row.mime} index={i} length={rows.length}>
+              <div className="min-w-0">
+                <div className="truncate text-12 font-medium text-ink">{row.label}</div>
+                <div className="truncate text-11 text-ink-2">{row.mime}</div>
+              </div>
+              <div className="flex flex-none items-center gap-2">
+                {candidates.length > 0
+                  ? (
+                      <select
+                        aria-label={`Default app for ${row.label}`}
+                        className="rounded-btn border-0 bg-ph px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11.5 text-ink"
+                        value={current}
+                        onChange={e => setFileAssociation(row.mime, e.target.value)}
+                      >
+                        {candidates.map(appId => (
+                          <option key={appId} value={appId}>{getApp(appId)?.name ?? appId}</option>
+                        ))}
+                      </select>
+                    )
+                  : <span className="text-11.5 text-ink-2">No app available</span>}
+                {overridden && (
+                  <button
+                    type="button"
+                    className="rounded-btn px-[calc(6px*var(--ui-scale))] py-[calc(2px*var(--ui-scale))] text-[calc(10.5px*var(--ui-scale))] font-medium text-ink-2 hover:bg-ph hover:text-ink"
+                    onClick={() => clearFileAssociation(row.mime)}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </ListRowItem>
+          );
+        })}
+      </ListRow>
+    </Row>
+  );
+}
+
+const STATUS_ITEM_LABELS: Record<MenuBarStatusItem, string> = {
+  offline: "Offline indicator",
+  search: "Search",
+  appearance: "Appearance toggle",
+  notifications: "Notifications",
+  clock: "Clock",
+};
+
+/** U7 — clock format/visibility and which status items appear in the menu bar. */
+function MenuBarSection() {
+  const clockHour12 = useSettingsStore(s => s.clockHour12);
+  const setClockHour12 = useSettingsStore(s => s.setClockHour12);
+  const clockShowSeconds = useSettingsStore(s => s.clockShowSeconds);
+  const setClockShowSeconds = useSettingsStore(s => s.setClockShowSeconds);
+  const clockShowDate = useSettingsStore(s => s.clockShowDate);
+  const setClockShowDate = useSettingsStore(s => s.setClockShowDate);
+  const statusItems = useSettingsStore(s => s.statusItems);
+  const setStatusItemEnabled = useSettingsStore(s => s.setStatusItemEnabled);
+
+  const statusItemIds = Object.keys(STATUS_ITEM_LABELS) as MenuBarStatusItem[];
+
+  return (
+    <>
+      <Row label="Clock format">
+        <Segmented<"12" | "24">
+          width={180}
+          value={clockHour12 ? "12" : "24"}
+          onChange={value => setClockHour12(value === "12")}
+          options={[
+            { value: "12", label: "12-hour" },
+            { value: "24", label: "24-hour" },
+          ]}
+        />
+      </Row>
+      <Row label="Show seconds">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-12/relaxed text-ink-2">Add a trailing :SS to the menu bar clock.</p>
+          <Switch checked={clockShowSeconds} onChange={setClockShowSeconds} label="Show seconds in the clock" />
+        </div>
+      </Row>
+      <Row label="Show date">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-12/relaxed text-ink-2">Show the weekday before the time.</p>
+          <Switch checked={clockShowDate} onChange={setClockShowDate} label="Show the weekday in the menu bar" />
+        </div>
+      </Row>
+      <Row label="Status items">
+        <ListRow>
+          {statusItemIds.map((item, i) => (
+            <ListRowItem key={item} index={i} length={statusItemIds.length}>
+              <span className="text-12 text-ink">{STATUS_ITEM_LABELS[item]}</span>
+              <Switch
+                checked={statusItems[item]}
+                onChange={value => setStatusItemEnabled(item, value)}
+                label={`Show ${STATUS_ITEM_LABELS[item]}`}
+              />
+            </ListRowItem>
+          ))}
+        </ListRow>
+      </Row>
+    </>
+  );
+}
+
+/** U9 — session restore, apps launched at boot, and remembered per-app window sizes. */
+function StartupSection() {
+  const restoreSessionOnBoot = useSettingsStore(s => s.restoreSessionOnBoot);
+  const setRestoreSessionOnBoot = useSettingsStore(s => s.setRestoreSessionOnBoot);
+  const startupApps = useSettingsStore(s => s.startupApps);
+  const setStartupAppEnabled = useSettingsStore(s => s.setStartupAppEnabled);
+  const defaultWindowSize = useSettingsStore(s => s.defaultWindowSize);
+  const clearDefaultWindowSize = useSettingsStore(s => s.clearDefaultWindowSize);
+
+  const rememberedSizes = Object.entries(defaultWindowSize);
+
+  return (
+    <>
+      <Row label="Session restore">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-12/relaxed text-ink-2">
+            Reopen the windows you had open the last time you quit.
+          </p>
+          <Switch
+            checked={restoreSessionOnBoot}
+            onChange={setRestoreSessionOnBoot}
+            label="Restore previous session on startup"
+          />
+        </div>
+      </Row>
+      <Row label="Open at startup">
+        <ListRow>
+          {apps.map((app, i) => (
+            <ListRowItem key={app.id} index={i} length={apps.length}>
+              <span className="text-12 text-ink">{app.name}</span>
+              <Switch
+                checked={startupApps.includes(app.id)}
+                onChange={value => setStartupAppEnabled(app.id, value)}
+                label={`Launch ${app.name} at startup`}
+              />
+            </ListRowItem>
+          ))}
+        </ListRow>
+      </Row>
+      {rememberedSizes.length > 0 && (
+        <Row label="Remembered window sizes">
+          <p className="mb-3 text-12/relaxed text-ink-2">
+            Set from an app's menu ("Remember Window Size") — that size opens
+            in place of the app's own default from then on.
+          </p>
+          <ListRow>
+            {rememberedSizes.map(([appId, size], i) => (
+              <ListRowItem key={appId} index={i} length={rememberedSizes.length}>
+                <div className="min-w-0">
+                  <div className="truncate text-12 font-medium text-ink">{getApp(appId)?.name ?? appId}</div>
+                  <div className="text-11 text-ink-2">
+                    {size.width}
+                    {" × "}
+                    {size.height}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-btn px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11 font-medium text-ink-2 hover:bg-ph hover:text-ink"
+                  onClick={() => clearDefaultWindowSize(appId)}
+                >
+                  Forget
+                </button>
+              </ListRowItem>
+            ))}
+          </ListRow>
+        </Row>
+      )}
+    </>
+  );
+}
+
+/** A single app's shortcut list for U10's Shortcuts section — filters out menu items with no `shortcut` at all. */
+function appChordDescriptors(menus: { title: string; items: { label: string; shortcut?: string }[] }[]): ChordDescriptor[] {
+  return menus.flatMap(section =>
+    section.items
+      .filter((item): item is { label: string; shortcut: string } => Boolean(item.shortcut))
+      .map(item => ({ shortcut: item.shortcut, description: item.label })),
+  );
+}
+
+function ShortcutGroup({ title, items }: { title: string; items: ChordDescriptor[] }) {
+  if (items.length === 0)
+    return null;
+  return (
+    <Row label={title}>
+      <ListRow>
+        {items.map((item, i) => (
+          <ListRowItem key={item.shortcut + item.description} index={i} length={items.length}>
+            <span className="text-12 text-ink">{item.description}</span>
+            <span className="rounded-[6px] bg-ph px-[calc(7px*var(--ui-scale))] py-[calc(2px*var(--ui-scale))] font-mono text-11 text-ink-2">
+              {formatShortcut(item.shortcut)}
+            </span>
+          </ListRowItem>
+        ))}
+      </ListRow>
+    </Row>
+  );
+}
+
+/** U10 — read-only reference listing every shortcut the shell and focused-app menus expose. Rebinding is a separate, larger item (ROADMAP.md U10). */
+function ShortcutsSection() {
+  return (
+    <>
+      <ShortcutGroup title="System" items={SHELL_CHORD_DESCRIPTIONS} />
+      <ShortcutGroup title="Window management" items={WINDOW_CHORDS} />
+      {apps.map(app => (
+        <ShortcutGroup key={app.id} title={app.name} items={appChordDescriptors(app.menus ?? [])} />
+      ))}
+    </>
+  );
+}
+
 function GeneralSection() {
   const autoEmptyTrash = useSettingsStore(s => s.autoEmptyTrash);
   const setAutoEmptyTrash = useSettingsStore(s => s.setAutoEmptyTrash);
@@ -721,6 +1055,11 @@ export default function SettingsApp() {
       <div className="min-w-0 flex-1 overflow-auto">
         {section === "appearance" && <AppearanceSection />}
         {section === "dock" && <DockSection />}
+        {section === "desktop" && <DesktopSection />}
+        {section === "defaultApps" && <DefaultAppsSection />}
+        {section === "menuBar" && <MenuBarSection />}
+        {section === "startup" && <StartupSection />}
+        {section === "shortcuts" && <ShortcutsSection />}
         {section === "general" && <GeneralSection />}
         {section === "about" && <AboutSection />}
       </div>
