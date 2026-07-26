@@ -1,8 +1,10 @@
+import type { SortSpec } from "./fsStore";
 import type { FsNode } from "./types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useNotificationStore } from "@/system/notifications/notificationStore";
 import { blobStore } from "./blobStore";
 import {
+  childIdsByParent,
   childrenOf,
   expiredTrashIds,
   indexNodes,
@@ -102,6 +104,92 @@ describe("tree helpers", () => {
     expect(uniqueChildName(api().nodes, DOCUMENTS_ID, "note.md")).toBe("note 2.md");
     expect(uniqueChildName(api().nodes, DOCUMENTS_ID, "fresh.md")).toBe("fresh.md");
   });
+
+  // T7: childrenOf was rewritten to look up childIdsByParent's index instead
+  // of scanning every node in the map. This asserts the new, index-backed
+  // implementation produces identical results to a naive full-scan
+  // reimplementation of the old behavior, across every sort key/direction —
+  // faster, not different.
+  describe("childrenOf matches a naive full-scan reimplementation (T7)", () => {
+    const DEFAULT_SORT_FOR_TEST: SortSpec = { key: "name", dir: "asc" };
+    function naiveChildrenOf(nodes: ReturnType<typeof api>["nodes"], parentId: string, sort: SortSpec = DEFAULT_SORT_FOR_TEST) {
+      return Object.values(nodes)
+        .filter(n => n.parentId === parentId)
+        .sort((a, b) => {
+          if (a.type !== b.type)
+            return a.type === "folder" ? -1 : 1;
+          const primary = sort.key === "date"
+            ? a.modifiedAt - b.modifiedAt
+            : sort.key === "kind"
+              ? (a.mimeType ?? "").localeCompare(b.mimeType ?? "", undefined, { numeric: true })
+              : a.name.localeCompare(b.name, undefined, { numeric: true });
+          const dirApplied = sort.dir === "desc" ? -primary : primary;
+          return dirApplied || a.name.localeCompare(b.name, undefined, { numeric: true });
+        });
+    }
+
+    it("for name/date/kind sort, both directions, on a mixed folder", () => {
+      const map = indexNodes([
+        node({ id: ROOT_ID, parentId: null, name: "Kagami", type: "folder" }),
+        node({ id: "f1", parentId: ROOT_ID, name: "Beta", type: "folder", modifiedAt: 10 }),
+        node({ id: "f2", parentId: ROOT_ID, name: "Alpha", type: "folder", modifiedAt: 30 }),
+        node({ id: "a", parentId: ROOT_ID, name: "a.txt", type: "file", mimeType: "text/plain", modifiedAt: 5 }),
+        node({ id: "b", parentId: ROOT_ID, name: "b.png", type: "file", mimeType: "image/png", modifiedAt: 20 }),
+        node({ id: "c", parentId: ROOT_ID, name: "c.md", type: "file", mimeType: "text/markdown", modifiedAt: 20 }),
+      ]);
+      for (const key of ["name", "date", "kind"] as const) {
+        for (const dir of ["asc", "desc"] as const) {
+          const sort = { key, dir };
+          expect(childrenOf(map, ROOT_ID, sort).map(n => n.id)).toEqual(
+            naiveChildrenOf(map, ROOT_ID, sort).map(n => n.id),
+          );
+        }
+      }
+    });
+
+    it("returns an empty array for a folder with no children", () => {
+      expect(childrenOf(api().nodes, "child")).toEqual([]);
+    });
+  });
+
+  it("childIdsByParent caches its index per `nodes` identity, invalidating when the object changes", () => {
+    const nodes = api().nodes;
+    expect(childIdsByParent(nodes)).toBe(childIdsByParent(nodes));
+    const other = { ...nodes };
+    expect(childIdsByParent(other)).not.toBe(childIdsByParent(nodes));
+  });
+
+  // T7: childrenOf's own sorted result is cached per (nodes, parentId, sort)
+  // identity, not just the parent-id index it's built from — repeat callers
+  // for the same folder/sort (Desktop.tsx, siblingNav.ts, the Terminal
+  // shell, FilesApp) share one array instead of each re-sorting.
+  describe("childrenOf caches its sorted result per (nodes, parentId, sort) (T7)", () => {
+    it("returns the same array instance for repeat calls with the same nodes/folder/sort", () => {
+      const nodes = api().nodes;
+      expect(childrenOf(nodes, DOCUMENTS_ID)).toBe(childrenOf(nodes, DOCUMENTS_ID));
+    });
+
+    it("invalidates when `nodes` identity changes", () => {
+      const nodes = api().nodes;
+      const first = childrenOf(nodes, DOCUMENTS_ID);
+      const other = { ...nodes };
+      expect(childrenOf(other, DOCUMENTS_ID)).not.toBe(first);
+      // ...but is still equal in content, since nothing actually changed.
+      expect(childrenOf(other, DOCUMENTS_ID).map(n => n.id)).toEqual(first.map(n => n.id));
+    });
+
+    it("caches per folder id — a different folder under the same `nodes` gets its own entry", () => {
+      const nodes = api().nodes;
+      expect(childrenOf(nodes, DOCUMENTS_ID)).not.toBe(childrenOf(nodes, "reports"));
+    });
+
+    it("caches per sort spec — a different sort under the same `nodes`/folder gets its own entry", () => {
+      const nodes = api().nodes;
+      const asc = childrenOf(nodes, DOCUMENTS_ID, { key: "name", dir: "asc" });
+      const desc = childrenOf(nodes, DOCUMENTS_ID, { key: "name", dir: "desc" });
+      expect(asc).not.toBe(desc);
+    });
+  });
 });
 
 describe("create + rename", () => {
@@ -180,6 +268,34 @@ describe("setFileBlob (review-backlog #11)", () => {
     await api().setFileBlob("does-not-exist", new Blob(["x"]));
     await api().setFileBlob(DOCUMENTS_ID, new Blob(["x"]));
     expect(get(DOCUMENTS_ID).type).toBe("folder");
+  });
+});
+
+describe("setLabel (U14 color labels)", () => {
+  it("sets a valid label", () => {
+    api().setLabel("note", "red");
+    expect(get("note").label).toBe("red");
+  });
+
+  it("clears a label when given undefined", () => {
+    api().setLabel("note", "red");
+    api().setLabel("note", undefined);
+    expect(get("note").label).toBeUndefined();
+  });
+
+  it("rejects an unknown label id, leaving the node unlabeled", () => {
+    api().setLabel("note", "chartreuse");
+    expect(get("note").label).toBeUndefined();
+  });
+
+  it("does not bump modifiedAt — a label is metadata, not a content change", () => {
+    const before = get("note").modifiedAt;
+    api().setLabel("note", "blue");
+    expect(get("note").modifiedAt).toBe(before);
+  });
+
+  it("no-ops on a missing node", () => {
+    expect(() => api().setLabel("does-not-exist", "red")).not.toThrow();
   });
 });
 

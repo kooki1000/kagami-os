@@ -1,7 +1,7 @@
 import type { SortSpec } from "@/system/fs/fsStore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryStorage } from "@/testUtils/memoryStorage";
-import { withoutStaleFolders } from "./viewPrefsStore";
+import { pushRecent, withoutStaleFolders, withoutStaleIds } from "./viewPrefsStore";
 
 beforeEach(() => {
   vi.resetModules();
@@ -55,5 +55,44 @@ describe("withoutStaleFolders (review-backlog #13)", () => {
 
   it("is a no-op on an already-empty map", () => {
     expect(withoutStaleFolders({}, new Set(["a"]))).toEqual({});
+  });
+});
+
+// U14: favouriteIds/recentIds are plain id lists (not per-folder maps like
+// sortByFolder), pruned by the same "drop anything with no live node" rule.
+describe("withoutStaleIds (U14 favourites/recents GC)", () => {
+  it("keeps ids that still have a live node", () => {
+    expect(withoutStaleIds(["a", "b"], new Set(["a", "b"]))).toEqual(["a", "b"]);
+  });
+
+  it("drops ids with no live node, preserving order of the survivors", () => {
+    expect(withoutStaleIds(["a", "gone", "b"], new Set(["a", "b"]))).toEqual(["a", "b"]);
+  });
+
+  it("returns the same array instance when nothing needed dropping (cheap no-op check)", () => {
+    const ids = ["a", "b"];
+    expect(withoutStaleIds(ids, new Set(["a", "b"]))).toBe(ids);
+  });
+
+  it("returns an empty array when nothing is live", () => {
+    expect(withoutStaleIds(["a"], new Set())).toEqual([]);
+  });
+});
+
+describe("pushRecent (U14 Recents ring buffer)", () => {
+  it("pushes a new id to the front", () => {
+    expect(pushRecent(["a", "b"], "c", 10)).toEqual(["c", "a", "b"]);
+  });
+
+  it("de-dupes by moving an existing id to the front instead of listing it twice", () => {
+    expect(pushRecent(["a", "b", "c"], "b", 10)).toEqual(["b", "a", "c"]);
+  });
+
+  it("caps the result at `max`, dropping the oldest entries", () => {
+    expect(pushRecent(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
+  });
+
+  it("starts an empty buffer with a single entry", () => {
+    expect(pushRecent([], "a", 5)).toEqual(["a"]);
   });
 });

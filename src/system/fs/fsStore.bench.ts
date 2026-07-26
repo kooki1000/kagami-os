@@ -1,7 +1,7 @@
 import type { NodeMap } from "./fsStore";
 import type { FsNode } from "./types";
 import { bench, describe } from "vitest";
-import { childrenOf, indexNodes, pathOf, uniqueChildName } from "./fsStore";
+import { childIdsByParent, childrenOf, indexNodes, pathOf, uniqueChildName } from "./fsStore";
 
 // Perf baseline (P9.9 / T7): the store's read helpers scan every node in the
 // map on each call, so their cost tracks total drive size, not folder size.
@@ -79,5 +79,21 @@ describe("files per-render data prep (10k folder)", () => {
     const kids = childrenOf(large.nodes, FOLDER);
     childrenOf(large.nodes, "trash");
     kids.filter(n => n.name.toLowerCase().includes("item-0001"));
+  });
+});
+
+// T7 follow-up: childrenOf now looks up childIdsByParent's index instead of
+// scanning the whole map, and the index itself is cached per `nodes`
+// identity. This isolates each half of that change: building the index cold
+// (first call for a given `nodes` object) vs. every subsequent call for the
+// same object/render, which should be near-free.
+describe("childIdsByParent index (T7 parent-id index)", () => {
+  bench("10k nodes · cold (first build for this `nodes` object)", () => {
+    // A fresh object each iteration so the cache can never hit — isolates
+    // the one-time index-build cost the old per-call scan always paid.
+    childIdsByParent({ ...large.nodes });
+  });
+  bench("10k nodes · warm (cached, as repeated callers in one render see it)", () => {
+    childIdsByParent(large.nodes);
   });
 });

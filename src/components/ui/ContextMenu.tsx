@@ -13,6 +13,8 @@ export interface ContextMenuEntry {
   dividerAfter?: boolean;
   /** Presence turns this row into an "Open With ▸"-style flyout opener. */
   children?: ContextMenuEntry[];
+  /** U14 color labels: a small color dot rendered before the label text (any CSS color). */
+  swatch?: string;
 }
 
 interface ContextMenuProps {
@@ -98,6 +100,13 @@ function EntryRow({ entry, onClose }: {
           onClose();
         }}
       >
+        {entry.swatch && (
+          <span
+            aria-hidden="true"
+            className="mr-[calc(6px*var(--ui-scale))] inline-block size-[9px] rounded-full align-middle"
+            style={{ backgroundColor: entry.swatch }}
+          />
+        )}
         {entry.label}
         {entry.children && <span className="float-right text-ink-2">▸</span>}
       </button>
