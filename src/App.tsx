@@ -123,10 +123,16 @@ export default function App() {
       const hadSession = (fresh || !restoreOnBoot) ? false : restoreSession();
 
       // First-ever boot (no session was ever saved, even an empty one):
-      // greet with the Welcome window. A session that restored to zero
+      // greet with the Welcome tour. A session that restored to zero
       // windows means the user closed everything on purpose — don't
-      // resurrect Welcome every time they do that.
-      if (useWindowStore.getState().windows.length === 0 && !hadSession) {
+      // resurrect Welcome every time they do that. `tourDismissed` (U16's
+      // "don't show this again") is a second, independent gate — it can
+      // replay later from Settings › About regardless of either check here.
+      if (
+        useWindowStore.getState().windows.length === 0
+        && !hadSession
+        && !useSettingsStore.getState().tourDismissed
+      ) {
         launchApp("welcome");
         notify({
           title: "Welcome to Kagami OS",

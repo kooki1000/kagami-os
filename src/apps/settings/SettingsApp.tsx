@@ -1,5 +1,6 @@
 import type { ChangeEvent, ReactNode } from "react";
 import type { UiScale } from "@/design/tokens";
+import type { AppWindowProps } from "@/system/apps/types";
 import type { DesktopIconSize } from "@/system/desktop/desktopLayout";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
 import type { SortKey } from "@/system/fs/fsStore";
@@ -13,6 +14,7 @@ import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { formatShortcut } from "@/lib/format";
+import { launchApp } from "@/system/apps/launch";
 import { candidateAppsForMime } from "@/system/apps/openFile";
 import { apps, getApp } from "@/system/apps/registry";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
@@ -47,6 +49,24 @@ const NAV: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "about", label: "About", icon: Info },
 ];
+
+/**
+ * Reads `{ section }` from a launch payload (used by the welcome tour to
+ * jump straight to, e.g., the accent picker) — `null` for a bare launch or
+ * anything that isn't a recognized section id.
+ */
+function payloadSection(payload: unknown): Section | null {
+  if (
+    payload
+    && typeof payload === "object"
+    && "section" in payload
+    && typeof (payload as { section: unknown }).section === "string"
+  ) {
+    const value = (payload as { section: string }).section;
+    return NAV.some(item => item.id === value) ? (value as Section) : null;
+  }
+  return null;
+}
 
 /** Divider class for a row in a hairline-bordered list — every row but the last. */
 function dividerExceptLast(index: number, length: number): string {
@@ -1015,6 +1035,14 @@ function AboutSection() {
         ))}
       </div>
 
+      <button
+        type="button"
+        className="mt-5 rounded-btn bg-ph px-[calc(12px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-11.5 font-medium text-ink hover:bg-ph-2"
+        onClick={() => launchApp("welcome")}
+      >
+        Replay Tour
+      </button>
+
       <FlagsDebug />
 
       <p className="mt-5 max-w-72 text-11.5/relaxed text-ink-2">
@@ -1025,8 +1053,20 @@ function AboutSection() {
   );
 }
 
-export default function SettingsApp() {
-  const [section, setSection] = useState<Section>("appearance");
+export default function SettingsApp({ payload }: AppWindowProps) {
+  const [section, setSection] = useState<Section>(() => payloadSection(payload) ?? "appearance");
+  // Settings is singleInstance — a re-launch (e.g. the welcome tour's "Open
+  // Settings" step) reuses this window and hands it a fresh payload object
+  // rather than remounting, so jump sections in response to that identity
+  // change instead of only reading payload once (same pattern as
+  // `usePayloadFileId` in filePayload.ts).
+  const [lastPayload, setLastPayload] = useState(payload);
+  if (payload !== lastPayload) {
+    setLastPayload(payload);
+    const next = payloadSection(payload);
+    if (next)
+      setSection(next);
+  }
 
   return (
     <div className="flex h-full min-h-0">

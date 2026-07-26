@@ -41,6 +41,13 @@ interface SettingsStore {
   uiScale: UiScale;
   /** Player's (U12) volume, persisted across tracks/windows/sessions — 0–1. */
   playerVolume: number;
+  /**
+   * "Don't show this again" (U16) — set once the welcome tour is dismissed
+   * with that box checked, so boot stops re-launching it. Replaying it later
+   * (Settings › About, or the "About Kagami OS" menu item) launches the
+   * Welcome window directly and doesn't touch this flag.
+   */
+  tourDismissed: boolean;
   // User-chosen default app per exact mime type (B11), overriding
   // openFile.ts's built-in mime-family table. Keyed on the full mime type
   // (e.g. "image/png"), not the family prefix, so a choice for PNGs doesn't
@@ -93,6 +100,7 @@ interface SettingsStore {
   setAutoEmptyTrash: (value: boolean) => void;
   setUiScale: (value: UiScale) => void;
   setPlayerVolume: (value: number) => void;
+  setTourDismissed: (value: boolean) => void;
   setFileAssociation: (mimeType: string, appId: string) => void;
   clearFileAssociation: (mimeType: string) => void;
 
@@ -142,6 +150,7 @@ export const useSettingsStore = create<SettingsStore>()(
       autoEmptyTrash: false,
       uiScale: "default",
       playerVolume: 0.8,
+      tourDismissed: false,
       fileAssociations: {},
 
       wallpaperFileId: { light: null, dark: null },
@@ -169,6 +178,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setAutoEmptyTrash: value => set({ autoEmptyTrash: value }),
       setUiScale: value => set({ uiScale: value }),
       setPlayerVolume: value => set({ playerVolume: Math.min(1, Math.max(0, value)) }),
+      setTourDismissed: value => set({ tourDismissed: value }),
       setFileAssociation: (mimeType, appId) =>
         set({ fileAssociations: { ...get().fileAssociations, [mimeType]: appId } }),
       clearFileAssociation: (mimeType) => {
