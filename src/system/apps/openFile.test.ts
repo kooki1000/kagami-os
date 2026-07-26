@@ -2,7 +2,7 @@ import type { FsNode } from "../fs/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useSettingsStore } from "../settings/settingsStore";
 import { useWindowStore } from "../windows/windowStore";
-import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp, payloadFileId } from "./openFile";
+import { appIdForFile, candidateAppsForFile, candidateAppsForMime, openFile, openFileWithApp, payloadFileId } from "./openFile";
 
 function file(partial: Partial<FsNode> & Pick<FsNode, "id" | "name">): FsNode {
   return {
@@ -38,6 +38,17 @@ describe("candidateAppsForFile (B11)", () => {
     const unknown = file({ id: "u", name: "data.bin", mimeType: "application/octet-stream" });
     expect(candidateAppsForFile(folder)).toEqual([]);
     expect(candidateAppsForFile(unknown)).toEqual([]);
+  });
+});
+
+describe("candidateAppsForMime (U5)", () => {
+  it("lists the built-in default app for a known mime family without needing a node", () => {
+    expect(candidateAppsForMime("image/png")).toEqual(["viewer"]);
+    expect(candidateAppsForMime("text/markdown")).toEqual(["notes"]);
+  });
+
+  it("is empty for a mime type with no built-in association", () => {
+    expect(candidateAppsForMime("application/octet-stream")).toEqual([]);
   });
 });
 

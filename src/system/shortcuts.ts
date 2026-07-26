@@ -19,6 +19,45 @@ const SHELL_CHORDS: Record<string, () => void> = {
   "⌘Q": () => executeCommand("app.quit"),
 };
 
+/** A chord + human-readable description, for display (U10's Shortcuts reference). */
+export interface ChordDescriptor {
+  shortcut: string;
+  description: string;
+}
+
+/**
+ * Display form of `SHELL_CHORDS` above, plus ⌘K (handled as a special case
+ * in `useGlobalShortcuts` below rather than living in the record, since it
+ * works with no focused window at all). Kept as a separate list rather than
+ * folding descriptions into `SHELL_CHORDS` itself, so that record stays the
+ * simple dispatch table it already was.
+ */
+export const SHELL_CHORD_DESCRIPTIONS: ChordDescriptor[] = [
+  { shortcut: "⌘K", description: "Open search" },
+  { shortcut: "⌘W", description: "Close the focused window" },
+  { shortcut: "⌘M", description: "Minimize the focused window" },
+  { shortcut: "⌘Q", description: "Quit the focused app" },
+];
+
+/**
+ * Display form of `windowShortcuts.ts`'s window-management chords
+ * (`isHideChord`/`arrowSnapDirection`/`isSwitcherChord`/`isAppCycleChord`) —
+ * those are matched via `KeyboardEvent.code` predicates, not menu-style
+ * chord strings, so there's nowhere else these read as plain text.
+ * Hand-transcribed to mirror the predicates exactly; keep in sync if those
+ * chords ever change.
+ */
+export const WINDOW_CHORDS: ChordDescriptor[] = [
+  { shortcut: "⌃⌥H", description: "Hide the focused app" },
+  { shortcut: "⌃⌥←", description: "Snap the focused window to the left half" },
+  { shortcut: "⌃⌥→", description: "Snap the focused window to the right half" },
+  { shortcut: "⌃⌥↑", description: "Maximize the focused window" },
+  { shortcut: "⌃⌥↓", description: "Restore the focused window to its normal size" },
+  { shortcut: "⌥Tab", description: "Open or advance the app switcher (⌃⌥Tab off Mac)" },
+  { shortcut: "⇧⌥Tab", description: "Advance the app switcher backward" },
+  { shortcut: "⌃`", description: "Cycle windows of the focused app" },
+];
+
 /** Build the menu-style chord string ("⇧⌘N") for a keydown, or null. */
 function chordFromEvent(e: KeyboardEvent): string | null {
   if (!(e.metaKey || e.ctrlKey) || e.altKey)

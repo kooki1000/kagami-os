@@ -1,5 +1,8 @@
 import type { CommandId } from "./apps/types";
 import { launchApp } from "./apps/launch";
+import { getApp } from "./apps/registry";
+import { notify } from "./notifications/notificationStore";
+import { useSettingsStore } from "./settings/settingsStore";
 import { useWindowStore } from "./windows/windowStore";
 
 /**
@@ -38,5 +41,22 @@ export function executeCommand(command: CommandId): void {
       if (focused)
         store.toggleMaximize(focused.id);
       break;
+    case "window.rememberSize": {
+      // A window mid-maximize/snap has a `rect` that reflects that mode, not
+      // a size worth remembering as the app's future default — fall back to
+      // `restoreRect` (the pre-maximize/snap bounds) whenever one exists.
+      if (!focused)
+        break;
+      const size = focused.mode === "normal" ? focused.rect : (focused.restoreRect ?? focused.rect);
+      useSettingsStore.getState().setDefaultWindowSize(focused.appId, {
+        width: size.width,
+        height: size.height,
+      });
+      notify({
+        title: "Window size remembered",
+        body: `${getApp(focused.appId)?.name ?? focused.appId} will open at this size from now on.`,
+      });
+      break;
+    }
   }
 }

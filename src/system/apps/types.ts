@@ -16,6 +16,7 @@ export type CommandId
     | "window.close"
     | "window.minimize"
     | "window.zoom"
+    | "window.rememberSize"
     | "system.about";
 
 export interface MenuItem {

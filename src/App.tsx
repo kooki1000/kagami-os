@@ -94,7 +94,10 @@ export default function App() {
         url.searchParams.delete("fresh");
         window.history.replaceState(null, "", url);
       }
-      const hadSession = fresh ? false : restoreSession();
+      // U9: restoreSessionOnBoot (default on) gates the restore call itself —
+      // off, this is exactly like `?fresh`, a boot with no prior session.
+      const restoreOnBoot = useSettingsStore.getState().restoreSessionOnBoot;
+      const hadSession = (fresh || !restoreOnBoot) ? false : restoreSession();
 
       // First-ever boot (no session was ever saved, even an empty one):
       // greet with the Welcome window. A session that restored to zero
@@ -107,6 +110,12 @@ export default function App() {
           body: "Open apps from the dock. Try ⌘W to close a window.",
         });
       }
+
+      // U9: apps the user has chosen to always launch at boot, in addition
+      // to whatever session restore brought back (empty by default, so this
+      // is a no-op for everyone who hasn't opted in).
+      for (const appId of useSettingsStore.getState().startupApps)
+        launchApp(appId);
 
       unwatch = watchSessionForSave();
     });
