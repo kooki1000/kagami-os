@@ -11,7 +11,7 @@ import { uiScaleMultipliers } from "./design/tokens";
 import { launchApp } from "./system/apps/launch";
 import { useFsStore } from "./system/fs/fsStore";
 import { notify } from "./system/notifications/notificationStore";
-import { accentById, themeVariables, wallpaperById } from "./system/settings/palettes";
+import { lookById, themeVariables } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
 import { ensureWallpaperUrl, useWallpaperUrl } from "./system/settings/wallpaperBlobUrl";
 import { useGlobalShortcuts } from "./system/shortcuts";
@@ -23,8 +23,9 @@ import { useWindowStore } from "./system/windows/windowStore";
 
 export default function App() {
   const resolved = useThemeStore(s => s.resolved);
-  const accentId = useSettingsStore(s => s.accentId);
-  const wallpaperId = useSettingsStore(s => s.wallpaperId);
+  const lookId = useSettingsStore(s => s.lookId);
+  const wallpaperStyleId = useSettingsStore(s => s.wallpaperStyleId);
+  const materialLevel = useSettingsStore(s => s.materialLevel);
   const uiScale = useSettingsStore(s => s.uiScale);
   const customAccentHex = useSettingsStore(s => s.customAccentHex);
   const wallpaperFileId = useSettingsStore(s => s.wallpaperFileId);
@@ -50,23 +51,23 @@ export default function App() {
   // re-renders once the effects above settle it.
   const customWallpaperUrl = useWallpaperUrl(resolved);
 
-  // Reflect theme + accent + wallpaper onto the document root. Inline
-  // custom properties override the static defaults in global.css, so the
-  // whole UI re-tints live when any of these change. `customAccentHex`
-  // (U2) and `customWallpaperUrl`/`wallpaperFit` (U1) layer a user override
-  // on top of the preset the same way for both.
+  // Reflect the whole appearance onto the document root. Inline custom
+  // properties override global.css's static defaults, so the UI re-tints live
+  // as any of these change; each override layers onto the chosen look the
+  // same "set wins, null inherits" way (see palettes.ts).
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = resolved;
-    const vars = themeVariables(
-      accentById(accentId),
-      wallpaperById(wallpaperId),
-      resolved,
-      { customAccentHex, customWallpaperUrl, wallpaperFit },
-    );
+    const vars = themeVariables(lookById(lookId), resolved, {
+      customAccentHex,
+      wallpaperStyleId,
+      customWallpaperUrl,
+      wallpaperFit,
+      materialLevel,
+    });
     for (const [key, value] of Object.entries(vars))
       root.style.setProperty(key, value);
-  }, [resolved, accentId, wallpaperId, customAccentHex, customWallpaperUrl, wallpaperFit]);
+  }, [resolved, lookId, wallpaperStyleId, materialLevel, customAccentHex, customWallpaperUrl, wallpaperFit]);
 
   // Interface density (U4): same inline-override mechanism as above, kept
   // as its own effect since it's an independent axis from theme/accent.

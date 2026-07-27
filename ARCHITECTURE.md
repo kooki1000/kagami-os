@@ -12,38 +12,96 @@ direction). Its values live in two places, deliberately kept in sync:
 
 - `src/styles/global.css` — CSS custom properties, using the prototype's
   variable names (`--accent`, `--accent-2`, `--ctl1/2/3`, `--wall`,
-  `--wsh1/--wsh2`, `--surface`, `--chrome`, …), themed via
-  `:root[data-theme='dark']`. A Tailwind v4 `@theme inline` block maps them
-  to utility classes (`bg-surface`, `text-ink-2`, `bg-accent`, …).
+  `--surface`, `--chrome`, …), themed via `:root[data-theme='dark']`. A
+  Tailwind v4 `@theme inline` block maps them to utility classes
+  (`bg-surface`, `text-ink-2`, `bg-accent`, …).
 - `src/design/tokens.ts` — the same values as data, for code that needs
   tokens programmatically (dock tile gradients, tests).
 
-The static defaults in `global.css` are the "Lagoon" direction. At runtime
-the Settings app can override the accent + wallpaper vars live: `App` writes
-the selected preset's `--accent/--accent-2/--ctl1-3/--wall/--wsh1/--wsh2`
-inline on `<html>` (inline vars beat the stylesheet defaults), recomputed
-whenever theme, accent, or wallpaper changes. Presets live in
-`system/settings/palettes.ts` (see Settings section below).
+The static defaults in `global.css` are the "Lagoon" direction, and only
+cover the pre-hydration paint. At runtime `App` writes the whole appearance
+inline on `<html>` (inline vars beat the stylesheet defaults), recomputed by
+`themeVariables` (`system/settings/palettes.ts`) whenever the theme, look or
+any override changes.
 
-Two further overrides layer on top of the chosen preset, same "falls through
-when unset" shape (`themeVariables`' `overrides` param, `palettes.ts`): a
-custom accent hex (`settingsStore.customAccentHex`) replaces `--accent` and
-re-derives `--accent-2`/`--ctl1-3` from it via `design/color.ts`'s
-`deriveAccentTone`; a custom wallpaper image
-(`settingsStore.wallpaperFileId`, separate per light/dark theme) replaces
-`--wall` with `url(...)` plus `--wall-size/--wall-repeat/--wall-position`
-per the chosen fit mode (`wallpaperFit`). The image's blob URL lifetime is
-owned by `system/settings/wallpaperBlobUrl.ts`, not any component — vars are
-written on `<html>` outside any mounted subtree, so nothing "owns" an
-unmount to revoke on; the module tracks one URL per theme itself and only
-revokes when that slot's file changes or is cleared.
+### One hue in, a whole environment out
+
+A **look** (`LOOKS` in `palettes.ts`) is one considered decision: an accent
+pair per theme, the window-control duotone that goes with it, and the
+wallpaper design it was composed against. Accent and wallpaper used to be two
+independently chosen preset lists, which meant most reachable combinations
+were ones nobody had ever looked at.
+
+Everything downstream of the accent pair is _derived_ in OKLCH
+(`src/design/color.ts`), which is what keeps a user-picked color from
+clashing with the desktop behind it:
+
+- `deriveAccentTone(hex)` → `--accent-2` and the `--ctl1/2/3` triad.
+- `deriveWallpaperTone(accent, accent2, theme)` → the five color roles
+  (`base`/`mid`/`wash`/`warm`/`line`) every wallpaper style paints with.
+
+Both sets of constants were solved against the hand-authored Lagoon values,
+so feeding Lagoon's own accent pair back in reproduces its original gradient
+and shape colors to within a unit or two per channel (asserted in
+`color.test.ts` and `palettes.test.ts`).
+
+### Wallpaper artwork is data
+
+`system/settings/wallpaperStyles.ts` holds the procedural library. A style is
+a pure function from a `WallpaperTone` to a list of CSS background layers;
+`wallpaperStyleVars` flattens that into `--wall`, `--wall-size`,
+`--wall-repeat` and `--wall-position` as four comma-separated lists of equal
+length, which `@utility wallpaper` reads as separate `background-*`
+longhands. Before this the artwork was fixed CSS (one gradient plus three
+blurred pseudo-element shapes) and presets could only recolor it.
+
+Three constraints on what a style may emit, all load-bearing and all
+unit-tested:
+
+- **Something in every composition resolves at pixel scale.** The first pass
+  was built entirely from gradient ramps spanning 40–70% of the viewport, so
+  the whole desktop read as out of focus. Every style now carries fine
+  repeating detail — a hairline, a zero-width stop, or a grain. Soft passages
+  are the ground beneath something sharp, never the entire surface.
+- **No viewport units** — Settings renders the same vars into small preview
+  cards, where `vmax` would size the artwork to the window instead of the card.
+- **Tiled geometry goes through `calc(Npx * var(--wall-tile, 1))`** so a
+  preview can scale ring/dot spacing down with the box, while stroke _widths_
+  add a fixed px on top (`tilePlus`) — scaling a 1px hairline by the preview's
+  0.34 would fade it out entirely.
+
+The compositions themselves, and Ember's amber/indigo pair, come from the
+"Kagami OS wallpaper design" Claude Design project.
+
+### Overrides
+
+Each layers onto the chosen look with the same "set wins, null inherits"
+shape (`themeVariables`' `overrides` param):
+
+- `customAccentHex` replaces the look's accent — and, because the wallpaper
+  tone derives from it, retints the desktop with it.
+- `wallpaperStyleId` picks a design other than the look's own.
+- `wallpaperFileId` (separate per light/dark theme) replaces `--wall`
+  entirely with `url(...)` plus `--wall-size/--wall-repeat/--wall-position`
+  per the chosen fit mode (`wallpaperFit`). The image's blob URL lifetime is
+  owned by `system/settings/wallpaperBlobUrl.ts`, not any component — vars
+  are written on `<html>` outside any mounted subtree, so nothing "owns" an
+  unmount to revoke on; the module tracks one URL per theme itself and only
+  revokes when that slot's file changes or is cleared.
+- `materialLevel` (clear/frosted/opaque) sets `--chrome`, `--chrome-2` and
+  the `--chrome-filter`/`--chrome-filter-2` backdrop filters that
+  `@utility chrome` reads. `frosted` is an exact no-op against the values
+  global.css used to hardcode; `opaque` resolves the filter to `none`, which
+  drops the backdrop compositing layer rather than blurring by zero.
 
 Binding design decisions from the prototype (do not drift toward
 macOS-typical treatments):
 
 - Window controls are **monochrome at rest**; focused windows tint them with
-  a coral + teal duotone (`--ctl1/2/3`), and hovering the control cluster
-  reveals the glyphs. Never a red/yellow/green triad, never system blue.
+  a **duotone** (`--ctl1/2/3`) — coral + teal under Lagoon, and each other
+  look's own two hues — and hovering the control cluster reveals the glyphs.
+  The triad always stays derived from one accent, never three independent
+  colors. Never a red/yellow/green triad, never system blue.
 - Dock tiles are **rounded squares** (13px) with a hover lift — no
   magnification curve, no squircles.
 - Type is Inter (via Fontsource); mono is JetBrains Mono.
@@ -302,23 +360,29 @@ engine's purity makes it unit-testable without React (phase 8).
 
 Three sections wired to live state:
 
-- **Appearance** — theme preference (`themeStore`, light/dark/auto) + accent
-  - wallpaper. Accents and wallpapers are the prototype's three complete
-    "directions" (Lagoon/Iris/Meadow), plus two more curated ones (Ember/
-    Slate), in `palettes.ts`; each carries full light/dark tones + the
-    window-control triad (accent) or shape colors (wallpaper). We expose
-    these documented presets rather than inventing partial ones, per the
-    brief's "do not invent your own palette" rule. Accent and wallpaper are
-    chosen independently (`settingsStore`). A custom accent color and a
-    custom (per-theme) wallpaper image can each override their preset — see
-    "Design tokens" above — with a non-blocking WCAG AA contrast warning
-    (`design/color.ts`'s `checkAccentContrast`) on the custom-accent picker.
-    Motion/window feel prefs live here too: `reduceMotion` (an explicit
-    override layered on `useReducedMotion`'s OS-query default, combined by
-    `useEffectiveReducedMotion`), `animationSpeed` (a multiplier
-    `Window.tsx`'s enter/minimize durations divide by), and `wallpaperDim`
-    (a scrim opacity `Desktop.tsx` renders behind its icons, separate from
-    window chrome's own glass `backdrop-filter`).
+- **Appearance** — theme preference (`themeStore`, light/dark/auto), then
+  the **look** as the primary control: three curated directions
+  (Lagoon/Ember/Slate) in `palettes.ts`, each rendered as a live desktop
+  miniature — its own wallpaper, and a window carrying its control duotone —
+  in a `radiogroup` of preview cards. Lagoon is still the prototype's values
+  verbatim; Ember and Slate are tuned to the same OKLCH lightness/chroma
+  register so all three read with the same weight.
+
+  Everything finer sits behind a collapsed **Customize** disclosure: the
+  custom accent picker (with a non-blocking WCAG AA warning from
+  `design/color.ts`'s `checkAccentContrast`), the wallpaper design picker
+  (the five procedural styles), the per-theme custom image slots with their
+  fit mode, and wallpaper dimming. Presets stay the recommended path — the
+  disclosure exists so the pane doesn't read as a wall of knobs.
+
+  Below that, the "feel" axes stay as plain rows: `materialLevel`
+  (clear/frosted/opaque chrome translucency), `uiScale`, `reduceMotion` (an
+  explicit override layered on `useReducedMotion`'s OS-query default,
+  combined by `useEffectiveReducedMotion`), and `animationSpeed` (a
+  multiplier `Window.tsx`'s enter/minimize durations divide by).
+  `wallpaperDim` is a scrim opacity `Desktop.tsx` renders behind its icons,
+  separate from window chrome's own glass `backdrop-filter`.
+
 - **Dock** — size (`DockSize` → tile px) and position (bottom/left/right);
   the `Dock` component reads both and relayouts (column vs row, hover-lift
   direction, tooltip/dot placement) from a per-position table.

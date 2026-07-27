@@ -31,10 +31,36 @@
   --dot: rgba(30, 25, 18, 0.17);
   --tile: #ffffff;
 
-  /* wallpaper — layered geometric */
-  --wall: linear-gradient(140deg, #0e8f83 0%, #17a89a 42%, #74cabf 100%);
-  --wsh1: #f2765b;
-  --wsh2: #bfe6df;
+  /* wallpaper — the "Drift" style at Lagoon's tone. Mirrors what
+     wallpaperStyleVars() writes inline on <html> once React mounts; this
+     static copy only covers the pre-hydration paint. Generated from
+     system/settings/wallpaperStyles.ts — regenerate it if Drift changes.
+     The three companion vars are theme-independent (same six layers either
+     way), so they're set once here rather than in both blocks. */
+  --wall:
+    repeating-linear-gradient(
+      140deg,
+      transparent 0 calc(26px * var(--wall-tile, 1)),
+      rgba(191, 230, 223, 0.15) calc(26px * var(--wall-tile, 1)) calc(26px * var(--wall-tile, 1) + 1px)
+    ),
+    radial-gradient(
+      41% 36% at 96% -10%,
+      transparent 0 calc(100% - 1.5px),
+      rgba(116, 202, 190, 0.62) calc(100% - 1.5px) 100%,
+      transparent 100%
+    ),
+    radial-gradient(
+      63% 56% at 96% -10%,
+      transparent 0 calc(100% - 1.5px),
+      rgba(191, 230, 223, 0.7) calc(100% - 1.5px) 100%,
+      transparent 100%
+    ),
+    radial-gradient(55% 48% at 96% -10%, #f2765b 0 100%, transparent 100%),
+    radial-gradient(54% 48% at -6% 94%, rgba(191, 230, 223, 0.42) 0%, rgba(191, 230, 223, 0.26) 40%, transparent 72%),
+    linear-gradient(140deg, #0d8f83 0%, #15a89a 42%, #74cabe 100%);
+  --wall-size: auto, auto, auto, auto, auto, auto;
+  --wall-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  --wall-position: center, center, center, center, center, center;
 
   --shadow-window: 0 8px 22px -8px rgba(0, 0, 0, 0.32);
   --shadow-window-focus: 0 30px 65px -18px rgba(0, 0, 0, 0.5), 0 6px 18px -8px rgba(0, 0, 0, 0.3);
@@ -68,9 +94,27 @@
   --dot: rgba(255, 251, 244, 0.24);
   --tile: #2e2b26;
 
-  --wall: linear-gradient(140deg, #0a3b37 0%, #0f6b62 55%, #123f3a 100%);
-  --wsh1: #e0654c;
-  --wsh2: #0e5850;
+  --wall:
+    repeating-linear-gradient(
+      140deg,
+      transparent 0 calc(26px * var(--wall-tile, 1)),
+      rgba(30, 124, 114, 0.15) calc(26px * var(--wall-tile, 1)) calc(26px * var(--wall-tile, 1) + 1px)
+    ),
+    radial-gradient(
+      41% 36% at 96% -10%,
+      transparent 0 calc(100% - 1.5px),
+      rgba(15, 107, 98, 0.62) calc(100% - 1.5px) 100%,
+      transparent 100%
+    ),
+    radial-gradient(
+      63% 56% at 96% -10%,
+      transparent 0 calc(100% - 1.5px),
+      rgba(30, 124, 114, 0.7) calc(100% - 1.5px) 100%,
+      transparent 100%
+    ),
+    radial-gradient(55% 48% at 96% -10%, #e0654b 0 100%, transparent 100%),
+    radial-gradient(54% 48% at -6% 94%, rgba(30, 124, 114, 0.42) 0%, rgba(30, 124, 114, 0.26) 40%, transparent 72%),
+    linear-gradient(140deg, #0b3b36 0%, #0d5851 42%, #0f6b62 100%);
 }
 
 @theme inline {
@@ -129,71 +173,40 @@ body {
   outline-offset: 2px;
 }
 
-/* ---- translucent chrome (menu bar / dock / flyouts) ---- */
+/* ---- translucent chrome (menu bar / dock / flyouts).
+   The tint and the filter both come from the material level (Settings ›
+   Appearance), written inline on <html> by materialVars(). The fallbacks
+   here are the "frosted" default, so the pre-hydration paint matches.
+   "Opaque" resolves --chrome-filter to `none`, which drops the backdrop
+   compositing layer outright rather than blurring by zero. ---- */
 @utility chrome {
   background: var(--chrome);
-  backdrop-filter: blur(18px) saturate(1.5);
-  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: var(--chrome-filter, blur(18px) saturate(1.5));
+  -webkit-backdrop-filter: var(--chrome-filter, blur(18px) saturate(1.5));
 }
 @utility chrome-2 {
   background: var(--chrome-2);
-  backdrop-filter: blur(22px) saturate(1.6);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  backdrop-filter: var(--chrome-filter-2, blur(22px) saturate(1.6));
+  -webkit-backdrop-filter: var(--chrome-filter-2, blur(22px) saturate(1.6));
 }
 
-/* ---- wallpaper: layered geometric artwork ---- */
+/* ---- wallpaper.
+   The artwork itself is data, not CSS: system/settings/wallpaperStyles.ts
+   composes a style's layer stack into these four vars and App.tsx writes them
+   inline on <html>. All four are comma-separated lists of the same length
+   (one entry per layer), so the longhands stay in step. Separate longhands
+   rather than the `background` shorthand so each var's fallback applies
+   independently instead of one missing var blanking the others; those
+   single-value fallbacks cover the pre-hydration paint and the custom-image
+   path (U1), where --wall is a single `url(...)` sized by the fit mode. ---- */
 @utility wallpaper {
   position: absolute;
   inset: 0;
-  /* U1: --wall-size/--wall-repeat/--wall-position are only set (by
-     themeVariables, App.tsx) once a custom wallpaper image replaces the
-     preset gradient in --wall — the "cover/no-repeat/center" fallbacks here
-     are inert for a gradient (a CSS gradient has no intrinsic size, so
-     background-size doesn't change how it renders). Separate longhands
-     (rather than the `background` shorthand) so each var's fallback applies
-     independently instead of one missing var blanking the others. */
   background-image: var(--wall);
   background-size: var(--wall-size, cover);
   background-repeat: var(--wall-repeat, no-repeat);
   background-position: var(--wall-position, center);
   overflow: hidden;
-
-  &::before {
-    content: "";
-    position: absolute;
-    width: 44vmax;
-    height: 44vmax;
-    top: -14vmax;
-    right: -8vmax;
-    background: var(--wsh1);
-    border-radius: 42% 58% 60% 40% / 45% 45% 55% 55%;
-    filter: blur(4px);
-    opacity: 0.9;
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    width: 34vmax;
-    height: 34vmax;
-    left: -10vmax;
-    bottom: 6vmax;
-    background: var(--wsh2);
-    border-radius: 6vmax;
-    transform: rotate(26deg);
-    opacity: 0.5;
-  }
-}
-@utility wallpaper-ring {
-  position: absolute;
-  width: 28vmax;
-  height: 28vmax;
-  right: 16vmax;
-  bottom: -8vmax;
-  border: 3.4vmax solid var(--wsh1);
-  border-radius: 50%;
-  opacity: 0.26;
-  filter: blur(1px);
 }
 
 /* ---- window controls: monochrome at rest, duotone + glyph on hover.

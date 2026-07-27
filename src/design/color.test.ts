@@ -3,6 +3,7 @@ import {
   checkAccentContrast,
   contrastRatio,
   deriveAccentTone,
+  deriveWallpaperTone,
   hexToOklch,
   hexToRgb,
   oklchToHex,
@@ -194,5 +195,62 @@ describe("checkAccentContrast", () => {
     expect(result.accentOnSurface).toBeLessThan(WCAG_AA_NORMAL_TEXT);
     expect(result.inkOnAccent).toBeLessThan(WCAG_AA_NORMAL_TEXT);
     expect(result.passes).toBe(false);
+  });
+});
+
+describe("deriveWallpaperTone", () => {
+  /** Lagoon's accent pair, per theme — the calibration target. */
+  const LAGOON = {
+    light: ["#0f9b8e", "#f2765b"] as const,
+    dark: ["#2fb9ab", "#ff8368"] as const,
+  };
+
+  it("reproduces Lagoon's hand-authored wallpaper colors from its accent pair", () => {
+    const light = deriveWallpaperTone(...LAGOON.light, "light");
+    expect(maxChannelDelta(light.base, "#0e8f83")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+    expect(maxChannelDelta(light.mid, "#17a89a")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+    expect(maxChannelDelta(light.wash, "#74cabf")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+    expect(light.warm).toBe("#f2765b");
+    expect(light.line).toBe("#bfe6df");
+
+    const dark = deriveWallpaperTone(...LAGOON.dark, "dark");
+    expect(maxChannelDelta(dark.base, "#0a3b37")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+    expect(maxChannelDelta(dark.mid, "#0e5850")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+    expect(maxChannelDelta(dark.wash, "#0f6b62")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+    expect(maxChannelDelta(dark.warm, "#e0654c")).toBeLessThanOrEqual(ROUND_TRIP_TOLERANCE);
+  });
+
+  it("is pure", () => {
+    expect(deriveWallpaperTone(...LAGOON.light, "light")).toEqual(deriveWallpaperTone(...LAGOON.light, "light"));
+  });
+
+  it("keeps the field legible at every hue, so desktop icon labels stay readable", () => {
+    for (let hue = 0; hue < 360; hue += 15) {
+      const accent = oklchToHex({ l: 0.61, c: 0.11, h: hue });
+      const accent2 = oklchToHex({ l: 0.70, c: 0.15, h: (hue + 210) % 360 });
+
+      // Light stays a mid-tone field, never a near-white one that white
+      // labels and the dim scrim would both struggle against.
+      const light = deriveWallpaperTone(accent, accent2, "light");
+      expect(hexToOklch(light.wash).l).toBeLessThan(0.82);
+      expect(hexToOklch(light.base).l).toBeGreaterThan(hexToOklch(accent).l - 0.1);
+
+      // Dark stays genuinely dark.
+      const dark = deriveWallpaperTone(accent, accent2, "dark");
+      expect(hexToOklch(dark.base).l).toBeLessThan(0.36);
+      expect(hexToOklch(dark.wash).l).toBeLessThan(0.52);
+    }
+  });
+
+  it("caps field chroma so a vivid accent doesn't produce a fully saturated desktop", () => {
+    const vivid = deriveWallpaperTone("#ff0090", "#00ff40", "light");
+    expect(hexToOklch(vivid.base).c).toBeLessThanOrEqual(0.13);
+    expect(hexToOklch(vivid.mid).c).toBeLessThanOrEqual(0.13);
+  });
+
+  it("orders the light field from deepest to palest", () => {
+    const tone = deriveWallpaperTone(...LAGOON.light, "light");
+    expect(hexToOklch(tone.base).l).toBeLessThan(hexToOklch(tone.mid).l);
+    expect(hexToOklch(tone.mid).l).toBeLessThan(hexToOklch(tone.wash).l);
   });
 });
