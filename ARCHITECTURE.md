@@ -341,7 +341,17 @@ focused instance without the shell knowing app internals.
   stays a read-only "too large" placeholder; at or under that it's read via
   `blobStore.get(...).then(b => b.text())` and edited normally. Inline
   rename, duplicate, reveal-in-Files, move-to-trash, and a couple of starter
-  templates (`noteTemplates.ts`) round out the context menu.
+  templates (`noteTemplates.ts`) round out the context menu. A formatting
+  toolbar (`markdownFormat.ts`, pure selection-toggle logic for bold/italic/
+  underline wrap, heading cycling, and bullet/numbered lists) edits the raw
+  markdown text in place; a Preview toggle swaps the textarea for a
+  read-only rendered view (`NotePreview.tsx` over `markdownPreview.ts`'s
+  `parseMarkdown`). The renderer recognizes only that fixed vocabulary — plus
+  a literal `<u>`/`</u>` pair for underline, matched as a string rather than
+  parsed as a tag — so it never calls `dangerouslySetInnerHTML` and needed no
+  sandboxing to ship (ROADMAP.md §6 decision 8). Format-as-you-type editing
+  (no visible markdown markers, replacing the Preview toggle) is a tracked
+  follow-up, ROADMAP.md D9.
 - **Viewer** (`src/apps/viewer/`) — multi-instance image viewer with
   zoom/fit/rotate; fit recomputes via a `ResizeObserver` on the window.
 

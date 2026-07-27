@@ -181,10 +181,15 @@ demonstrates why the native tier is worth installing.
 > written — including its account of what the decision costs, now a cost
 > being accepted rather than weighed.
 >
-> The sandbox comes **before** the apps that need it. Markdown preview and
-> PDF rendering handle untrusted content, so they land inside it as its first
-> consumers: first-party code hardens the bridge before any third-party code
-> touches it.
+> The sandbox comes **before** the apps that need it. PDF rendering handles
+> untrusted content, so it lands inside the sandbox as its first consumer,
+> hardening the bridge before any third-party code touches it. Notes'
+> markdown preview (`ROADMAP.md` D1) turned out not to need this: it shipped
+> as a closed, fixed-vocabulary renderer with no generic-HTML code path, so
+> it isn't "untrusted content" in the sense this bet worried about — see
+> `ROADMAP.md` §6 decision 8. A future format-as-you-type WYSIWYG editor for
+> Notes (`ROADMAP.md` D9) would revisit that only if its editor schema opens
+> up to raw HTML.
 
 The biggest lift, and a genuine fork in what Kagami _is_. Third-party apps
 cannot be bundled TypeScript loaded into our own React tree — they must be
@@ -316,6 +321,7 @@ records _why_ the native build is shaped the way it is.
    no LICENSE, which legally means all rights reserved. That is hygiene, not
    distribution.
 5. **How far the app suite grows.** Open. The current answer is "fill the
-   obvious holes, then stop" — markdown preview, PDF, a code editor, a few
-   small utilities. A spreadsheet or a drawing app would be a new decision;
-   §6's "coherence over sprawl" is the tie-breaker.
+   obvious holes, then stop" — markdown preview (shipped), PDF, a code
+   editor, a few small utilities, plus Notes' inline WYSIWYG (`ROADMAP.md`
+   D9) as a further refinement. A spreadsheet or a drawing app would be a new
+   decision; §6's "coherence over sprawl" is the tie-breaker.

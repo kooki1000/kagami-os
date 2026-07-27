@@ -169,16 +169,17 @@ scope and the reasoning are preserved in §3.X.1 rather than deleted.
 
 ### D. App suite
 
-| ID  | Feature                                                                                                                                                                                             | Size     | Notes                                                                                                                       |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| D1  | **Notes: Markdown preview & formatting** — split/rendered view, toolbar, task-list checkboxes; stays plain-markdown on disk                                                                         | L        | Renderer must be sandboxed/sanitized (no raw HTML injection)                                                                |
-| D2  | **Viewer: pan + gestures + slideshow** — drag-to-pan when zoomed, pinch/trackpad zoom, arrow-key prev/next within the folder, basic EXIF panel                                                      | M        | Prev/next reuses `childrenOf` on the file's parent                                                                          |
-| D3  | **Terminal: engine v2** — `cp`, `mv`, `head/tail`, `grep`, `open` (launches the associated app), `>>` append, pipes between builtins, tab completion, `..`-aware path arguments for `mkdir`/`touch` | L        | Keep the engine pure and unit-tested; completion needs a small readline layer in `TerminalApp`                              |
-| D4  | **Code/text editor app** — syntax highlighting, multi-tab, association for `.json/.ts/.css/…`                                                                                                       | L        | Evaluate CodeMirror 6 vs. a lighter highlighter under the `minimumReleaseAge` install policy                                |
-| D5  | **Media player app** — audio/video playback for uploaded files (post-B1), playlist from a folder                                                                                                    | M        | `<audio>/<video>` over Blob URLs; add mime associations                                                                     |
-| D6  | **PDF viewing** — render uploaded PDFs (pdf.js) in Viewer or a dedicated app                                                                                                                        | M        | Dependency-policy check needed                                                                                              |
-| D7  | **Small utilities** — Calculator, Clock/timer, Paint-style canvas                                                                                                                                   | S–M each | Cheap wins that exercise the manifest pattern; good first-contribution targets                                              |
-| D8  | **Third-party app SDK** — apps as sandboxed iframes with a postMessage bridge exposing a _capability-scoped_ API (fs scopes, windowing, notifications); manifest install/uninstall UI               | XL       | The long-term platform play; requires G2's sandbox model first. Everything before it should keep the manifest pattern clean |
+| ID  | Feature                                                                                                                                                                                                                                   | Size     | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | ~~**Notes: Markdown preview & formatting**~~ — ✅ shipped (step 15, 2026-07-27): toggleable rendered preview, toolbar (bold/italic/underline/heading/bullet+numbered lists), read-only task-list checkboxes; stays plain-markdown on disk | L        | Shipped **outside** the sandbox, ahead of the original 16b sequencing — safe by construction, see §6 decision 8. Any extension toward full CommonMark, links, images, or raw-HTML passthrough must go through G2 instead                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| D9  | **Notes: inline (WYSIWYG) formatting** — replace the Preview toggle with format-as-you-type editing: press Bold and the selection renders bold immediately, with no visible `**`/`#` markers at any point                                 | M        | Hand-rolled `contenteditable` isn't a reasonable bar for reliability (cursor placement, undo/redo, paste, cross-browser quirks) — this needs a real editor engine. Candidates surveyed 2026-07-27: **Milkdown** (markdown is the source of truth by design, ProseMirror-based) or **Tiptap** + its first-party `@tiptap/markdown` extension (bidirectional, MarkedJS-based, larger ecosystem/plugin catalog). Either keeps notes as plain-markdown `.md` files on disk — no storage-format migration, Files/search/templates untouched. Stays outside the sandbox only if the editor schema stays closed to raw HTML, by the same reasoning as decision 8 — re-check that before shipping |
+| D2  | **Viewer: pan + gestures + slideshow** — drag-to-pan when zoomed, pinch/trackpad zoom, arrow-key prev/next within the folder, basic EXIF panel                                                                                            | M        | Prev/next reuses `childrenOf` on the file's parent                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| D3  | **Terminal: engine v2** — `cp`, `mv`, `head/tail`, `grep`, `open` (launches the associated app), `>>` append, pipes between builtins, tab completion, `..`-aware path arguments for `mkdir`/`touch`                                       | L        | Keep the engine pure and unit-tested; completion needs a small readline layer in `TerminalApp`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D4  | **Code/text editor app** — syntax highlighting, multi-tab, association for `.json/.ts/.css/…`                                                                                                                                             | L        | Evaluate CodeMirror 6 vs. a lighter highlighter under the `minimumReleaseAge` install policy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D5  | **Media player app** — audio/video playback for uploaded files (post-B1), playlist from a folder                                                                                                                                          | M        | `<audio>/<video>` over Blob URLs; add mime associations                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D6  | **PDF viewing** — render uploaded PDFs (pdf.js) in Viewer or a dedicated app                                                                                                                                                              | M        | Dependency-policy check needed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D7  | **Small utilities** — Calculator, Clock/timer, Paint-style canvas                                                                                                                                                                         | S–M each | Cheap wins that exercise the manifest pattern; good first-contribution targets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D8  | **Third-party app SDK** — apps as sandboxed iframes with a postMessage bridge exposing a _capability-scoped_ API (fs scopes, windowing, notifications); manifest install/uninstall UI                                                     | XL       | The long-term platform play; requires G2's sandbox model first. Everything before it should keep the manifest pattern clean                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### E. Sharing & collaboration — **retired**
 
@@ -197,12 +198,12 @@ alongside area A; see §3.X.1.
 
 ### G. Security, privacy, trust
 
-| ID  | Feature                                                                                                                                                                     | Size | Notes                                                                                                                 |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------- |
-| G1  | **Security baseline** — strict CSP, no `dangerouslySetInnerHTML` anywhere (audit D1's markdown renderer), dependency audit in CI                                            | M    | ✅ largely shipped in Phase 9. The remaining work is the D1 renderer audit, which step 16b inherits                   |
-| G2  | **App sandboxing model** — iframe + capability bridge design (prerequisite for D8); even first-party "risky" renderers (markdown preview, PDF) should render in the sandbox | L    |                                                                                                                       |
-| G3  | ~~**Encryption**~~ — **retired.** With no server and no network, there is nothing in transit and no remote copy to encrypt                                                  | —    | If X.2 (BYO sync) is ever picked up, encrypting what lands in the user's chosen storage becomes a live question again |
-| G4  | **Privacy posture** — no third-party trackers; opt-in only, anonymized telemetry (H4); data export (full account → zip) and account deletion                                | M    | Data export doubles as the backup story                                                                               |
+| ID  | Feature                                                                                                                                                                                                                  | Size | Notes                                                                                                                                                                                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | **Security baseline** — strict CSP, no `dangerouslySetInnerHTML` anywhere (audit D1's markdown renderer), dependency audit in CI                                                                                         | M    | ✅ largely shipped in Phase 9. D1's shipped renderer never calls `dangerouslySetInnerHTML` and has no generic-HTML code path (§6 decision 8), so it needed no separate audit. A renderer audit is still owed if D1's scope grows (D9, or full CommonMark) — inherited by step 16b |
+| G2  | **App sandboxing model** — iframe + capability bridge design (prerequisite for D8); even first-party "risky" renderers (PDF, or a markdown renderer that isn't closed-vocabulary like D1's) should render in the sandbox | L    |                                                                                                                                                                                                                                                                                   |
+| G3  | ~~**Encryption**~~ — **retired.** With no server and no network, there is nothing in transit and no remote copy to encrypt                                                                                               | —    | If X.2 (BYO sync) is ever picked up, encrypting what lands in the user's chosen storage becomes a live question again                                                                                                                                                             |
+| G4  | **Privacy posture** — no third-party trackers; opt-in only, anonymized telemetry (H4); data export (full account → zip) and account deletion                                                                             | M    | Data export doubles as the backup story                                                                                                                                                                                                                                           |
 
 ### H. Quality: accessibility, i18n, performance, testing
 
@@ -414,9 +415,11 @@ order §3.U recommends — U1, U2, U5, U11, U12 first, because those are what a
 user meets in the first five minutes. U4 (density and text size) wants to
 land before step 16 grows the surface area it has to sweep.
 
-**Deliberately excluded:** Notes' markdown _preview_. It renders untrusted
-content and belongs inside the sandbox (R7), so it waits for step 16. The
-rest of Notes (U11) has no such dependency and shouldn't wait for it.
+**Landed ahead of schedule:** Notes' markdown preview and formatting toolbar
+(D1), originally planned to wait inside the sandbox (R7) until step 16,
+shipped here instead — safe by construction, see §6 decision 8. D9 (inline
+WYSIWYG editing) and any extension of D1 toward full CommonMark or raw HTML
+still wait for the sandbox.
 
 **Exit:** a user can set their own wallpaper and accent and the result stays
 readable; Notes searches, finds, replaces, counts words, and opens a file of
@@ -437,12 +440,14 @@ dock badges) over that same bridge. The CSP opens for `frame-src` and nothing
 else — a real change to the security posture, recorded in §6.6 and
 `DIRECTION.md` §6 rather than slipped in quietly.
 
-**16b — fill the remaining app holes (≈ 3 weeks).** D1 Notes markdown preview
-and D6 PDF viewing, both **inside** the sandbox, so first-party apps harden
-the bridge before any third-party code touches it. Then D4 (code editor with
-syntax highlighting and file associations) and D7 (Calculator, Clock, Paint),
-which need no sandbox and re-exercise the manifest pattern that step 17 has
-to carry.
+**16b — fill the remaining app holes (≈ 3 weeks).** D6 PDF viewing, inside
+the sandbox so first-party apps harden the bridge before any third-party
+code touches it — D1 Notes markdown preview shipped early in step 15
+outside it (§6 decision 8) and no longer needs this step. D9 (Notes inline
+WYSIWYG), if picked up, is re-evaluated against the sandbox requirement at
+that time. Then D4 (code editor with syntax highlighting and file
+associations) and D7 (Calculator, Clock, Paint), which need no sandbox and
+re-exercise the manifest pattern that step 17 has to carry.
 
 **Exit:** a first-party app runs sandboxed, reads only its granted scope, and
 is provably unable to reach storage, cookies, or the network; every file type
@@ -496,7 +501,7 @@ an iframe — stays out of scope; see `DIRECTION.md` §3.3.
 docs realigned (13) ──► everything else planned honestly
 review backlog (14) ──► depth work isn't built on broken foundations
 U4 density (15) ──► before step 16 doubles the surface to sweep
-G2 sandbox (16a) ──► D1 markdown · D6 PDF · D8 SDK (17)
+G2 sandbox (16a) ──► D6 PDF · D8 SDK (17) — D1 shipped independently in 15; D9 revisits this gate only if it needs raw HTML
 dep spike (14) ──► D4 editor · D6 PDF shape
 export/import (14) ──► the only answer to R1 while sync is parked
 StorageAdapter/BlobStore seam ◄── native adapter (shipped) · BYO sync (X.2)
@@ -530,8 +535,9 @@ E2EE stance) are retired with the online track — see §3.X.1.
    single-app layout later, if at all. Confirm before step 15 spends effort
    on responsive work it doesn't need.
 2. **How far the app suite grows** (D-area): the current answer is "fill the
-   obvious holes, then stop" — markdown preview, PDF, a code editor, and a
-   few small utilities (step 16b). A spreadsheet, a drawing app, or an
+   obvious holes, then stop" — markdown preview (✅ shipped, step 15), PDF, a
+   code editor, and a few small utilities (step 16b), plus Notes' inline
+   WYSIWYG (D9) as a further refinement. A spreadsheet, a drawing app, or an
    archive manager would be a new decision, not an extension of this one.
    `DIRECTION.md` §6's "coherence over sprawl" is the tie-breaker.
 3. **License** (blocks any contribution): the repository is public with no
@@ -558,6 +564,18 @@ E2EE stance) are retired with the online track — see §3.X.1.
    the native bets shipped. It is now above the line: extensibility is part
    of §2's definition of finished, and step 17 is scheduled. The consequence
    is decision 6 above.
+8. **✅ Decided (2026-07-27) — a closed-vocabulary markdown renderer doesn't
+   need G2.** R7's sandbox requirement targets renderers that can interpret
+   **arbitrary** HTML/content — a real risk for a general CommonMark-to-HTML
+   pipeline. D1's shipped preview only recognizes a fixed set of constructs
+   (bold/italic/underline/heading/bullet+numbered lists/read-only checklist)
+   with no generic tag-parsing code path at all — even a literal
+   `<script>`/`<img onerror>` in a note renders as inert text, never through
+   `dangerouslySetInnerHTML`. That structural guarantee, not the sandbox, is
+   what makes it safe pre-16a. The guardrail still applies in full to
+   anything that gains a generic-HTML or arbitrary-markup code path — D6
+   (PDF), D8 (third-party apps), and D9 (WYSIWYG) if its editor schema is
+   ever opened past that same closed vocabulary.
 
 **Design guardrails carried through all steps:** monochrome-at-rest window
 controls with the duotone focus tint (never a traffic-light triad),
@@ -582,7 +600,7 @@ Retired with the online track: the old R5 (backend cost & abuse). The old R2
 | R4  | **Step slip through underestimation.** Solo bandwidth; step 17 alone is 4–6 optimistic weeks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | High | Med  | Every step ends releasable, so slipping delays value but never strands broken work; cut scope (move items right) rather than skipping exit criteria; re-estimate at each step boundary                                                                                                                        |
 | R5  | **Customization breaks the design.** §6.5 lets users pick arbitrary accents and wallpapers — the exact thing the old guardrail forbade                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Med  | Med  | Contrast validation is part of U2's definition of done, not a follow-up; the control duotone stays derived rather than user-set; presets stay the default and the recommended path; screenshot the extremes before merging                                                                                    |
 | R6  | **Design drift toward macOS trade dress.** As features approach OS parity, each small decision pulls toward the familiar                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Med  | Med  | The guardrails block in §6 is binding; any new shell surface gets a design pass against the Lagoon prototype before merge                                                                                                                                                                                     |
-| R7  | **Sandbox escape / injected content** once markdown preview (D1), PDF (D6), or third-party apps (D8) render untrusted content. **Promoted:** this is now on the critical path, not a post-1.0 concern                                                                                                                                                                                                                                                                                                                                                                                       | Med  | High | G2 (step 16a) is a hard prerequisite for D1/D6/D8, enforced in the dependency graph; negative tests are the _point_ of 16a's exit criteria; the CSP opens for `frame-src` only, so a slip fails closed                                                                                                        |
+| R7  | **Sandbox escape / injected content** once PDF (D6) or third-party apps (D8) render untrusted content. D1's shipped preview doesn't qualify — §6 decision 8 — but D9 (WYSIWYG) or any richer D1 extension must be re-evaluated against this risk before shipping outside the sandbox. **Promoted:** this is now on the critical path, not a post-1.0 concern                                                                                                                                                                                                                                | Med  | High | G2 (step 16a) is a hard prerequisite for D6/D8 and for any D1/D9 extension past the closed vocabulary that shipped 2026-07-27, enforced in the dependency graph; negative tests are the _point_ of 16a's exit criteria; the CSP opens for `frame-src` only, so a slip fails closed                            |
 | R8  | **Test suite becomes flaky and gets ignored**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Med  | Med  | Flake budget in §9; quarantine-and-fix policy; E2E kept lean (happy paths + data-loss paths), breadth lives in unit tests                                                                                                                                                                                     |
 | R9  | **Native distribution burden** (N track) — signing, notarization, per-OS builds, and auto-update are ongoing costs the web build gives for free (`DIRECTION.md` §9.4); the built-in Browser (N4) also enlarges the attack surface                                                                                                                                                                                                                                                                                                                                                           | Med  | Med  | Deferred entirely (§3.X.3); the website stays the shippable baseline so native slipping strands nobody; the strict CSP is kept in the native build too                                                                                                                                                        |
 | R10 | **Dual-target rot** (N track) — scattered `if (native)` conditionals make the shared codebase two divergent apps in practice                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Med  | Med  | Route every native branch through one `isTauri()` gate, in one place (N2) — `DIRECTION.md` §4                                                                                                                                                                                                                 |
@@ -620,6 +638,9 @@ lint/type suppressions) are standing expectations of every step below.
 - The Player plays a 10-track folder start to finish untouched.
 - Nothing in the suite still uses browser-default form or media controls.
 - Frame time p95 < 16 ms in a 10,000-node folder after U14's view work.
+- Notes' markdown preview renders a hostile fixture (`<script>`, `<img
+onerror>`) as inert text, unit-tested, confirming D1 shipped safely outside
+  the sandbox (§6 decision 8).
 
 **Step 16 (sandbox + remaining apps)**
 
@@ -627,8 +648,10 @@ lint/type suppressions) are standing expectations of every step below.
   network — asserted by negative tests, not by inspection.
 - A capability the manifest didn't request is refused by the shell, and the
   refusal is logged rather than silent.
-- A deliberately hostile markdown/PDF fixture renders without script
-  execution and without a CSP violation.
+- A deliberately hostile PDF fixture renders without script execution and
+  without a CSP violation (D1's markdown fixture equivalent already covers
+  step 15's shipped preview; D9, if it opens the editor schema to raw HTML,
+  repeats this check before shipping).
 
 **Step 17 (app SDK)**
 
@@ -883,8 +906,10 @@ interface SavedSession {
 - **Shell integration over the same bridge:** window title updates, menu
   section declaration (reusing the `MenuSection` shape), `appCommand`
   delivery back into the iframe, dock badge/progress.
-- **First consumers are first-party:** the D1 markdown renderer and D6
-  PDF viewer render inside this sandbox before any external code does —
+- **First consumer is first-party:** the D6 PDF viewer renders inside this
+  sandbox before any external code does (D1's markdown renderer shipped
+  independently — §6 decision 8 — and only needs this if D9 opens its
+  editor schema to raw HTML) —
   the bridge gets hardened on friendly apps.
 
 ## Appendix B — Phase 9 work breakdown _(shipped)_

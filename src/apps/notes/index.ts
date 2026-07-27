@@ -32,5 +32,17 @@ export const notesApp: AppManifest = {
         { label: "Toggle Focus Mode", appCommand: "notes.focusMode", shortcut: "⇧⌘D" },
       ],
     },
+    {
+      title: "Format",
+      items: [
+        { label: "Bold", appCommand: "notes.bold", shortcut: "⌘B" },
+        { label: "Italic", appCommand: "notes.italic", shortcut: "⌘I" },
+        { label: "Underline", appCommand: "notes.underline", shortcut: "⌘U", dividerAfter: true },
+        { label: "Heading", appCommand: "notes.heading", shortcut: "⇧⌘H" },
+        { label: "Bulleted List", appCommand: "notes.bulletList", shortcut: "⇧⌘L" },
+        { label: "Numbered List", appCommand: "notes.numberList", shortcut: "⇧⌘O", dividerAfter: true },
+        { label: "Toggle Preview", appCommand: "notes.togglePreview", shortcut: "⇧⌘P" },
+      ],
+    },
   ],
 };
