@@ -121,15 +121,24 @@ Source of truth is the "Lagoon" Claude Design prototype. Values live in two
 places kept in sync: `src/styles/global.css` (CSS custom properties, themed
 via `:root[data-theme='dark']`, mapped to Tailwind utilities via `@theme
 inline`) and `src/design/tokens.ts` (same values as data for code that needs
-them programmatically). At runtime, Settings can override accent/wallpaper
-vars inline on `<html>` (inline beats stylesheet defaults) — presets live in
-`system/settings/palettes.ts`.
+them programmatically). At runtime, Settings writes the whole appearance
+inline on `<html>` (inline beats stylesheet defaults) — the curated "looks"
+live in `system/settings/palettes.ts`, the procedural wallpaper designs in
+`system/settings/wallpaperStyles.ts`.
+
+A look is one accent pair; the control duotone and the wallpaper's five tone
+roles are **derived from it** in OKLCH (`src/design/color.ts`), which is what
+stops a user-picked accent from clashing with the desktop. Don't hand-author
+colors downstream of the accent — extend the derivation, or the look table.
+Wallpaper styles must emit no viewport units (Settings previews them in small
+cards) and size tiled geometry through `var(--wall-tile)`.
 
 Binding constraints from the prototype:
 
 - Window controls are monochrome at rest; focused windows tint them with a
-  coral + teal duotone — **never** a red/yellow/green triad, **never**
-  system blue.
+  **duotone** derived from the active look's one accent (coral + teal under
+  Lagoon) — **never** three independent colors, **never** a red/yellow/green
+  triad, **never** system blue.
 - Dock tiles are rounded squares (13px) with a hover lift — no magnification
   curve, no squircles.
 - Inter (text) / JetBrains Mono (mono), via Fontsource.

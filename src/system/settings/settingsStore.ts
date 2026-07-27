@@ -1,4 +1,4 @@
-import type { WallpaperFit } from "./palettes";
+import type { MaterialLevel, WallpaperFit } from "./palettes";
 import type { UiScale } from "@/design/tokens";
 import type { ResolvedTheme } from "@/system/theme/themeStore";
 import { create } from "zustand";
@@ -6,8 +6,8 @@ import { persist } from "zustand/middleware";
 import { clamp01 } from "@/lib/math";
 import { useThemeStore } from "@/system/theme/themeStore";
 import {
-  DEFAULT_ACCENT_ID,
-  DEFAULT_WALLPAPER_ID,
+  DEFAULT_LOOK_ID,
+  DEFAULT_MATERIAL_LEVEL,
 } from "./palettes";
 
 /**
@@ -34,8 +34,12 @@ export interface WindowSize {
 }
 
 interface SettingsStore {
-  accentId: string;
-  wallpaperId: string;
+  /** The chosen curated look — accent pair, control duotone and wallpaper design in one. */
+  lookId: string;
+  /** A wallpaper design other than the look's own; `null` inherits it. */
+  wallpaperStyleId: string | null;
+  /** How much the menu bar, dock and window chrome blur what's behind them. */
+  materialLevel: MaterialLevel;
   /** Auto-empty Trash items older than 30 days on boot (default off). */
   autoEmptyTrash: boolean;
   /** Interface density (U4) — small/default/large, see design/tokens.ts. */
@@ -61,10 +65,10 @@ interface SettingsStore {
    * `null` for a theme falls through to the preset wallpaper.
    */
   wallpaperFileId: { light: string | null; dark: string | null };
-  /** U1: how a custom wallpaper image is sized/positioned — presets ignore this (they're gradients, not images). */
+  /** U1: how a custom wallpaper image is sized/positioned — procedural styles ignore this (they're gradients, not images). */
   wallpaperFit: WallpaperFit;
 
-  /** U2: a user-picked accent hex overriding the preset; `null` falls through to the preset accent. */
+  /** U2: a user-picked accent hex overriding the look's; `null` falls through to the look accent. */
   customAccentHex: string | null;
 
   /** U6: explicit reduce-motion override layered on top of the OS media query. */
@@ -96,8 +100,10 @@ interface SettingsStore {
   /** Per-app "Remember this size" override, consulted by launchApp before an app's own `defaultSize`. */
   defaultWindowSize: Record<string, WindowSize>;
 
-  setAccent: (id: string) => void;
-  setWallpaper: (id: string) => void;
+  setLook: (id: string) => void;
+  /** Overrides the look's wallpaper design; `null` goes back to inheriting it. */
+  setWallpaperStyle: (id: string | null) => void;
+  setMaterialLevel: (level: MaterialLevel) => void;
   setAutoEmptyTrash: (value: boolean) => void;
   setUiScale: (value: UiScale) => void;
   setPlayerVolume: (value: number) => void;
@@ -134,6 +140,47 @@ function clampAnimationSpeed(n: number): number {
   return Math.min(MAX_ANIMATION_SPEED, Math.max(MIN_ANIMATION_SPEED, n));
 }
 
+const SETTINGS_VERSION = 2;
+
+/**
+ * v1 stored `accentId` and `wallpaperId` as two independently chosen presets.
+ * v2 collapses them into one `lookId`. Iris and Meadow were retired in the
+ * same pass, so they map onto the nearest surviving look; the old
+ * `wallpaperId` is simply dropped, because all five v1 wallpapers were the
+ * same artwork in different colors and the color now comes from the look.
+ */
+const V1_ACCENT_TO_LOOK: Record<string, string> = {
+  lagoon: "lagoon",
+  ember: "ember",
+  slate: "slate",
+  iris: "slate",
+  meadow: "lagoon",
+};
+
+/**
+ * Migrates persisted settings across schema versions.
+ *
+ * There was no `migrate` before v2, which meant a version bump silently
+ * discarded *every* persisted setting — startup apps, file associations, dock
+ * defaults and all — not just the renamed ones. Anything older than v1
+ * predates the fields worth rescuing and is still dropped on the floor
+ * (zustand falls back to the initial state), but v1 payloads are carried
+ * across field by field.
+ */
+function migrateSettings(persisted: unknown, version: number): SettingsStore {
+  // An empty object merges to "nothing was persisted", i.e. the initial state.
+  if (version !== 1 || persisted === null || typeof persisted !== "object") {
+    return {} as SettingsStore;
+  }
+  const { accentId, wallpaperId: _wallpaperId, ...rest } = persisted as Record<string, unknown>;
+  return {
+    ...rest,
+    lookId: (typeof accentId === "string" ? V1_ACCENT_TO_LOOK[accentId] : undefined) ?? DEFAULT_LOOK_ID,
+    wallpaperStyleId: null,
+    materialLevel: DEFAULT_MATERIAL_LEVEL,
+  } as unknown as SettingsStore;
+}
+
 /**
  * User appearance + general choices. Persisted to localStorage so selections
  * survive a refresh; theme preference lives in themeStore and dock
@@ -142,8 +189,9 @@ function clampAnimationSpeed(n: number): number {
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set, get) => ({
-      accentId: DEFAULT_ACCENT_ID,
-      wallpaperId: DEFAULT_WALLPAPER_ID,
+      lookId: DEFAULT_LOOK_ID,
+      wallpaperStyleId: null,
+      materialLevel: DEFAULT_MATERIAL_LEVEL,
       autoEmptyTrash: false,
       uiScale: "default",
       playerVolume: 0.8,
@@ -166,12 +214,15 @@ export const useSettingsStore = create<SettingsStore>()(
       startupApps: [],
       defaultWindowSize: {},
 
-      // Picking a preset is a "use this instead" action — it clears whatever
-      // custom override (U1/U2) was layered on top, otherwise the preset
-      // click would appear to do nothing while the custom color/image kept
-      // winning in themeVariables.
-      setAccent: id => set({ accentId: id, customAccentHex: null }),
-      setWallpaper: id => set({ wallpaperId: id, wallpaperFileId: { light: null, dark: null } }),
+      // Picking a look is a "use this instead" action — it clears whatever
+      // custom override was layered on top, otherwise the click would appear
+      // to do nothing while the custom accent/design kept winning in
+      // themeVariables. A custom wallpaper *image* survives on purpose: it's
+      // the user's own file, not a tweak to a preset, and the fine-tune
+      // section has its own Clear for it.
+      setLook: id => set({ lookId: id, customAccentHex: null, wallpaperStyleId: null }),
+      setWallpaperStyle: id => set({ wallpaperStyleId: id }),
+      setMaterialLevel: level => set({ materialLevel: level }),
       setAutoEmptyTrash: value => set({ autoEmptyTrash: value }),
       setUiScale: value => set({ uiScale: value }),
       setPlayerVolume: value => set({ playerVolume: clamp01(value) }),
@@ -213,7 +264,7 @@ export const useSettingsStore = create<SettingsStore>()(
         set({ defaultWindowSize: rest });
       },
     }),
-    { name: "kagami-settings", version: 1 },
+    { name: "kagami-settings", version: SETTINGS_VERSION, migrate: migrateSettings },
   ),
 );
 

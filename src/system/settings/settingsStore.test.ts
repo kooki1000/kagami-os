@@ -22,22 +22,82 @@ afterEach(() => {
 describe("settingsStore persistence", () => {
   it("declares a persist version so a future shape change can migrate", async () => {
     const { useSettingsStore } = await import("./settingsStore");
-    expect(useSettingsStore.persist.getOptions().version).toBe(1);
+    expect(useSettingsStore.persist.getOptions().version).toBe(2);
   });
 
-  it("drops mismatched-version persisted data instead of applying it blindly", async () => {
+  it("drops pre-v1 persisted data instead of applying it blindly", async () => {
     localStorage.setItem(
       "kagami-settings",
       JSON.stringify({ state: { accentId: "stale-accent" }, version: 0 }),
     );
     const { useSettingsStore } = await import("./settingsStore");
-    const { DEFAULT_ACCENT_ID } = await import("./palettes");
+    const { DEFAULT_LOOK_ID } = await import("./palettes");
     await useSettingsStore.persist.rehydrate();
-    // No `migrate` is registered, so a version mismatch is discarded rather
-    // than silently adopted — the store keeps its own default instead.
-    expect(useSettingsStore.getState().accentId).toBe(DEFAULT_ACCENT_ID);
+    // v0 predates every field worth rescuing, so it's discarded rather than
+    // silently adopted — the store keeps its own defaults instead.
+    expect(useSettingsStore.getState().lookId).toBe(DEFAULT_LOOK_ID);
+  });
+});
+
+describe("v1 -> v2 migration", () => {
+  async function rehydrateV1(state: Record<string, unknown>) {
+    localStorage.setItem("kagami-settings", JSON.stringify({ state, version: 1 }));
+    const { useSettingsStore } = await import("./settingsStore");
+    await useSettingsStore.persist.rehydrate();
+    return useSettingsStore.getState();
+  }
+
+  it("collapses a v1 accent choice into the matching look", async () => {
+    expect((await rehydrateV1({ accentId: "ember", wallpaperId: "slate" })).lookId).toBe("ember");
   });
 
+  it("maps the retired iris/meadow accents onto the nearest surviving look", async () => {
+    expect((await rehydrateV1({ accentId: "iris" })).lookId).toBe("slate");
+    vi.resetModules();
+    expect((await rehydrateV1({ accentId: "meadow" })).lookId).toBe("lagoon");
+  });
+
+  it("falls back to the default look for an unrecognized v1 accent", async () => {
+    const { DEFAULT_LOOK_ID } = await import("./palettes");
+    expect((await rehydrateV1({ accentId: "nonsense" })).lookId).toBe(DEFAULT_LOOK_ID);
+  });
+
+  it("drops the separate wallpaperId and starts the new fields at their defaults", async () => {
+    const state = await rehydrateV1({ accentId: "lagoon", wallpaperId: "meadow" });
+    expect(state).not.toHaveProperty("wallpaperId");
+    expect(state.wallpaperStyleId).toBeNull();
+    expect(state.materialLevel).toBe("frosted");
+  });
+
+  it("carries every unrelated setting across — the reason it migrates rather than resets", async () => {
+    const state = await rehydrateV1({
+      accentId: "slate",
+      wallpaperId: "slate",
+      startupApps: ["notes", "files"],
+      fileAssociations: { "image/png": "viewer" },
+      wallpaperFileId: { light: "file-1", dark: null },
+      wallpaperFit: "tile",
+      customAccentHex: "#123456",
+      uiScale: "large",
+      playerVolume: 0.25,
+      wallpaperDim: 0.4,
+      restoreSessionOnBoot: false,
+      clockHour12: false,
+    });
+    expect(state.startupApps).toEqual(["notes", "files"]);
+    expect(state.fileAssociations).toEqual({ "image/png": "viewer" });
+    expect(state.wallpaperFileId).toEqual({ light: "file-1", dark: null });
+    expect(state.wallpaperFit).toBe("tile");
+    expect(state.customAccentHex).toBe("#123456");
+    expect(state.uiScale).toBe("large");
+    expect(state.playerVolume).toBe(0.25);
+    expect(state.wallpaperDim).toBe(0.4);
+    expect(state.restoreSessionOnBoot).toBe(false);
+    expect(state.clockHour12).toBe(false);
+  });
+});
+
+describe("settingsStore defaults", () => {
   it("defaults uiScale to 'default' and persists a changed value", async () => {
     const { useSettingsStore } = await import("./settingsStore");
     expect(useSettingsStore.getState().uiScale).toBe("default");
@@ -88,14 +148,13 @@ describe("u1 custom wallpaper", () => {
     expect(useSettingsStore.getState().wallpaperFileId).toEqual({ light: "file-2", dark: null });
   });
 
-  it("setWallpaper (picking a preset) clears both custom slots so the preset actually shows", async () => {
+  it("keeps a custom image when the look changes — it's the user's file, not a tweak to a preset", async () => {
     const { useSettingsStore } = await import("./settingsStore");
     useSettingsStore.getState().setWallpaperFile("light", "file-1");
     useSettingsStore.getState().setWallpaperFile("dark", "file-2");
 
-    useSettingsStore.getState().setWallpaper("iris");
-    expect(useSettingsStore.getState().wallpaperId).toBe("iris");
-    expect(useSettingsStore.getState().wallpaperFileId).toEqual({ light: null, dark: null });
+    useSettingsStore.getState().setLook("slate");
+    expect(useSettingsStore.getState().wallpaperFileId).toEqual({ light: "file-1", dark: "file-2" });
   });
 
   it("setWallpaperFromFile sets the currently resolved theme's slot", async () => {
@@ -118,14 +177,40 @@ describe("u2 custom accent", () => {
     expect(useSettingsStore.getState().customAccentHex).toBeNull();
   });
 
-  it("setAccent (picking a preset) clears a custom accent override", async () => {
+  it("setLook clears the accent and design overrides so the look actually shows", async () => {
     const { useSettingsStore } = await import("./settingsStore");
     useSettingsStore.getState().setCustomAccentHex("#123456");
-    expect(useSettingsStore.getState().customAccentHex).toBe("#123456");
+    useSettingsStore.getState().setWallpaperStyle("contour");
 
-    useSettingsStore.getState().setAccent("meadow");
-    expect(useSettingsStore.getState().accentId).toBe("meadow");
+    useSettingsStore.getState().setLook("ember");
+    expect(useSettingsStore.getState().lookId).toBe("ember");
     expect(useSettingsStore.getState().customAccentHex).toBeNull();
+    expect(useSettingsStore.getState().wallpaperStyleId).toBeNull();
+  });
+});
+
+describe("look, wallpaper design and material", () => {
+  it("starts on the default look, inheriting its design, at the frosted material", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    const { DEFAULT_LOOK_ID, DEFAULT_MATERIAL_LEVEL } = await import("./palettes");
+    expect(useSettingsStore.getState().lookId).toBe(DEFAULT_LOOK_ID);
+    expect(useSettingsStore.getState().wallpaperStyleId).toBeNull();
+    expect(useSettingsStore.getState().materialLevel).toBe(DEFAULT_MATERIAL_LEVEL);
+  });
+
+  it("setWallpaperStyle overrides the look's design, and null goes back to inheriting it", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    useSettingsStore.getState().setWallpaperStyle("aurora");
+    expect(useSettingsStore.getState().wallpaperStyleId).toBe("aurora");
+    useSettingsStore.getState().setWallpaperStyle(null);
+    expect(useSettingsStore.getState().wallpaperStyleId).toBeNull();
+  });
+
+  it("persists the material level", async () => {
+    const { useSettingsStore } = await import("./settingsStore");
+    useSettingsStore.getState().setMaterialLevel("opaque");
+    const persisted = JSON.parse(localStorage.getItem("kagami-settings") ?? "{}");
+    expect(persisted.state.materialLevel).toBe("opaque");
   });
 });
 

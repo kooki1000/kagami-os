@@ -1,14 +1,15 @@
-import type { ChangeEvent, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, ReactNode } from "react";
+import type { WallpaperTone } from "@/design/color";
 import type { UiScale } from "@/design/tokens";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { DesktopIconSize } from "@/system/desktop/desktopLayout";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
 import type { SortKey } from "@/system/fs/fsStore";
-import type { WallpaperFit } from "@/system/settings/palettes";
+import type { LookPreset, MaterialLevel, WallpaperFit } from "@/system/settings/palettes";
 import type { MenuBarStatusItem, ReduceMotionPreference } from "@/system/settings/settingsStore";
 import type { ChordDescriptor } from "@/system/shortcuts";
 import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
-import { Check, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { Switch } from "@/components/ui/Switch";
@@ -26,13 +27,14 @@ import { useFsStore } from "@/system/fs/fsStore";
 import { PICTURES_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import {
-  accentById,
-  ACCENTS,
-  accentSwatch,
-  WALLPAPERS,
+  lookById,
+  LOOKS,
+  resolveAccentTone,
+  resolveWallpaperTone,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useWallpaperUrl } from "@/system/settings/wallpaperBlobUrl";
+import { WALLPAPER_STYLES, wallpaperStyleVars } from "@/system/settings/wallpaperStyles";
 import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
@@ -119,6 +121,194 @@ function Segmented<T extends string | number>({
   );
 }
 
+/** A labelled sub-control inside a {@link Disclosure} — quieter than a `Row`. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <span className="mb-1.5 block text-11.5 text-ink-2">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A collapsed-by-default section. Appearance's fine-tuning lives behind one of
+ * these: the curated looks are the control almost everyone wants, and burying
+ * the per-axis overrides keeps the pane from reading as a wall of knobs.
+ */
+function Disclosure({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="px-5 py-4 hairline-b">
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex w-full items-center gap-1 text-12.5 font-semibold text-ink"
+        onClick={() => setOpen(value => !value)}
+      >
+        <ChevronRight
+          className={`size-[calc(13px*var(--ui-scale))] text-ink-2 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+        {label}
+      </button>
+      {open && <div className="mt-4 flex flex-col gap-4">{children}</div>}
+    </div>
+  );
+}
+
+interface PreviewOption<T> {
+  value: T;
+  label: string;
+  /** Optional second line under the label. */
+  hint?: string;
+  preview: ReactNode;
+}
+
+/**
+ * Single-select over a row of visual previews — the looks, and the wallpaper
+ * designs. A real `radiogroup` rather than a row of buttons: it's a
+ * one-of-many choice, so arrow keys should move between the options and only
+ * the selected one should be a tab stop.
+ */
+function PreviewGroup<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+  columns,
+  aspect,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: PreviewOption<T>[];
+  columns: number;
+  aspect: string;
+}) {
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // Never leave the group untabbable if `value` matches nothing.
+  const activeIndex = Math.max(0, options.findIndex(option => option.value === value));
+
+  function handleKeyDown(event: React.KeyboardEvent, index: number): void {
+    const delta = event.key === "ArrowRight" || event.key === "ArrowDown"
+      ? 1
+      : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+    if (delta === 0)
+      return;
+    event.preventDefault();
+    const next = (index + delta + options.length) % options.length;
+    onChange(options[next].value);
+    buttonRefs.current[next]?.focus();
+  }
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="grid gap-2"
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+    >
+      {options.map((option, index) => {
+        const selected = index === activeIndex && option.value === value;
+        return (
+          <button
+            key={option.value}
+            ref={(el) => { buttonRefs.current[index] = el; }}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={index === activeIndex ? 0 : -1}
+            title={option.hint ?? option.label}
+            className="group text-left"
+            onClick={() => onChange(option.value)}
+            onKeyDown={event => handleKeyDown(event, index)}
+          >
+            <div
+              className={`relative overflow-hidden rounded-[9px] transition-shadow ${aspect} ${
+                selected
+                  ? "shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]"
+                  : "hairline group-hover:shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--ph-2)]"
+              }`}
+            >
+              {option.preview}
+              {selected && (
+                <span className="absolute right-1 bottom-1 flex size-[calc(14px*var(--ui-scale))] items-center justify-center rounded-full bg-accent">
+                  <Check className="size-[calc(9px*var(--ui-scale))] text-white" strokeWidth={3.5} />
+                </span>
+              )}
+            </div>
+            <span className={`mt-1.5 block truncate text-11.5 ${selected ? "font-semibold text-ink" : "text-ink-2"}`}>
+              {option.label}
+            </span>
+            {option.hint && (
+              <span className="block truncate text-11 text-ink-2">{option.hint}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Paints a wallpaper style at preview size. `--wall-tile` shrinks the tiled
+ * geometry (Contour's rings, Halftone's dots) in proportion to the box, so a
+ * 130px-wide card shows the same design rather than one over-scaled corner of
+ * it — the reason wallpaperStyles.ts emits percentages instead of `vmax`.
+ */
+function WallpaperPreview({ styleId, tone }: { styleId: string; tone: WallpaperTone }) {
+  const vars = wallpaperStyleVars(styleId, tone);
+  return (
+    <div
+      className="absolute inset-0"
+      style={{
+        "--wall-tile": 0.34,
+        "backgroundImage": vars["--wall"],
+        "backgroundSize": vars["--wall-size"],
+        "backgroundRepeat": vars["--wall-repeat"],
+        "backgroundPosition": vars["--wall-position"],
+      } as CSSProperties}
+    />
+  );
+}
+
+/**
+ * A look's preview: the desktop it actually produces, in miniature — its
+ * wallpaper, and a window carrying its control duotone. Chrome and surface
+ * come from live vars, so the card also tracks the current theme and material.
+ */
+function LookMiniature({ look, theme, customAccentHex }: {
+  look: LookPreset;
+  theme: ResolvedTheme;
+  customAccentHex: string | null;
+}) {
+  return (
+    <>
+      <WallpaperPreview
+        styleId={look.wallpaperStyleId}
+        tone={resolveWallpaperTone(look, theme, customAccentHex)}
+      />
+      <div className="absolute inset-x-0 top-0 h-[13%] chrome" />
+      <div
+        className="absolute top-[32%] left-[16%] h-[56%] w-[66%] overflow-hidden rounded-[4px] bg-surface"
+        style={{ boxShadow: "0 3px 8px -2px rgba(0,0,0,.4)" }}
+      >
+        <div className="flex h-[26%] items-center gap-[2px] px-[3px] chrome-2">
+          {[look.controls.close, look.controls.minimize, look.controls.zoom].map(color => (
+            <span key={color} className="size-[3px] rounded-full" style={{ background: color }} />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+const MATERIAL_OPTIONS: SegmentOption<MaterialLevel>[] = [
+  { value: "clear", label: "Clear" },
+  { value: "frosted", label: "Frosted" },
+  { value: "opaque", label: "Opaque" },
+];
+
 const WALLPAPER_FIT_OPTIONS: SegmentOption<WallpaperFit>[] = [
   { value: "fill", label: "Fill" },
   { value: "fit", label: "Fit" },
@@ -148,24 +338,25 @@ const SURFACE_HEX: Record<ResolvedTheme, string> = { light: "#faf8f4", dark: "#2
 const INK_HEX: Record<ResolvedTheme, string> = { light: "#2b2925", dark: "#efece5" };
 
 /**
- * U2's picker: a native color input (styled as a round swatch, matching the
- * preset dots next to it) plus a non-blocking WCAG AA contrast warning.
- * Picking a preset (`setAccent`) clears this override in the store, so the
- * two never fight over which one's "selected".
+ * U2's picker: a native color input (styled as a round swatch) plus a
+ * non-blocking WCAG AA contrast warning. Picking a look (`setLook`) clears
+ * this override in the store, so the two never fight over which one wins.
+ * The chosen color drives the wallpaper's tones as well as the accent, so
+ * there's no way to land on a color that clashes with the desktop.
  */
 function CustomAccentPicker() {
-  const accentId = useSettingsStore(s => s.accentId);
+  const lookId = useSettingsStore(s => s.lookId);
   const customAccentHex = useSettingsStore(s => s.customAccentHex);
   const setCustomAccentHex = useSettingsStore(s => s.setCustomAccentHex);
   const resolvedTheme = useThemeStore(s => s.resolved);
 
-  const swatchHex = customAccentHex ?? accentSwatch(accentById(accentId));
+  const swatchHex = resolveAccentTone(lookById(lookId), resolvedTheme, customAccentHex).accent;
   const contrast = customAccentHex
     ? checkAccentContrast(customAccentHex, SURFACE_HEX[resolvedTheme], INK_HEX[resolvedTheme])
     : null;
 
   return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
       <input
         type="color"
         aria-label="Custom accent color"
@@ -178,14 +369,16 @@ function CustomAccentPicker() {
         value={swatchHex}
         onChange={e => setCustomAccentHex(e.target.value)}
       />
-      <span className="text-11.5 text-ink-2">Custom color</span>
+      <span className="text-11.5 text-ink-2">
+        {customAccentHex ? "Your color" : "Using the look’s color"}
+      </span>
       {customAccentHex && (
         <button
           type="button"
           className="text-11.5 font-medium text-ink-2 underline-offset-2 hover:text-ink hover:underline"
           onClick={() => setCustomAccentHex(null)}
         >
-          Reset to preset
+          Reset to look
         </button>
       )}
       {contrast && !contrast.passes && (
@@ -274,11 +467,14 @@ function CustomWallpaperSlot({ theme, label }: { theme: ResolvedTheme; label: st
 function AppearanceSection() {
   const preference = useThemeStore(s => s.preference);
   const setPreference = useThemeStore(s => s.setPreference);
-  const accentId = useSettingsStore(s => s.accentId);
-  const setAccent = useSettingsStore(s => s.setAccent);
+  const resolvedTheme = useThemeStore(s => s.resolved);
+  const lookId = useSettingsStore(s => s.lookId);
+  const setLook = useSettingsStore(s => s.setLook);
   const customAccentHex = useSettingsStore(s => s.customAccentHex);
-  const wallpaperId = useSettingsStore(s => s.wallpaperId);
-  const setWallpaper = useSettingsStore(s => s.setWallpaper);
+  const wallpaperStyleId = useSettingsStore(s => s.wallpaperStyleId);
+  const setWallpaperStyle = useSettingsStore(s => s.setWallpaperStyle);
+  const materialLevel = useSettingsStore(s => s.materialLevel);
+  const setMaterialLevel = useSettingsStore(s => s.setMaterialLevel);
   const wallpaperFit = useSettingsStore(s => s.wallpaperFit);
   const setWallpaperFit = useSettingsStore(s => s.setWallpaperFit);
   const uiScale = useSettingsStore(s => s.uiScale);
@@ -290,9 +486,16 @@ function AppearanceSection() {
   const wallpaperDim = useSettingsStore(s => s.wallpaperDim);
   const setWallpaperDim = useSettingsStore(s => s.setWallpaperDim);
 
+  const look = lookById(lookId);
+  const tone = resolveWallpaperTone(look, resolvedTheme, customAccentHex);
+  const activeStyleId = wallpaperStyleId ?? look.wallpaperStyleId;
+  // A custom image replaces the procedural artwork for whichever theme it's
+  // set on, which would otherwise make the style picker look broken.
+  const imageWins = Boolean(useWallpaperUrl(resolvedTheme));
+
   return (
     <>
-      <Row label="Appearance">
+      <Row label="Theme">
         <Segmented<ThemePreference>
           width={240}
           value={preference}
@@ -305,66 +508,88 @@ function AppearanceSection() {
         />
       </Row>
 
-      <Row label="Accent color">
-        <div className="flex gap-[calc(11px*var(--ui-scale))]">
-          {ACCENTS.map((accent) => {
-            const selected = !customAccentHex && accent.id === accentId;
-            return (
-              <button
-                key={accent.id}
-                type="button"
-                aria-label={accent.name}
-                title={accent.name}
-                className={`relative size-[calc(26px*var(--ui-scale))] rounded-full border-[1.5px] border-black/10 ${
-                  selected
-                    ? "shadow-[0_0_0_2px_var(--surface),0_0_0_4px_var(--accent)]"
-                    : ""
-                }`}
-                style={{ background: accentSwatch(accent) }}
-                onClick={() => setAccent(accent.id)}
-              >
-                {selected && (
-                  <Check className="absolute inset-0 m-auto size-[calc(14px*var(--ui-scale))] text-white" strokeWidth={3} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <CustomAccentPicker />
+      <Row label="Look">
+        <PreviewGroup<string>
+          label="Look"
+          columns={LOOKS.length}
+          aspect="aspect-[13/8]"
+          value={lookId}
+          onChange={setLook}
+          options={LOOKS.map(entry => ({
+            value: entry.id,
+            label: entry.name,
+            hint: entry.tagline,
+            preview: (
+              <LookMiniature look={entry} theme={resolvedTheme} customAccentHex={customAccentHex} />
+            ),
+          }))}
+        />
       </Row>
 
-      <Row label="Wallpaper">
-        <div className="flex gap-[calc(10px*var(--ui-scale))]">
-          {WALLPAPERS.map((wallpaper) => {
-            const selected = wallpaper.id === wallpaperId;
-            return (
-              <button
-                key={wallpaper.id}
-                type="button"
-                aria-label={wallpaper.name}
-                title={wallpaper.name}
-                className={`h-[calc(50px*var(--ui-scale))] w-[calc(78px*var(--ui-scale))] rounded-[9px] border-2 transition-shadow ${
-                  selected
-                    ? "border-accent shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_22%,transparent)]"
-                    : "border-transparent"
-                }`}
-                style={{ background: wallpaper.swatch }}
-                onClick={() => setWallpaper(wallpaper.id)}
-              />
-            );
-          })}
-        </div>
-      </Row>
+      <Disclosure label="Customize">
+        <Field label="Accent">
+          <CustomAccentPicker />
+        </Field>
 
-      <Row label="Custom wallpaper">
-        <div className="flex flex-col gap-3">
-          <CustomWallpaperSlot theme="light" label="Light" />
-          <CustomWallpaperSlot theme="dark" label="Dark" />
-          <div>
-            <span className="mb-1.5 block text-11.5 text-ink-2">Fit</span>
-            <Segmented<WallpaperFit> width={240} value={wallpaperFit} onChange={setWallpaperFit} options={WALLPAPER_FIT_OPTIONS} />
+        <Field label="Wallpaper">
+          <PreviewGroup<string>
+            label="Wallpaper design"
+            columns={WALLPAPER_STYLES.length}
+            aspect="aspect-[4/3]"
+            value={activeStyleId}
+            onChange={setWallpaperStyle}
+            options={WALLPAPER_STYLES.map(style => ({
+              value: style.id,
+              label: style.name,
+              preview: <WallpaperPreview styleId={style.id} tone={tone} />,
+            }))}
+          />
+          {imageWins && (
+            <p className="mt-2 text-11 text-ink-2">
+              Your own image is showing instead. Clear it below to see this design.
+            </p>
+          )}
+        </Field>
+
+        <Field label="Your image">
+          <div className="flex flex-col gap-3">
+            <CustomWallpaperSlot theme="light" label="Light" />
+            <CustomWallpaperSlot theme="dark" label="Dark" />
+            <div>
+              <span className="mb-1.5 block text-11.5 text-ink-2">Fit</span>
+              <Segmented<WallpaperFit> width={240} value={wallpaperFit} onChange={setWallpaperFit} options={WALLPAPER_FIT_OPTIONS} />
+            </div>
           </div>
-        </div>
+        </Field>
+
+        <Field label="Dimming">
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={wallpaperDim}
+              aria-label="Wallpaper dimming"
+              style={{ accentColor: "var(--accent)" }}
+              className="h-1 w-[200px]"
+              onChange={e => setWallpaperDim(Number(e.target.value))}
+            />
+            <span className="w-9 text-11.5 text-ink-2 tabular-nums">
+              {Math.round(wallpaperDim * 100)}
+              %
+            </span>
+          </div>
+        </Field>
+      </Disclosure>
+
+      <Row label="Material">
+        <Segmented<MaterialLevel>
+          width={240}
+          value={materialLevel}
+          onChange={setMaterialLevel}
+          options={MATERIAL_OPTIONS}
+        />
       </Row>
 
       <Row label="Interface density">
@@ -396,26 +621,6 @@ function AppearanceSection() {
           onChange={setAnimationSpeed}
           options={ANIMATION_SPEED_OPTIONS}
         />
-      </Row>
-
-      <Row label="Wallpaper dimming">
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={wallpaperDim}
-            aria-label="Wallpaper dimming"
-            style={{ accentColor: "var(--accent)" }}
-            className="h-1 w-[200px]"
-            onChange={e => setWallpaperDim(Number(e.target.value))}
-          />
-          <span className="w-9 text-11.5 text-ink-2 tabular-nums">
-            {Math.round(wallpaperDim * 100)}
-            %
-          </span>
-        </div>
       </Row>
     </>
   );

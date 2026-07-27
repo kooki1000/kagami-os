@@ -282,8 +282,6 @@ export function Desktop() {
         setMenu({ x: e.clientX, y: e.clientY, node: null });
       }}
     >
-      <div className="wallpaper-ring" />
-
       {/* U6: a scrim between the wallpaper and the window layer, separate
           from window chrome's own glass `backdrop-filter` — dims the
           wallpaper (and desktop icons sitting on it) so focused windows

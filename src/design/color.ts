@@ -287,6 +287,102 @@ function normalizeHue(h: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Derived wallpaper tone
+// ---------------------------------------------------------------------------
+
+/**
+ * The five color roles every procedural wallpaper style composes from. Slot
+ * names are roles in the artwork, not a strict lightness ramp — `base`/`mid`/
+ * `wash` are the three field stops (ascending lightness within a theme),
+ * `warm` is the single saturated mass, `line` is the ink used for contour
+ * rings and halftone dots.
+ */
+export interface WallpaperTone {
+  base: string;
+  mid: string;
+  wash: string;
+  warm: string;
+  line: string;
+}
+
+/**
+ * Chroma ceiling for the three field stops. The field covers the whole
+ * screen, so a high-chroma accent must not drag it into a fully saturated
+ * backdrop — Lagoon's own field peaks at C 0.113, so this only bites for
+ * accents more vivid than the presets.
+ */
+const FIELD_CHROMA_MAX = 0.125;
+
+/**
+ * Field-stop offsets from the accent, per theme. Light runs the field
+ * `lighter` than the accent (a pale wash in the far corner); dark runs it far
+ * darker, since the wallpaper has to sit behind light window chrome either
+ * way.
+ */
+const FIELD_TARGETS: Record<"light" | "dark", Record<"base" | "mid" | "wash" | "line", { dl: number; dc: number }>> = {
+  light: {
+    base: { dl: -0.035, dc: -0.006 },
+    mid: { dl: +0.039, dc: +0.006 },
+    wash: { dl: +0.161, dc: -0.022 },
+    line: { dl: +0.274, dc: -0.066 },
+  },
+  dark: {
+    base: { dl: -0.392, dc: -0.065 },
+    mid: { dl: -0.296, dc: -0.046 },
+    wash: { dl: -0.235, dc: -0.035 },
+    line: { dl: -0.180, dc: -0.030 },
+  },
+};
+
+/** `warm` is the accent2 tone itself in light, and a deepened one in dark. */
+const WARM_TARGETS: Record<"light" | "dark", { dl: number; dc: number }> = {
+  light: { dl: 0, dc: 0 },
+  dark: { dl: -0.091, dc: +0.003 },
+};
+
+/**
+ * Derives a wallpaper's five color roles from the accent pair that is already
+ * driving the rest of the shell — field stops ride the accent hue, the `warm`
+ * mass rides the accent2 hue. This is what keeps a user-picked accent from
+ * clashing with the desktop behind it: one hue in, a whole coherent
+ * environment out.
+ *
+ * Every constant above was solved against the hand-authored "Lagoon"
+ * wallpaper (the same calibration approach as {@link deriveAccentTone}), so
+ * feeding Lagoon's own accent pair back in reproduces its original gradient
+ * and shape colors to within a unit or two per channel — see color.test.ts.
+ */
+export function deriveWallpaperTone(
+  accentHex: string,
+  accent2Hex: string,
+  theme: "light" | "dark",
+): WallpaperTone {
+  const accent = hexToOklch(accentHex);
+  const accent2 = hexToOklch(accent2Hex);
+
+  const field = (target: { dl: number; dc: number }): string => oklchToHex({
+    l: clamp01(accent.l + target.dl),
+    c: Math.max(0, Math.min(FIELD_CHROMA_MAX, accent.c + target.dc)),
+    h: accent.h,
+  });
+
+  const targets = FIELD_TARGETS[theme];
+  const warmTarget = WARM_TARGETS[theme];
+
+  return {
+    base: field(targets.base),
+    mid: field(targets.mid),
+    wash: field(targets.wash),
+    line: field(targets.line),
+    warm: oklchToHex({
+      l: clamp01(accent2.l + warmTarget.dl),
+      c: Math.max(0, accent2.c + warmTarget.dc),
+      h: accent2.h,
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Contrast check for a candidate accent (U2's picker warning, not a block)
 // ---------------------------------------------------------------------------
 

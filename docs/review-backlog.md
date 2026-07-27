@@ -425,6 +425,14 @@ set); it broke the size contract.
 as `dockStore.ts` already did. No `migrate` function yet — this just gives a
 future shape change somewhere to hang one.
 
+**Follow-up, step 15** (`feat/appearance-looks`). The latent half of this bit
+as predicted: `settingsStore` needed a real shape change (`accentId` +
+`wallpaperId` → `lookId`), and bumping to `version: 2` with no `migrate`
+would have silently discarded _every_ persisted setting — startup apps, file
+associations, dock defaults — not just the renamed ones. It now carries a
+`migrate` that maps v1 field by field. `viewPrefsStore` and `themeStore`
+still have the hook and no function; same trap is still open for them.
+
 **LOW (latent) · `settingsStore.ts:47`, `viewPrefsStore.ts:26`, `themeStore.ts:43`**
 
 None declares a `version`, so there is no migration hook when a shape changes.
