@@ -1,9 +1,8 @@
 /**
- * Pure text-transform logic behind Notes' formatting toolbar (U15). The
- * editor is a plain `<textarea>` — these functions take its current text and
- * selection range and return new text plus a new selection range, so the
- * caller (NotesApp.tsx) just applies both back to the DOM node. No markdown
- * is ever parsed here; each function only knows the one syntax it toggles.
+ * Pure text-transform logic behind Notes' formatting toolbar. Operates on
+ * raw text + selection ranges, not a markdown AST — the editor is a plain
+ * `<textarea>` with no rich-formatting API, so callers apply the returned
+ * text/selection straight back to the DOM node.
  */
 
 export interface TextEdit {
@@ -15,8 +14,7 @@ export interface TextEdit {
 /**
  * Wrap the selection in `open`/`close` (bold `**`, italic `*`, underline
  * `<u>`/`</u>`), or unwrap it if the selection is already exactly wrapped.
- * An empty selection inserts an empty pair with the cursor left between them
- * (type-as-you-go, like a GitHub comment box's toolbar).
+ * An empty selection inserts an empty pair with the cursor placed between them.
  */
 export function toggleInlineWrap(text: string, selectionStart: number, selectionEnd: number, open: string, close: string): TextEdit {
   const selected = text.slice(selectionStart, selectionEnd);
@@ -47,19 +45,27 @@ export function toggleInlineWrap(text: string, selectionStart: number, selection
   };
 }
 
+// Mirrors markdownPreview.ts's HEADING_RE — kept separate since this one is
+// used with String.replace to strip the prefix, not to extract the rest of
+// the line.
 const HEADING_RE = /^(#{1,3}) /;
 
-/** Every line index range `[start, end)` (line indices) touched by a selection. */
-function coveredLineRange(lines: string[], selectionStart: number, selectionEnd: number): [number, number] {
+/**
+ * Every line index range `[first, last]` (inclusive) touched by a selection,
+ * plus the character offset where `first` starts in the joined text.
+ */
+function coveredLineRange(lines: string[], selectionStart: number, selectionEnd: number): [first: number, last: number, firstLineStart: number] {
   let offset = 0;
   let first = 0;
   let last = lines.length - 1;
+  let firstLineStart = 0;
   let foundFirst = false;
   for (let i = 0; i < lines.length; i++) {
     const lineStart = offset;
     const lineEnd = offset + lines[i].length;
     if (!foundFirst && selectionStart <= lineEnd) {
       first = i;
+      firstLineStart = lineStart;
       foundFirst = true;
     }
     if (selectionEnd >= lineStart && selectionEnd <= lineEnd + 1) {
@@ -70,7 +76,42 @@ function coveredLineRange(lines: string[], selectionStart: number, selectionEnd:
     }
     offset = lineEnd + 1; // +1 for the newline
   }
-  return [first, Math.max(first, last)];
+  return [first, Math.max(first, last), firstLineStart];
+}
+
+/**
+ * Applies `transform` to every line in `[first, last]` (skipping blank lines
+ * when `skipBlank`), then shifts the selection by however much each line's
+ * length changed — the shared shape behind `toggleHeadingLine` and
+ * `toggleListPrefix` below.
+ */
+function applyLineTransform(
+  lines: string[],
+  first: number,
+  last: number,
+  firstLineStart: number,
+  selectionStart: number,
+  selectionEnd: number,
+  transform: (line: string) => string,
+  skipBlank: boolean,
+): TextEdit {
+  let delta = 0;
+  let startDelta = 0;
+  for (let i = first; i <= last; i++) {
+    if (skipBlank && lines[i].trim() === "")
+      continue;
+    const before = lines[i].length;
+    lines[i] = transform(lines[i]);
+    const change = lines[i].length - before;
+    delta += change;
+    if (i === first)
+      startDelta = change;
+  }
+  return {
+    text: lines.join("\n"),
+    selectionStart: selectionStart + (selectionStart > firstLineStart ? startDelta : 0),
+    selectionEnd: selectionEnd + delta,
+  };
 }
 
 /**
@@ -79,41 +120,18 @@ function coveredLineRange(lines: string[], selectionStart: number, selectionEnd:
  */
 export function toggleHeadingLine(text: string, selectionStart: number, selectionEnd: number): TextEdit {
   const lines = text.split("\n");
-  const [first, last] = coveredLineRange(lines, selectionStart, selectionEnd);
+  const [first, last, firstLineStart] = coveredLineRange(lines, selectionStart, selectionEnd);
 
   const currentLevel = HEADING_RE.exec(lines[first])?.[1].length ?? 0;
   const nextLevel = (currentLevel + 1) % 4;
   const nextPrefix = nextLevel > 0 ? `${"#".repeat(nextLevel)} ` : "";
-  const firstLineStart = lineOffset(lines, first);
 
-  let delta = 0;
-  let startDelta = 0;
-  for (let i = first; i <= last; i++) {
-    const stripped = lines[i].replace(HEADING_RE, "");
-    const before = lines[i].length;
-    lines[i] = nextPrefix + stripped;
-    const change = lines[i].length - before;
-    delta += change;
-    if (i === first)
-      startDelta = change;
-  }
-
-  const newText = lines.join("\n");
-  return {
-    text: newText,
-    selectionStart: selectionStart + (selectionStart > firstLineStart ? startDelta : 0),
-    selectionEnd: selectionEnd + delta,
-  };
+  return applyLineTransform(lines, first, last, firstLineStart, selectionStart, selectionEnd, line => nextPrefix + line.replace(HEADING_RE, ""), false);
 }
 
-/** Character offset where line `index` starts, in the joined (`\n`-separated) text. */
-function lineOffset(lines: string[], index: number): number {
-  let offset = 0;
-  for (let i = 0; i < index; i++)
-    offset += lines[i].length + 1;
-  return offset;
-}
-
+// Mirror markdownPreview.ts's BULLET_LIST_RE/NUMBER_LIST_RE — kept separate
+// since toggling off needs the `([ \t]*)` capture group to preserve
+// indentation, which the preview side's plain content-extraction doesn't.
 const BULLET_RE = /^([ \t]*)[-*] /;
 const NUMBER_RE = /^([ \t]*)\d+\. /;
 
@@ -130,29 +148,10 @@ export function toggleNumberList(text: string, selectionStart: number, selection
 
 function toggleListPrefix(text: string, selectionStart: number, selectionEnd: number, prefixRe: RegExp, makePrefix: () => string): TextEdit {
   const lines = text.split("\n");
-  const [first, last] = coveredLineRange(lines, selectionStart, selectionEnd);
+  const [first, last, firstLineStart] = coveredLineRange(lines, selectionStart, selectionEnd);
 
   const touched = lines.slice(first, last + 1).filter(l => l.trim() !== "");
   const allPrefixed = touched.length > 0 && touched.every(l => prefixRe.test(l));
 
-  let delta = 0;
-  let startDelta = 0;
-  for (let i = first; i <= last; i++) {
-    if (lines[i].trim() === "")
-      continue;
-    const before = lines[i].length;
-    lines[i] = allPrefixed ? lines[i].replace(prefixRe, "$1") : makePrefix() + lines[i];
-    const change = lines[i].length - before;
-    delta += change;
-    if (i === first)
-      startDelta = change;
-  }
-
-  const newText = lines.join("\n");
-  const firstLineStart = lineOffset(lines, first);
-  return {
-    text: newText,
-    selectionStart: selectionStart + (selectionStart > firstLineStart ? startDelta : 0),
-    selectionEnd: selectionEnd + delta,
-  };
+  return applyLineTransform(lines, first, last, firstLineStart, selectionStart, selectionEnd, line => allPrefixed ? line.replace(prefixRe, "$1") : makePrefix() + line, true);
 }

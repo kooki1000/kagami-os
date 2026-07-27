@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Block, InlineSegment, ListItem } from "./markdownPreview";
 import { Square, SquareCheck } from "lucide-react";
 import { Fragment, useMemo } from "react";
@@ -22,23 +23,31 @@ function InlineRun({ segments }: { segments: InlineSegment[] }) {
   );
 }
 
+/** One `<li>` of a bullet/numbered/checklist item — the shared row shape behind all three marker styles. */
+function ListRow({ marker, children }: { marker: ReactNode; children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-1.5">
+      {marker}
+      {children}
+    </li>
+  );
+}
+
 function BulletItem({ item }: { item: ListItem }) {
   if (item.checked !== undefined) {
     const Icon = item.checked ? SquareCheck : Square;
     return (
-      <li className="flex items-start gap-1.5">
-        <Icon className={`mt-[3px] size-3.5 flex-none ${item.checked ? "text-accent" : "text-ink-2"}`} />
+      <ListRow marker={<Icon className={`mt-[3px] size-3.5 flex-none ${item.checked ? "text-accent" : "text-ink-2"}`} />}>
         <span className={item.checked ? "text-ink-2 line-through" : ""}>
           <InlineRun segments={item.segments} />
         </span>
-      </li>
+      </ListRow>
     );
   }
   return (
-    <li className="flex items-start gap-1.5">
-      <span className="mt-[9px] size-1 flex-none rounded-full bg-ink-2" />
+    <ListRow marker={<span className="mt-[9px] size-1 flex-none rounded-full bg-ink-2" />}>
       <span><InlineRun segments={item.segments} /></span>
-    </li>
+    </ListRow>
   );
 }
 
@@ -79,13 +88,9 @@ function BlockView({ block }: { block: Block }) {
       return (
         <ol className="mb-3 space-y-1 text-ink last:mb-0">
           {block.items.map((item, i) => (
-            <li key={i} className="flex items-start gap-1.5">
-              <span className="text-ink-2 tabular-nums">
-                {i + 1}
-                .
-              </span>
+            <ListRow key={i} marker={<span className="text-ink-2 tabular-nums">{`${i + 1}.`}</span>}>
               <span><InlineRun segments={item.segments} /></span>
-            </li>
+            </ListRow>
           ))}
         </ol>
       );

@@ -1,13 +1,9 @@
 /**
- * Pure parser behind Notes' rendered Preview mode (U15). Recognizes only the
- * handful of constructs the formatting toolbar can produce — headings (H1-3),
- * bold/italic/underline, bullet/numbered lists, and the `- [ ]`/`- [x]`
- * checklist syntax the note templates already write. Deliberately not a full
- * CommonMark implementation (no links, code, tables, nesting/combined
- * styles) and never touches a generic HTML parser: the only "HTML" it
- * recognizes is the literal `<u>`/`</u>` pair, matched the same way `**` is —
- * so there's no arbitrary-tag surface to sanitize against. Output is a plain
- * data structure, rendered to JSX by NotePreview.tsx.
+ * Pure parser behind Notes' rendered Preview mode: headings, bold/italic/
+ * underline, bullet/numbered lists, and checklist items — not full
+ * CommonMark. `<u>`/`</u>` is matched as a literal string, the same way
+ * `**` is, never a generic HTML tag parse (see ARCHITECTURE.md's Notes
+ * entry). Output is data, rendered to JSX by NotePreview.tsx.
  */
 
 export type InlineSegment
@@ -33,12 +29,17 @@ const CHECKLIST_RE = /^[-*] \[([ x])\] (.*)$/i;
 const BULLET_LIST_RE = /^[-*] (.*)$/;
 const NUMBER_LIST_RE = /^\d+\. (.*)$/;
 
+// Reused across calls in the exec loop below; always run to exhaustion
+// (never `break` early), so `lastIndex` is already 0 by the time a call
+// returns — the explicit reset just makes that safe against future changes.
+const INLINE_RE = /\*\*(.+?)\*\*|<u>(.+?)<\/u>|\*(.+?)\*/g;
+
 /** Splits `line` into styled/plain runs. `**bold**`, `*italic*`, `<u>underline</u>` — no nesting or combining. */
 export function parseInline(line: string): InlineSegment[] {
-  const inlineRe = /\*\*(.+?)\*\*|<u>(.+?)<\/u>|\*(.+?)\*/g;
+  INLINE_RE.lastIndex = 0;
   const segments: InlineSegment[] = [];
   let cursor = 0;
-  let match = inlineRe.exec(line);
+  let match = INLINE_RE.exec(line);
   while (match !== null) {
     if (match.index > cursor)
       segments.push({ type: "text", content: line.slice(cursor, match.index) });
@@ -49,7 +50,7 @@ export function parseInline(line: string): InlineSegment[] {
     else
       segments.push({ type: "italic", content: match[3] });
     cursor = match.index + match[0].length;
-    match = inlineRe.exec(line);
+    match = INLINE_RE.exec(line);
   }
   if (cursor < line.length)
     segments.push({ type: "text", content: line.slice(cursor) });
@@ -64,6 +65,25 @@ function matchListLine(line: string): { checked?: boolean; rest: string } | null
   if (bullet)
     return { rest: bullet[1] };
   return null;
+}
+
+function matchNumberLine(line: string): { rest: string } | null {
+  const numbered = NUMBER_LIST_RE.exec(line);
+  return numbered ? { rest: numbered[1] } : null;
+}
+
+/** Collects consecutive lines matched by `match`, starting at `start` — the shared shape behind both list block types below. */
+function collectListItems(lines: string[], start: number, match: (line: string) => { checked?: boolean; rest: string } | null): { items: ListItem[]; next: number } {
+  const items: ListItem[] = [];
+  let i = start;
+  while (i < lines.length) {
+    const m = match(lines[i]);
+    if (!m)
+      break;
+    items.push({ segments: parseInline(m.rest), checked: m.checked });
+    i++;
+  }
+  return { items, next: i };
 }
 
 function isSpecialLine(line: string): boolean {
@@ -92,29 +112,16 @@ export function parseMarkdown(text: string): Block[] {
     }
 
     if (matchListLine(line)) {
-      const items: ListItem[] = [];
-      while (i < lines.length) {
-        const m = matchListLine(lines[i]);
-        if (!m)
-          break;
-        items.push({ segments: parseInline(m.rest), checked: m.checked });
-        i++;
-      }
+      const { items, next } = collectListItems(lines, i, matchListLine);
       blocks.push({ type: "bulletList", items });
+      i = next;
       continue;
     }
 
-    const numbered = NUMBER_LIST_RE.exec(line);
-    if (numbered) {
-      const items: ListItem[] = [];
-      while (i < lines.length) {
-        const m = NUMBER_LIST_RE.exec(lines[i]);
-        if (!m)
-          break;
-        items.push({ segments: parseInline(m[1]) });
-        i++;
-      }
+    if (NUMBER_LIST_RE.test(line)) {
+      const { items, next } = collectListItems(lines, i, matchNumberLine);
       blocks.push({ type: "numberList", items });
+      i = next;
       continue;
     }
 

@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import type { TextEdit } from "./markdownFormat";
 import type { NotesSortKey } from "./notesFilter";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
@@ -77,6 +78,25 @@ const SORT_LABELS: Record<NotesSortKey, string> = {
 };
 
 type BlobTextStatus = "none" | "loading" | "ready" | "toolarge" | "missing";
+
+/** The formatting toolbar's buttons — also looked up by `appCommand` for the Format menu's shortcuts (index.ts). */
+const FORMAT_ITEMS: {
+  command: string;
+  label: string;
+  title: string;
+  Icon: typeof Bold;
+  format: (text: string, selectionStart: number, selectionEnd: number) => TextEdit;
+}[] = [
+  { command: "notes.bold", label: "Bold", title: "Bold (⌘B)", Icon: Bold, format: (t, s, e) => toggleInlineWrap(t, s, e, "**", "**") },
+  { command: "notes.italic", label: "Italic", title: "Italic (⌘I)", Icon: Italic, format: (t, s, e) => toggleInlineWrap(t, s, e, "*", "*") },
+  { command: "notes.underline", label: "Underline", title: "Underline (⌘U)", Icon: Underline, format: (t, s, e) => toggleInlineWrap(t, s, e, "<u>", "</u>") },
+  { command: "notes.heading", label: "Heading", title: "Cycle heading level (⇧⌘H)", Icon: Heading, format: toggleHeadingLine },
+  { command: "notes.bulletList", label: "Bulleted list", title: "Bulleted list (⇧⌘L)", Icon: List, format: toggleBulletList },
+  { command: "notes.numberList", label: "Numbered list", title: "Numbered list (⇧⌘O)", Icon: ListOrdered, format: toggleNumberList },
+];
+
+/** Find/replace act on the textarea's DOM selection, which doesn't exist while Preview is showing. */
+const FIND_COMMANDS = new Set(["notes.find", "notes.findNext", "notes.findPrev"]);
 
 function NoteEditor({
   doc,
@@ -248,7 +268,7 @@ function NoteEditor({
   // Restore the textarea's selection after a formatting edit, once the new
   // `draft` has committed and re-rendered — same rAF-after-state-change
   // pattern `openFind` above already uses for `findInputRef`.
-  function applyFormat(fn: (text: string, start: number, end: number) => { text: string; selectionStart: number; selectionEnd: number }): void {
+  function applyFormat(fn: (text: string, start: number, end: number) => TextEdit): void {
     const el = textareaRef.current;
     if (!el)
       return;
@@ -266,36 +286,25 @@ function NoteEditor({
   useAppCommand(windowId, (command) => {
     if (!editable)
       return;
+
+    const formatItem = FORMAT_ITEMS.find(item => item.command === command);
+    if (formatItem) {
+      applyFormat(formatItem.format);
+      return;
+    }
+
+    if (FIND_COMMANDS.has(command))
+      setPreviewMode(false);
+
     switch (command) {
       case "notes.find":
-        setPreviewMode(false);
         openFind();
         break;
       case "notes.findNext":
-        setPreviewMode(false);
         jump(1);
         break;
       case "notes.findPrev":
-        setPreviewMode(false);
         jump(-1);
-        break;
-      case "notes.bold":
-        applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "**", "**"));
-        break;
-      case "notes.italic":
-        applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "*", "*"));
-        break;
-      case "notes.underline":
-        applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "<u>", "</u>"));
-        break;
-      case "notes.heading":
-        applyFormat(toggleHeadingLine);
-        break;
-      case "notes.bulletList":
-        applyFormat(toggleBulletList);
-        break;
-      case "notes.numberList":
-        applyFormat(toggleNumberList);
         break;
       case "notes.togglePreview":
         setPreviewMode(p => !p);
@@ -397,91 +406,82 @@ function NoteEditor({
         </div>
       )}
 
-      {!focusMode && !previewMode && (
-        <div className="flex h-[26px] flex-none items-center gap-1 px-4 text-ink-2 select-none hairline-b">
-          <button type="button" aria-label="Bold" title="Bold (⌘B)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "**", "**"))}>
-            <Bold className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Italic" title="Italic (⌘I)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "*", "*"))}>
-            <Italic className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Underline" title="Underline (⌘U)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "<u>", "</u>"))}>
-            <Underline className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Heading" title="Cycle heading level (⇧⌘H)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(toggleHeadingLine)}>
-            <Heading className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Bulleted list" title="Bulleted list (⇧⌘L)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(toggleBulletList)}>
-            <List className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Numbered list" title="Numbered list (⇧⌘O)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(toggleNumberList)}>
-            <ListOrdered className="size-3.5" />
-          </button>
-        </div>
-      )}
+      {!previewMode && (
+        <>
+          {!focusMode && (
+            <div className="flex h-[26px] flex-none items-center gap-1 px-4 text-ink-2 select-none hairline-b">
+              {FORMAT_ITEMS.map(({ command, label, title, Icon, format }) => (
+                <button key={command} type="button" aria-label={label} title={title} className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(format)}>
+                  <Icon className="size-3.5" />
+                </button>
+              ))}
+            </div>
+          )}
 
-      {findOpen && editable && !previewMode && (
-        <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
-          <input
-            ref={findInputRef}
-            value={findQuery}
-            placeholder="Find"
-            className="w-32 rounded-[6px] bg-ph px-2 py-1 text-11.5 text-ink outline-none placeholder:text-ink-2"
-            onChange={(e) => {
-              setFindQuery(e.target.value);
-              setMatchIndex(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                jump(e.shiftKey ? -1 : 1);
-              }
-              else if (e.key === "Escape") {
-                closeFind();
-              }
-            }}
-          />
-          <span className="w-10 flex-none text-[calc(10.5px*var(--ui-scale))] text-ink-2 tabular-nums">
-            {matches.length ? `${(matchIndex ?? 0) + 1}/${matches.length}` : "0/0"}
-          </span>
-          <button type="button" aria-label="Previous match" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => jump(-1)}>
-            <ChevronUp className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Next match" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => jump(1)}>
-            <ChevronDown className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Toggle replace"
-            className={`grid size-5 place-items-center rounded-[5px] hover:bg-ph ${replaceOpen ? "text-accent" : ""}`}
-            onClick={() => setReplaceOpen(o => !o)}
-          >
-            <Replace className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Close find" className="ml-auto grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={closeFind}>
-            <X className="size-3.5" />
-          </button>
-        </div>
-      )}
-      {findOpen && editable && replaceOpen && !previewMode && (
-        <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
-          <input
-            value={replaceQuery}
-            placeholder="Replace"
-            className="w-32 rounded-[6px] bg-ph px-2 py-1 text-11.5 text-ink outline-none placeholder:text-ink-2"
-            onChange={e => setReplaceQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape")
-                closeFind();
-            }}
-          />
-          <button type="button" className="rounded-btn bg-ph px-2 py-1 text-11 font-medium text-ink hover:bg-ph-2" onClick={doReplaceOne}>
-            Replace
-          </button>
-          <button type="button" className="rounded-btn bg-ph px-2 py-1 text-11 font-medium text-ink hover:bg-ph-2" onClick={doReplaceAll}>
-            Replace All
-          </button>
-        </div>
+          {findOpen && editable && (
+            <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
+              <input
+                ref={findInputRef}
+                value={findQuery}
+                placeholder="Find"
+                className="w-32 rounded-[6px] bg-ph px-2 py-1 text-11.5 text-ink outline-none placeholder:text-ink-2"
+                onChange={(e) => {
+                  setFindQuery(e.target.value);
+                  setMatchIndex(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    jump(e.shiftKey ? -1 : 1);
+                  }
+                  else if (e.key === "Escape") {
+                    closeFind();
+                  }
+                }}
+              />
+              <span className="w-10 flex-none text-[calc(10.5px*var(--ui-scale))] text-ink-2 tabular-nums">
+                {matches.length ? `${(matchIndex ?? 0) + 1}/${matches.length}` : "0/0"}
+              </span>
+              <button type="button" aria-label="Previous match" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => jump(-1)}>
+                <ChevronUp className="size-3.5" />
+              </button>
+              <button type="button" aria-label="Next match" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => jump(1)}>
+                <ChevronDown className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Toggle replace"
+                className={`grid size-5 place-items-center rounded-[5px] hover:bg-ph ${replaceOpen ? "text-accent" : ""}`}
+                onClick={() => setReplaceOpen(o => !o)}
+              >
+                <Replace className="size-3.5" />
+              </button>
+              <button type="button" aria-label="Close find" className="ml-auto grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={closeFind}>
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
+          {findOpen && editable && replaceOpen && (
+            <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
+              <input
+                value={replaceQuery}
+                placeholder="Replace"
+                className="w-32 rounded-[6px] bg-ph px-2 py-1 text-11.5 text-ink outline-none placeholder:text-ink-2"
+                onChange={e => setReplaceQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape")
+                    closeFind();
+                }}
+              />
+              <button type="button" className="rounded-btn bg-ph px-2 py-1 text-11 font-medium text-ink hover:bg-ph-2" onClick={doReplaceOne}>
+                Replace
+              </button>
+              <button type="button" className="rounded-btn bg-ph px-2 py-1 text-11 font-medium text-ink hover:bg-ph-2" onClick={doReplaceAll}>
+                Replace All
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {previewMode
