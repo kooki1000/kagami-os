@@ -56,7 +56,24 @@
     setResult("notify-result", response.ok ? "ok: fired" : `denied: ${response.error.code}`);
   });
 
-  document.getElementById("escape-btn").addEventListener("click", () => {
+  function tryIndexedDb() {
+    return new Promise((resolve) => {
+      try {
+        if (!window.indexedDB) {
+          resolve("indexedDB: unavailable (blocked)");
+          return;
+        }
+        const request = window.indexedDB.open("sandbox-escape-probe");
+        request.onsuccess = () => resolve("indexedDB: opened (SANDBOX FAILED)");
+        request.onerror = () => resolve(`indexedDB: blocked (${request.error?.name ?? "error"})`);
+      }
+      catch (error) {
+        resolve(`indexedDB: blocked (${error.name})`);
+      }
+    });
+  }
+
+  document.getElementById("escape-btn").addEventListener("click", async () => {
     const attempts = [];
 
     try {
@@ -75,9 +92,16 @@
       attempts.push(`cookie: blocked (${error.name})`);
     }
 
-    fetch("/").then(
-      () => setResult("escape-result", `${attempts.join(" | ")} | fetch: succeeded (SANDBOX FAILED)`),
-      error => setResult("escape-result", `${attempts.join(" | ")} | fetch: blocked (${error.name})`),
-    );
+    attempts.push(await tryIndexedDb());
+
+    try {
+      await fetch("/");
+      attempts.push("fetch: succeeded (SANDBOX FAILED)");
+    }
+    catch (error) {
+      attempts.push(`fetch: blocked (${error.name})`);
+    }
+
+    setResult("escape-result", attempts.join(" | "));
   });
 })();
