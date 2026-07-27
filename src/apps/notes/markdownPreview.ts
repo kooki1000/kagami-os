@@ -10,11 +10,11 @@
  * data structure, rendered to JSX by NotePreview.tsx.
  */
 
-export type InlineSegment =
-  | { type: "text"; content: string }
-  | { type: "bold"; content: string }
-  | { type: "italic"; content: string }
-  | { type: "underline"; content: string };
+export type InlineSegment
+  = | { type: "text"; content: string }
+    | { type: "bold"; content: string }
+    | { type: "italic"; content: string }
+    | { type: "underline"; content: string };
 
 export interface ListItem {
   segments: InlineSegment[];
@@ -22,14 +22,14 @@ export interface ListItem {
   checked?: boolean;
 }
 
-export type Block =
-  | { type: "heading"; level: 1 | 2 | 3; segments: InlineSegment[] }
-  | { type: "paragraph"; lines: InlineSegment[][] }
-  | { type: "bulletList"; items: ListItem[] }
-  | { type: "numberList"; items: ListItem[] };
+export type Block
+  = | { type: "heading"; level: 1 | 2 | 3; segments: InlineSegment[] }
+    | { type: "paragraph"; lines: InlineSegment[][] }
+    | { type: "bulletList"; items: ListItem[] }
+    | { type: "numberList"; items: ListItem[] };
 
 const HEADING_RE = /^(#{1,3}) (.*)$/;
-const CHECKLIST_RE = /^[-*] \[([ xX])\] (.*)$/;
+const CHECKLIST_RE = /^[-*] \[([ x])\] (.*)$/i;
 const BULLET_LIST_RE = /^[-*] (.*)$/;
 const NUMBER_LIST_RE = /^\d+\. (.*)$/;
 

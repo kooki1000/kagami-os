@@ -49,7 +49,7 @@ describe("toggleInlineWrap", () => {
 
 describe("toggleHeadingLine", () => {
   it("cycles a plain line through H1 -> H2 -> H3 -> plain", () => {
-    let text = "hello";
+    const text = "hello";
     let r = toggleHeadingLine(text, 0, 0);
     expect(r.text).toBe("# hello");
     r = toggleHeadingLine(r.text, r.selectionStart, r.selectionEnd);
