@@ -10,7 +10,7 @@ import type { MenuBarStatusItem, ReduceMotionPreference } from "@/system/setting
 import type { ChordDescriptor } from "@/system/shortcuts";
 import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
@@ -30,11 +30,12 @@ import {
   lookById,
   LOOKS,
   resolveAccentTone,
+  resolveWallpaperStyleId,
   resolveWallpaperTone,
 } from "@/system/settings/palettes";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useWallpaperUrl } from "@/system/settings/wallpaperBlobUrl";
-import { WALLPAPER_STYLES, wallpaperStyleVars } from "@/system/settings/wallpaperStyles";
+import { PREVIEW_WALL_TILE, WALLPAPER_STYLES, wallpaperStyleVars } from "@/system/settings/wallpaperStyles";
 import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
@@ -209,7 +210,7 @@ function PreviewGroup<T extends string>({
       style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
     >
       {options.map((option, index) => {
-        const selected = index === activeIndex && option.value === value;
+        const selected = option.value === value;
         return (
           <button
             key={option.value}
@@ -260,14 +261,8 @@ function WallpaperPreview({ styleId, tone }: { styleId: string; tone: WallpaperT
   const vars = wallpaperStyleVars(styleId, tone);
   return (
     <div
-      className="absolute inset-0"
-      style={{
-        "--wall-tile": 0.34,
-        "backgroundImage": vars["--wall"],
-        "backgroundSize": vars["--wall-size"],
-        "backgroundRepeat": vars["--wall-repeat"],
-        "backgroundPosition": vars["--wall-position"],
-      } as CSSProperties}
+      className="wallpaper"
+      style={{ "--wall-tile": PREVIEW_WALL_TILE, ...vars } as CSSProperties}
     />
   );
 }
@@ -487,11 +482,35 @@ function AppearanceSection() {
   const setWallpaperDim = useSettingsStore(s => s.setWallpaperDim);
 
   const look = lookById(lookId);
-  const tone = resolveWallpaperTone(look, resolvedTheme, customAccentHex);
-  const activeStyleId = wallpaperStyleId ?? look.wallpaperStyleId;
+  const activeStyleId = resolveWallpaperStyleId(look, wallpaperStyleId);
   // A custom image replaces the procedural artwork for whichever theme it's
   // set on, which would otherwise make the style picker look broken.
   const imageWins = Boolean(useWallpaperUrl(resolvedTheme));
+
+  // Each OKLCH derivation below is real work (gamut-mapping conversions,
+  // gradient-string rebuilding) — memoized so dragging an unrelated control
+  // (wallpaper dim, animation speed, …) doesn't redo it on every render.
+  const tone = useMemo(
+    () => resolveWallpaperTone(look, resolvedTheme, customAccentHex),
+    [look, resolvedTheme, customAccentHex],
+  );
+  const lookOptions = useMemo(
+    () => LOOKS.map(entry => ({
+      value: entry.id,
+      label: entry.name,
+      hint: entry.tagline,
+      preview: <LookMiniature look={entry} theme={resolvedTheme} customAccentHex={customAccentHex} />,
+    })),
+    [resolvedTheme, customAccentHex],
+  );
+  const wallpaperStyleOptions = useMemo(
+    () => WALLPAPER_STYLES.map(style => ({
+      value: style.id,
+      label: style.name,
+      preview: <WallpaperPreview styleId={style.id} tone={tone} />,
+    })),
+    [tone],
+  );
 
   return (
     <>
@@ -515,14 +534,7 @@ function AppearanceSection() {
           aspect="aspect-[13/8]"
           value={lookId}
           onChange={setLook}
-          options={LOOKS.map(entry => ({
-            value: entry.id,
-            label: entry.name,
-            hint: entry.tagline,
-            preview: (
-              <LookMiniature look={entry} theme={resolvedTheme} customAccentHex={customAccentHex} />
-            ),
-          }))}
+          options={lookOptions}
         />
       </Row>
 
@@ -538,11 +550,7 @@ function AppearanceSection() {
             aspect="aspect-[4/3]"
             value={activeStyleId}
             onChange={setWallpaperStyle}
-            options={WALLPAPER_STYLES.map(style => ({
-              value: style.id,
-              label: style.name,
-              preview: <WallpaperPreview styleId={style.id} tone={tone} />,
-            }))}
+            options={wallpaperStyleOptions}
           />
           {imageWins && (
             <p className="mt-2 text-11 text-ink-2">

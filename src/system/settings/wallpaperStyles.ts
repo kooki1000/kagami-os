@@ -1,5 +1,6 @@
 import type { WallpaperTone } from "@/design/color";
 import { hexToRgb } from "@/design/color";
+import { findByIdOr } from "@/lib/collections";
 
 /**
  * The procedural wallpaper library. Each style is a pure function from a
@@ -223,8 +224,17 @@ export const WALLPAPER_STYLES: WallpaperStyle[] = [
 export const DEFAULT_WALLPAPER_STYLE_ID = "drift";
 
 export function wallpaperStyleById(id: string): WallpaperStyle {
-  return WALLPAPER_STYLES.find(style => style.id === id) ?? WALLPAPER_STYLES[0];
+  return findByIdOr(WALLPAPER_STYLES, id);
 }
+
+/**
+ * `--wall-tile` for Settings' ~130px preview cards. Shrinks tiled geometry
+ * (Contour's rings, Halftone's dots) so a card shows the whole design instead
+ * of one over-scaled corner (see {@link tile}); `tilePlus`'s fixed-px offset
+ * keeps hairline widths from vanishing at this scale (see
+ * wallpaperStyles.test.ts).
+ */
+export const PREVIEW_WALL_TILE = 0.34;
 
 /**
  * The `--wall*` custom properties a style renders to. The four values are

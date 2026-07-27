@@ -248,24 +248,10 @@ export function deriveAccentTone(baseHex: string): DerivedAccentTone {
 
   // accent2: warm-shifted hue, lighter, more chroma. See derivation
   // comment above — tuned to reproduce Lagoon's accent -> accent2 step.
-  const accent2Oklch: Oklch = {
-    l: clamp01(base.l + 0.085),
-    c: Math.min(0.37, base.c + 0.05),
-    h: normalizeHue(base.h - 150),
-  };
-
-  // minimize: base hue, lightened.
-  const minimize: Oklch = {
-    l: clamp01(base.l + 0.061),
-    c: Math.max(0, base.c + 0.010),
-    h: base.h,
-  };
-  // zoom: base hue, darkened.
-  const zoom: Oklch = {
-    l: clamp01(base.l - 0.081),
-    c: Math.max(0, base.c - 0.014),
-    h: base.h,
-  };
+  const accent2Oklch = shiftOklch(base, { dl: 0.085, dc: 0.05, dh: -150, chromaMax: 0.37 });
+  // minimize: base hue, lightened. zoom: base hue, darkened.
+  const minimize = shiftOklch(base, { dl: 0.061, dc: 0.010 });
+  const zoom = shiftOklch(base, { dl: -0.081, dc: -0.014 });
 
   const accent2 = oklchToHex(accent2Oklch);
 
@@ -284,6 +270,26 @@ export function deriveAccentTone(baseHex: string): DerivedAccentTone {
 function normalizeHue(h: number): number {
   const wrapped = h % 360;
   return wrapped < 0 ? wrapped + 360 : wrapped;
+}
+
+/**
+ * Builds a target OKLCH color by offsetting `base`'s lightness/chroma/hue —
+ * the shape both {@link deriveAccentTone} and {@link deriveWallpaperTone}
+ * repeat for every derived color. Lightness clamps to the representable
+ * [0, 1] range; chroma clamps to 0 and, optionally, a caller-supplied
+ * ceiling (accents can be more vivid than the field is allowed to get).
+ */
+function shiftOklch(base: Oklch, { dl, dc, dh = 0, chromaMax = Infinity }: {
+  dl: number;
+  dc: number;
+  dh?: number;
+  chromaMax?: number;
+}): Oklch {
+  return {
+    l: clamp01(base.l + dl),
+    c: Math.max(0, Math.min(chromaMax, base.c + dc)),
+    h: dh === 0 ? base.h : normalizeHue(base.h + dh),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -360,11 +366,8 @@ export function deriveWallpaperTone(
   const accent = hexToOklch(accentHex);
   const accent2 = hexToOklch(accent2Hex);
 
-  const field = (target: { dl: number; dc: number }): string => oklchToHex({
-    l: clamp01(accent.l + target.dl),
-    c: Math.max(0, Math.min(FIELD_CHROMA_MAX, accent.c + target.dc)),
-    h: accent.h,
-  });
+  const field = (target: { dl: number; dc: number }): string =>
+    oklchToHex(shiftOklch(accent, { ...target, chromaMax: FIELD_CHROMA_MAX }));
 
   const targets = FIELD_TARGETS[theme];
   const warmTarget = WARM_TARGETS[theme];
@@ -374,11 +377,7 @@ export function deriveWallpaperTone(
     mid: field(targets.mid),
     wash: field(targets.wash),
     line: field(targets.line),
-    warm: oklchToHex({
-      l: clamp01(accent2.l + warmTarget.dl),
-      c: Math.max(0, accent2.c + warmTarget.dc),
-      h: accent2.h,
-    }),
+    warm: oklchToHex(shiftOklch(accent2, warmTarget)),
   };
 }
 

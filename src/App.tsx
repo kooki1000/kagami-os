@@ -52,10 +52,9 @@ export default function App() {
   const customWallpaperUrl = useWallpaperUrl(resolved);
 
   // Reflect the whole appearance onto the document root. Inline custom
-  // properties override the static defaults in global.css, so the UI re-tints
-  // live when any of these change. Each override — a custom accent (U2), a
-  // wallpaper design, a custom image (U1), the material level — layers onto
-  // the chosen look the same "set wins, null inherits" way.
+  // properties override global.css's static defaults, so the UI re-tints live
+  // as any of these change; each override layers onto the chosen look the
+  // same "set wins, null inherits" way (see palettes.ts).
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = resolved;

@@ -1,7 +1,8 @@
 import type { WallpaperTone } from "@/design/color";
 import type { ResolvedTheme } from "@/system/theme/themeStore";
 import { deriveAccentTone, deriveWallpaperTone } from "@/design/color";
-import { DEFAULT_WALLPAPER_STYLE_ID, wallpaperStyleVars } from "./wallpaperStyles";
+import { findByIdOr } from "@/lib/collections";
+import { wallpaperStyleVars } from "./wallpaperStyles";
 
 /**
  * "Looks" — the curated appearance presets, and the machinery that turns one
@@ -56,15 +57,6 @@ export const LOOKS: LookPreset[] = [
     controls: { close: "#f2765b", minimize: "#17b0a1", zoom: "#0c8074" },
     wallpaperStyleId: "drift",
   },
-  // Ember's first pass paired a brown-orange accent (OKLCH hue 52) with a
-  // teal secondary; the field came out as three near-identical browns and the
-  // teal read as a clash rather than a partner. It now sits at hue 66 and the
-  // derivation's field chroma ceiling, which spreads the field stops as
-  // widely as Lagoon's (0.197 vs 0.196 in lightness), and the secondary
-  // follows Lagoon's own accent -> accent2 relationship: warmer-shifted hue,
-  // ~+0.085 lightness, equal-or-higher chroma. That lands on an indigo within
-  // 2 degrees of what `deriveAccentTone` produces from this accent, so
-  // picking the same amber by hand in the custom picker gives the same pair.
   {
     id: "ember",
     name: "Ember",
@@ -88,12 +80,7 @@ export const LOOKS: LookPreset[] = [
 export const DEFAULT_LOOK_ID = "lagoon";
 
 export function lookById(id: string): LookPreset {
-  return LOOKS.find(look => look.id === id) ?? LOOKS[0];
-}
-
-/** Representative accent dot for a look's preview (uses the light tone). */
-export function lookSwatch(look: LookPreset): string {
-  return look.light.accent;
+  return findByIdOr(LOOKS, id);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,12 +192,22 @@ export interface ThemeVariableOverrides {
   materialLevel?: MaterialLevel;
 }
 
+/** Accent pair + control triad actually in effect, after a custom accent is applied — one `deriveAccentTone` call shared by every accessor below. */
+function resolveTone(
+  look: LookPreset,
+  theme: ResolvedTheme,
+  customAccentHex?: string | null,
+): { tone: AccentTone; controls: LookPreset["controls"] } {
+  if (!customAccentHex) {
+    return { tone: look[theme], controls: look.controls };
+  }
+  const derived = deriveAccentTone(customAccentHex);
+  return { tone: { accent: customAccentHex, accent2: derived.accent2 }, controls: derived.controls };
+}
+
 /** The accent pair actually in effect, after a custom accent is applied. */
 export function resolveAccentTone(look: LookPreset, theme: ResolvedTheme, customAccentHex?: string | null): AccentTone {
-  if (!customAccentHex) {
-    return look[theme];
-  }
-  return { accent: customAccentHex, accent2: deriveAccentTone(customAccentHex).accent2 };
+  return resolveTone(look, theme, customAccentHex).tone;
 }
 
 /** The wallpaper tone actually in effect, for the shell and for Settings' previews. */
@@ -219,8 +216,13 @@ export function resolveWallpaperTone(
   theme: ResolvedTheme,
   customAccentHex?: string | null,
 ): WallpaperTone {
-  const tone = resolveAccentTone(look, theme, customAccentHex);
+  const { tone } = resolveTone(look, theme, customAccentHex);
   return deriveWallpaperTone(tone.accent, tone.accent2, theme);
+}
+
+/** The wallpaper style actually in effect: an explicit override wins, `null`/absent inherits the look's own design. */
+export function resolveWallpaperStyleId(look: LookPreset, wallpaperStyleId?: string | null): string {
+  return wallpaperStyleId ?? look.wallpaperStyleId;
 }
 
 /**
@@ -237,16 +239,14 @@ export function themeVariables(
   theme: ResolvedTheme,
   overrides: ThemeVariableOverrides = {},
 ): Record<string, string> {
-  const customAccentHex = overrides.customAccentHex ?? null;
-  const tone = resolveAccentTone(look, theme, customAccentHex);
-  const derived = customAccentHex ? deriveAccentTone(customAccentHex) : null;
+  const { tone, controls } = resolveTone(look, theme, overrides.customAccentHex);
 
   const vars: Record<string, string> = {
     "--accent": tone.accent,
     "--accent-2": tone.accent2,
-    "--ctl1": derived ? derived.controls.close : look.controls.close,
-    "--ctl2": derived ? derived.controls.minimize : look.controls.minimize,
-    "--ctl3": derived ? derived.controls.zoom : look.controls.zoom,
+    "--ctl1": controls.close,
+    "--ctl2": controls.minimize,
+    "--ctl3": controls.zoom,
     ...materialVars(overrides.materialLevel ?? DEFAULT_MATERIAL_LEVEL, theme),
   };
 
@@ -261,7 +261,7 @@ export function themeVariables(
   return Object.assign(
     vars,
     wallpaperStyleVars(
-      overrides.wallpaperStyleId ?? look.wallpaperStyleId ?? DEFAULT_WALLPAPER_STYLE_ID,
+      resolveWallpaperStyleId(look, overrides.wallpaperStyleId),
       deriveWallpaperTone(tone.accent, tone.accent2, theme),
     ),
   );
