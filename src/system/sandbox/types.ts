@@ -41,6 +41,12 @@ export interface SandboxFileDto {
  */
 export type SandboxMethod = "fs.read" | "notifications.notify" | "window.setTitle";
 
+/**
+ * Every valid `SandboxMethod`, for request-time validation against the
+ * closed union (`rpc.ts` has no other way to check membership at runtime).
+ */
+export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "notifications.notify", "window.setTitle"];
+
 export interface FsReadParams {
   id: string;
 }
