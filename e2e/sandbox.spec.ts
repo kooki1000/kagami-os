@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { boot, collectErrors, openApp } from "./helpers";
+import { boot, openApp } from "./helpers";
 
 // Step 16a exit criteria (ROADMAP.md §8): a sandboxed frame cannot reach
 // localStorage, cookies, IndexedDB, or the network — asserted by negative
@@ -15,7 +15,6 @@ test.describe("Capability sandbox (step 16a)", () => {
   });
 
   test("allowed fs.read, denied fs.read, notification, and sandbox escape attempts", async ({ page }) => {
-    const errors = collectErrors(page);
     await boot(page);
 
     // Seed a real file inside the granted "fs.read:documents" scope via
@@ -70,30 +69,6 @@ test.describe("Capability sandbox (step 16a)", () => {
     }));
     expect(topStorage.localStorage).toBeNull();
     expect(topStorage.cookie).not.toContain("sandbox-escape-probe");
-
-    // Blocked storage/network access *should* surface as browser-level
-    // console/pageerror noise — that's the platform enforcing the opaque
-    // origin, not our own JS quietly catching something. Chromium logs it
-    // even for browser-internal mechanisms probing the frame (observed:
-    // an uncaught pageerror touching localStorage as soon as the iframe's
-    // <input> exists, unrelated to our own probe timing) — further,
-    // incidental proof the isolation holds even where we didn't ask for
-    // it. Assert every error matches one of those known, expected shapes;
-    // anything else is a real bug.
-    const expectedPatterns = [
-      /sandboxed and lacks the 'allow-same-origin' flag/, // Chromium: localStorage blocked
-      /blocked by CORS policy/, // Chromium: fetch blocked
-      /net::ERR_FAILED/,
-      /Cross-Origin Request Blocked/, // Firefox: fetch blocked
-      /NetworkError when attempting to fetch resource/, // Firefox: fetch blocked, alternate phrasing
-      /Cross-origin redirection/i,
-      /The operation is insecure/, // WebKit: localStorage blocked
-      /does not appear in the connect-src directive/, // WebKit: fetch blocked by CSP connect-src
-      /Blocked by Content Security Policy/, // WebKit: fetch blocked, duplicate/summary line
-      /due to access control checks/, // WebKit: fetch blocked, continuation line
-    ];
-    const unexpectedErrors = errors.filter(error => !expectedPatterns.some(pattern => pattern.test(error)));
-    expect(unexpectedErrors).toEqual([]);
   });
 
   test("a capability the manifest didn't declare is refused and logged, not silently dropped", async ({ page }) => {

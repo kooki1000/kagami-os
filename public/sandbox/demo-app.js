@@ -92,15 +92,17 @@
       attempts.push(`cookie: blocked (${error.name})`);
     }
 
-    attempts.push(await tryIndexedDb());
-
-    try {
-      await fetch("/");
-      attempts.push("fetch: succeeded (SANDBOX FAILED)");
-    }
-    catch (error) {
-      attempts.push(`fetch: blocked (${error.name})`);
-    }
+    // Independent of each other and of the sync checks above, so run them
+    // concurrently rather than one-at-a-time; push in a fixed order
+    // regardless of which settles first.
+    const [idbResult, fetchResult] = await Promise.all([
+      tryIndexedDb(),
+      fetch("/").then(
+        () => "fetch: succeeded (SANDBOX FAILED)",
+        error => `fetch: blocked (${error.name})`,
+      ),
+    ]);
+    attempts.push(idbResult, fetchResult);
 
     setResult("escape-result", attempts.join(" | "));
   });

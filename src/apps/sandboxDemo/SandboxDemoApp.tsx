@@ -2,9 +2,8 @@ import type { AppWindowProps } from "@/system/apps/types";
 import { SandboxedAppHost } from "@/system/sandbox/SandboxedAppHost";
 import { DEMO_ENTRY_HTML } from "./demoEntry";
 
-// Declared once at module scope, not inline in the JSX below, so it's a
-// stable reference across renders — SandboxedAppHost re-subscribes its
-// message listener whenever this array's identity changes.
+// Declared once at module scope rather than inline in the JSX below,
+// so it isn't reallocated on every render.
 const CAPABILITIES = ["fs.read:documents", "notifications"];
 
 export default function SandboxDemoApp(props: AppWindowProps) {

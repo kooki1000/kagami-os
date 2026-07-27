@@ -1,6 +1,6 @@
 import type { SandboxResponse } from "./types";
 import type { AppWindowProps } from "@/system/apps/types";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
@@ -50,6 +50,15 @@ function postResponse(target: Window, response: SandboxResponse) {
 export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: SandboxedAppHostProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Kept fresh via an effect rather than closed over directly, so a caller
+  // that doesn't memoize `capabilities` can't force the message listener
+  // below to tear down and re-attach on every render — same ref-sync
+  // pattern useAppCommand uses for its own handler.
+  const contextRef = useRef({ appId, windowId, capabilities });
+  useLayoutEffect(() => {
+    contextRef.current = { appId, windowId, capabilities };
+  });
+
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       // A sandboxed frame's origin is the literal string "null", so
@@ -65,7 +74,7 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: S
 
       dispatchSandboxRequest(
         request,
-        { appId, windowId, capabilities },
+        contextRef.current,
         {
           fileSystem,
           blobStore,
@@ -83,7 +92,7 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: S
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [appId, windowId, capabilities]);
+  }, []);
 
   useAppCommand(windowId, (command) => {
     const frameWindow = iframeRef.current?.contentWindow;

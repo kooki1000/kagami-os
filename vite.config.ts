@@ -24,16 +24,11 @@ const pkgVersion = (
  *    `<audio>`/`<video>` blob URL in a production build;
  *  - `style-src 'unsafe-inline'` for React inline styles and the live
  *    accent/wallpaper custom properties written onto `<html>`;
- *  - `frame-src 'self'` (step 16a) for the capability sandbox's
- *    `<iframe sandbox="allow-scripts" srcDoc={...}>`. Kagami has no server
- *    to host a second origin from, so a sandboxed app never gets a
- *    "foreign" host — `sandbox="allow-scripts"` (no `allow-same-origin`)
- *    already forces an opaque/null origin on the frame regardless of
- *    same-origin delivery. `about:srcdoc` documents inherit the embedding
- *    document's CSP (not a same-origin bypass), so the sandboxed document's
- *    own script loads via a real `<script src="/sandbox/...">` asset —
- *    `script-src 'self'` already permits that — rather than an inline
- *    `<script>`, which this policy would otherwise still block.
+ *  - `frame-src 'self'` for the capability sandbox's srcdoc iframe (step
+ *    16a) — no second origin needed, since `sandbox="allow-scripts"` (no
+ *    `allow-same-origin`) already forces an opaque origin on its own; see
+ *    `src/system/sandbox/SandboxedAppHost.tsx` and
+ *    `src/apps/sandboxDemo/demoEntry.ts` for the fuller mechanism.
  *
  * `script-src 'self'` holds because the production bundle emits no inline
  * scripts. Injected build-only — the dev server needs inline/eval for HMR.

@@ -47,20 +47,6 @@ export type SandboxMethod = "fs.read" | "notifications.notify" | "window.setTitl
  */
 export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "notifications.notify", "window.setTitle"];
 
-export interface FsReadParams {
-  id: string;
-}
-
-export interface NotificationsNotifyParams {
-  title: string;
-  body?: string;
-  tone?: "default" | "accent" | "danger";
-}
-
-export interface WindowSetTitleParams {
-  title: string;
-}
-
 export type SandboxErrorCode = "capability_denied" | "invalid_request" | "not_found" | "internal";
 
 export interface SandboxError {
@@ -87,5 +73,3 @@ export interface SandboxEvent {
   type: "appCommand";
   command: string;
 }
-
-export type SandboxMessage = SandboxRequest | SandboxResponse | SandboxEvent;

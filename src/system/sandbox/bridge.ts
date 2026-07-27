@@ -61,14 +61,16 @@ async function handleFsRead(params: Record<string, unknown>, deps: BridgeDeps): 
   }
 
   const bytes = await resolveFileBytes(node, deps.blobStore);
+  const spansWholeBuffer = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength;
   return {
     id: node.id,
     name: node.name,
     mimeType: node.mimeType,
     size: bytes.byteLength,
-    // Trim to the exact readable window in case the Uint8Array is a view
-    // over a larger underlying buffer — the DTO's `size` must match `bytes`.
-    bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    // Only copy if the Uint8Array is a view over a larger underlying
+    // buffer — resolveFileBytes's actual producers never are, but the DTO's
+    // `size` must match `bytes` regardless of what future producers return.
+    bytes: (spansWholeBuffer ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)) as ArrayBuffer,
     // Untyped inline content (no mimeType) is the common case for
     // Notes/Terminal-authored files and is always text.
     isText: (node.mimeType ?? "text/plain").startsWith("text/"),
