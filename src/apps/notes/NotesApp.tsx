@@ -7,9 +7,16 @@ import {
   AArrowDown,
   AArrowUp,
   ArrowUpDown,
+  Bold,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
   FolderOpen,
+  Heading,
+  Italic,
+  List,
+  ListOrdered,
   Maximize2,
   Minimize2,
   NotebookPen,
@@ -18,6 +25,7 @@ import {
   Plus,
   Replace,
   Search,
+  Underline,
   WrapText,
   X,
 } from "lucide-react";
@@ -41,6 +49,13 @@ import {
   stepMatch,
   wordCount,
 } from "./findReplace";
+import {
+  toggleBulletList,
+  toggleHeadingLine,
+  toggleInlineWrap,
+  toggleNumberList,
+} from "./markdownFormat";
+import { NotePreview } from "./NotePreview";
 import {
   filterDocs,
   folderOptions,
@@ -226,18 +241,64 @@ function NoteEditor({
     setMatchIndex(null);
   }
 
+  /* ---------- formatting toolbar (bold/italic/underline/heading/lists) ---------- */
+
+  const [previewMode, setPreviewMode] = useState(false);
+
+  // Restore the textarea's selection after a formatting edit, once the new
+  // `draft` has committed and re-rendered — same rAF-after-state-change
+  // pattern `openFind` above already uses for `findInputRef`.
+  function applyFormat(fn: (text: string, start: number, end: number) => { text: string; selectionStart: number; selectionEnd: number }): void {
+    const el = textareaRef.current;
+    if (!el)
+      return;
+    const result = fn(draft, el.selectionStart, el.selectionEnd);
+    setDraft(result.text);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta)
+        return;
+      ta.focus();
+      ta.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  }
+
   useAppCommand(windowId, (command) => {
     if (!editable)
       return;
     switch (command) {
       case "notes.find":
+        setPreviewMode(false);
         openFind();
         break;
       case "notes.findNext":
+        setPreviewMode(false);
         jump(1);
         break;
       case "notes.findPrev":
+        setPreviewMode(false);
         jump(-1);
+        break;
+      case "notes.bold":
+        applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "**", "**"));
+        break;
+      case "notes.italic":
+        applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "*", "*"));
+        break;
+      case "notes.underline":
+        applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "<u>", "</u>"));
+        break;
+      case "notes.heading":
+        applyFormat(toggleHeadingLine);
+        break;
+      case "notes.bulletList":
+        applyFormat(toggleBulletList);
+        break;
+      case "notes.numberList":
+        applyFormat(toggleNumberList);
+        break;
+      case "notes.togglePreview":
+        setPreviewMode(p => !p);
         break;
     }
   });
@@ -318,6 +379,15 @@ function NoteEditor({
           <button type="button" aria-label="Enter focus mode" title="Focus mode" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={onToggleFocusMode}>
             <Maximize2 className="size-3.5" />
           </button>
+          <button
+            type="button"
+            aria-label={previewMode ? "Exit preview" : "Preview"}
+            title={previewMode ? "Exit preview" : "Preview"}
+            className={`grid size-5 place-items-center rounded-[5px] hover:bg-ph ${previewMode ? "text-accent" : ""}`}
+            onClick={() => setPreviewMode(p => !p)}
+          >
+            {previewMode ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+          </button>
           <span className="ml-auto text-[calc(10.5px*var(--ui-scale))] tabular-nums opacity-70">
             {wordCount(draft)}
             {" words · "}
@@ -327,7 +397,30 @@ function NoteEditor({
         </div>
       )}
 
-      {findOpen && editable && (
+      {!focusMode && !previewMode && (
+        <div className="flex h-[26px] flex-none items-center gap-1 px-4 text-ink-2 select-none hairline-b">
+          <button type="button" aria-label="Bold" title="Bold (⌘B)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "**", "**"))}>
+            <Bold className="size-3.5" />
+          </button>
+          <button type="button" aria-label="Italic" title="Italic (⌘I)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "*", "*"))}>
+            <Italic className="size-3.5" />
+          </button>
+          <button type="button" aria-label="Underline" title="Underline (⌘U)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat((t, s, e) => toggleInlineWrap(t, s, e, "<u>", "</u>"))}>
+            <Underline className="size-3.5" />
+          </button>
+          <button type="button" aria-label="Heading" title="Cycle heading level (⇧⌘H)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(toggleHeadingLine)}>
+            <Heading className="size-3.5" />
+          </button>
+          <button type="button" aria-label="Bulleted list" title="Bulleted list (⇧⌘L)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(toggleBulletList)}>
+            <List className="size-3.5" />
+          </button>
+          <button type="button" aria-label="Numbered list" title="Numbered list (⇧⌘O)" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(toggleNumberList)}>
+            <ListOrdered className="size-3.5" />
+          </button>
+        </div>
+      )}
+
+      {findOpen && editable && !previewMode && (
         <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
           <input
             ref={findInputRef}
@@ -370,7 +463,7 @@ function NoteEditor({
           </button>
         </div>
       )}
-      {findOpen && editable && replaceOpen && (
+      {findOpen && editable && replaceOpen && !previewMode && (
         <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
           <input
             value={replaceQuery}
@@ -391,17 +484,23 @@ function NoteEditor({
         </div>
       )}
 
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        placeholder="Start writing…"
-        wrap={wordWrap ? "soft" : "off"}
-        style={{ fontSize: `calc(${fontSize}px * var(--ui-scale))` }}
-        className={`min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono leading-relaxed text-ink outline-none placeholder:text-ink-2 ${
-          wordWrap ? "" : "overflow-x-auto whitespace-pre"
-        }`}
-        onChange={e => setDraft(e.target.value)}
-      />
+      {previewMode
+        ? (
+            <NotePreview text={draft} />
+          )
+        : (
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              placeholder="Start writing…"
+              wrap={wordWrap ? "soft" : "off"}
+              style={{ fontSize: `calc(${fontSize}px * var(--ui-scale))` }}
+              className={`min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono leading-relaxed text-ink outline-none placeholder:text-ink-2 ${
+                wordWrap ? "" : "overflow-x-auto whitespace-pre"
+              }`}
+              onChange={e => setDraft(e.target.value)}
+            />
+          )}
     </div>
   );
 }
