@@ -62,4 +62,15 @@ export interface AppManifest {
    */
   serializePayload?: (payload: unknown) => unknown;
   restorePayload?: (json: unknown) => unknown;
+  /**
+   * Step 16a: renders inside the capability sandbox (`SandboxedAppHost`)
+   * instead of running in-process. `entryHtml` is the `srcdoc` document the
+   * shell already owns (bundled first-party content today; a VFS-loaded
+   * bundle in step 17); `capabilities` are auto-granted at registration —
+   * there is no consent UI for first-party apps, only for third-party ones.
+   */
+  sandboxed?: {
+    entryHtml: string;
+    capabilities: string[];
+  };
 }

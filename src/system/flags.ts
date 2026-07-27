@@ -20,13 +20,19 @@ export interface FlagDef {
   default: boolean;
 }
 
-export type FlagId = "e2e_crash";
+export type FlagId = "e2e_crash" | "app_sandbox";
 
 export const FLAGS: readonly FlagDef[] = [
   {
     id: "e2e_crash",
     label: "E2E crash trigger",
     description: "Dev-only: registers a hidden app that throws on first render, for testing the per-window crash boundary. Off by default; never ship on.",
+    default: false,
+  },
+  {
+    id: "app_sandbox",
+    label: "App sandbox",
+    description: "Dev-only: registers a demo app that runs inside the capability-scoped iframe sandbox (step 16a), for testing the bridge. Off by default; never ship on.",
     default: false,
   },
 ];
