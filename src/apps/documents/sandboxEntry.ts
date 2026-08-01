@@ -9,29 +9,27 @@
  */
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { getDocument, GlobalWorkerOptions, VerbosityLevel } from "pdfjs-dist";
+import pdfWorkerSource from "pdfjs-dist/build/pdf.worker.min.mjs?raw";
 import { createSandboxClient } from "@/system/sandbox/client";
 import { BASE_SCALE, clampPage, clampScale, fitWidthScale, formatPageInfo, ZOOM_STEP } from "./pageNav";
 
-// Captured synchronously — `document.currentScript` is `null` once any
-// microtask/await runs. `window.location` can't substitute: inside an
-// opaque-origin srcdoc document it reports `about:srcdoc`, not the
-// embedder's URL, even though this very `<script src>` resolved correctly.
-const scriptUrl = (document.currentScript as HTMLScriptElement | null)?.src;
-if (!scriptUrl)
-  throw new Error("documents.js must load as a classic <script src>, not inline or as a module.");
-
-GlobalWorkerOptions.workerSrc = new URL("pdf.worker.js", scriptUrl).href;
-
-// pdf.js always tries a real background Worker first. Verified empirically:
-// `new Worker(url, { type: "module" })` from an opaque origin throws a
-// synchronous SecurityError regardless of CORS headers — a hard platform
-// restriction, not a bug, and the direct consequence of `allow-scripts`
-// with no `allow-same-origin` (the point of the sandbox). pdf.js catches
-// this and falls back to its "fake worker" mode, parsing on this frame's
-// own main thread via `import()` instead — which *is* permitted
-// cross-origin, given the CORS header `vite.config.ts`'s `sandboxAssetCors`
-// adds. Verbosity is turned down only so that expected fallback warning
+// pdf.js always tries a real background Worker first, and this frame's
+// opaque origin (`allow-scripts`, no `allow-same-origin` — the point of the
+// sandbox) forces it through a fallback path one way or another, verified
+// empirically to diverge by engine: Chromium/Firefox throw a synchronous
+// SecurityError constructing the Worker at all; WebKit instead lets the
+// worker construct but then rejects its module import as a `script-src`
+// CSP violation (a real inherited-CSP corner case: 'self' apparently
+// resolves against this document's own opaque origin there, unlike in
+// Chromium/Firefox — nothing pdf.js or this file's CSP config can steer).
+// Embedding the worker's source as a same-realm `blob:` URL (`script-src`
+// already allows `blob:`, unambiguous in every engine, unlike `self` for an
+// opaque origin) sidesteps the divergence entirely rather than chasing it
+// engine-by-engine. Either way pdf.js's automatic "fake worker" fallback
+// still runs the actual parsing on this frame's own main thread, never the
+// shell's. Verbosity is turned down only so the expected fallback warning
 // doesn't read as a bug to a manual tester.
+GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([pdfWorkerSource], { type: "text/javascript" }));
 const PDF_VERBOSITY = VerbosityLevel.ERRORS;
 
 const bridge = createSandboxClient("documents");

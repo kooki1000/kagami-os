@@ -1,4 +1,4 @@
-import type { Connect, Plugin, PreviewServer, ViteDevServer } from "vite";
+import type { Plugin } from "vite";
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
@@ -28,16 +28,21 @@ const pkgVersion = (
  *    16a) — no second origin needed, since `sandbox="allow-scripts"` (no
  *    `allow-same-origin`) already forces an opaque origin on its own; see
  *    `src/system/sandbox/SandboxedAppHost.tsx` and
- *    `src/apps/sandboxDemo/demoEntry.ts` for the fuller mechanism.
+ *    `src/apps/sandboxDemo/demoEntry.ts` for the fuller mechanism;
+ *  - `script-src blob:` for pdf.js's worker (step 16b), embedded as a
+ *    same-realm blob: URL rather than a second static file — see
+ *    `src/apps/documents/sandboxEntry.ts` for why (a real cross-engine CSP
+ *    divergence for opaque-origin documents, not a style choice).
  *
- * `script-src 'self'` holds because the production bundle emits no inline
- * scripts. Injected build-only — the dev server needs inline/eval for HMR.
- * `frame-ancestors` and HSTS can't be set from a meta tag; enforce those as
- * response headers at the CDN/server on deploy.
+ * `script-src 'self'` (plus the one `blob:` addition above) holds because
+ * the production bundle emits no inline scripts. Injected build-only — the
+ * dev server needs inline/eval for HMR. `frame-ancestors` and HSTS can't be
+ * set from a meta tag; enforce those as response headers at the CDN/server
+ * on deploy.
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",
@@ -67,38 +72,8 @@ function cspMeta(): Plugin {
   };
 }
 
-/**
- * `Access-Control-Allow-Origin: *` for `/sandbox/*` static assets only —
- * the sandboxed iframe's opaque origin makes even same-server fetches
- * cross-origin from its perspective, which pdf.js's worker fallback needs
- * CORS for (see `src/apps/documents/sandboxEntry.ts` for the full story).
- * Scoped to `/sandbox/` (public, non-sensitive JS bundles) rather than
- * every response. Unlike CSP this can't be a static-build meta tag — it
- * only helps `vite dev`/`vite preview`; production hosting needs the same
- * header at the CDN/server, alongside the `frame-ancestors`/HSTS note above.
- */
-function sandboxAssetCorsMiddleware(): Connect.NextHandleFunction {
-  return (req, res, next) => {
-    if (req.url?.startsWith("/sandbox/"))
-      res.setHeader("Access-Control-Allow-Origin", "*");
-    next();
-  };
-}
-
-function sandboxAssetCors(): Plugin {
-  return {
-    name: "kagami-sandbox-asset-cors",
-    configureServer(server: ViteDevServer) {
-      server.middlewares.use(sandboxAssetCorsMiddleware());
-    },
-    configurePreviewServer(server: PreviewServer) {
-      server.middlewares.use(sandboxAssetCorsMiddleware());
-    },
-  };
-}
-
 export default defineConfig({
-  plugins: [react(), tailwindcss(), cspMeta(), sandboxAssetCors()],
+  plugins: [react(), tailwindcss(), cspMeta()],
   // Injected build-time so About (SettingsApp) shows the real package
   // version instead of a string that only ever gets more stale
   // (review-backlog #15).
