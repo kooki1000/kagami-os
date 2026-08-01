@@ -14,6 +14,7 @@
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import type { SandboxEvent, SandboxRequest, SandboxResponse } from "@/system/sandbox/types";
 import { getDocument, GlobalWorkerOptions, VerbosityLevel } from "pdfjs-dist";
+import { BASE_SCALE, clampPage, clampScale, fitWidthScale, formatPageInfo, ZOOM_STEP } from "./pageNav";
 
 // Captured synchronously at top-level script execution — `currentScript` is
 // `null` once any microtask/await runs, so this is the only reliable way to
@@ -48,10 +49,6 @@ GlobalWorkerOptions.workerSrc = new URL("pdf.worker.js", scriptUrl).href;
 // iframe's own main thread, never the shell's — isolation is preserved,
 // only true worker backgrounding is unavailable inside this sandbox model.
 const PDF_VERBOSITY = VerbosityLevel.ERRORS;
-
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 4;
-const ZOOM_STEP = 1.2;
 
 // --- Bridge client (same request/response shape as demo-app.js) -----------
 
@@ -114,12 +111,8 @@ function setPageInfo(text: string) {
 
 let pdfDocument: PDFDocumentProxy | null = null;
 let currentPage = 1;
-let scale = 1.5;
+let scale = BASE_SCALE;
 let renderTask: RenderTask | null = null;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 async function renderCurrentPage() {
   if (!pdfDocument)
@@ -163,13 +156,13 @@ async function renderCurrentPage() {
   }
 
   setStatus("");
-  setPageInfo(`Page ${currentPage} of ${pdfDocument.numPages} · ${Math.round(scale / 1.5 * 100)}%`);
+  setPageInfo(formatPageInfo(currentPage, pdfDocument.numPages, scale));
 }
 
 function goToPage(pageNumber: number) {
   if (!pdfDocument)
     return;
-  const clamped = clamp(pageNumber, 1, pdfDocument.numPages);
+  const clamped = clampPage(pageNumber, pdfDocument.numPages);
   if (clamped === currentPage)
     return;
   currentPage = clamped;
@@ -177,7 +170,7 @@ function goToPage(pageNumber: number) {
 }
 
 function setScale(nextScale: number) {
-  scale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
+  scale = clampScale(nextScale);
   void renderCurrentPage();
 }
 
@@ -188,7 +181,7 @@ async function zoomToFitWidth() {
   const unscaledWidth = page.getViewport({ scale: 1 }).width;
   // 32px matches #page's horizontal margin in entryHtml.ts's stylesheet.
   const available = document.body.clientWidth - 32;
-  setScale(available / unscaledWidth);
+  setScale(fitWidthScale(unscaledWidth, available));
 }
 
 function handleAppCommand(command: string) {
