@@ -28,16 +28,21 @@ const pkgVersion = (
  *    16a) — no second origin needed, since `sandbox="allow-scripts"` (no
  *    `allow-same-origin`) already forces an opaque origin on its own; see
  *    `src/system/sandbox/SandboxedAppHost.tsx` and
- *    `src/apps/sandboxDemo/demoEntry.ts` for the fuller mechanism.
+ *    `src/apps/sandboxDemo/demoEntry.ts` for the fuller mechanism;
+ *  - `script-src blob:` for pdf.js's worker (step 16b), embedded as a
+ *    same-realm blob: URL rather than a second static file — see
+ *    `src/apps/documents/sandboxEntry.ts` for why (a real cross-engine CSP
+ *    divergence for opaque-origin documents, not a style choice).
  *
- * `script-src 'self'` holds because the production bundle emits no inline
- * scripts. Injected build-only — the dev server needs inline/eval for HMR.
- * `frame-ancestors` and HSTS can't be set from a meta tag; enforce those as
- * response headers at the CDN/server on deploy.
+ * `script-src 'self'` (plus the one `blob:` addition above) holds because
+ * the production bundle emits no inline scripts. Injected build-only — the
+ * dev server needs inline/eval for HMR. `frame-ancestors` and HSTS can't be
+ * set from a meta tag; enforce those as response headers at the CDN/server
+ * on deploy.
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' data: blob:",

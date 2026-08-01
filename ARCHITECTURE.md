@@ -511,8 +511,14 @@ described under `StorageAdapter` above. `pnpm dev`/`build` (the website) are
 unaffected. Remaining: N-2 (built-in Browser) and N-3 (signed/notarized
 distribution, desktop e2e via `tauri-driver`).
 
-**Next (planned, not yet built):** `ROADMAP.md` steps 13–17 — realigned
-docs, a stability pass over the review backlog, app depth and customization
-(area U), the capability sandbox and the apps that need it, then the
-third-party app SDK. The online track that used to sit here is retired
-(`ROADMAP.md` §3.X.1): Kagami is local-first with no server.
+**Next:** `ROADMAP.md` steps 13–17 — realigned docs, a stability pass over
+the review backlog, app depth and customization (area U), the capability
+sandbox and the apps that need it, then the third-party app SDK. The online
+track that used to sit here is retired (`ROADMAP.md` §3.X.1): Kagami is
+local-first with no server.
+
+Steps 13–15 and step 16a (the capability sandbox — `src/system/sandbox/`, an
+`<iframe sandbox="allow-scripts">` + capability-checked postMessage bridge)
+are done; step 16b is underway, with D6 (PDF viewing, `src/apps/documents/`)
+shipped 2026-08-01 as the sandbox's first real (non-demo) consumer. D4 (code
+editor) and D7 (small utilities) remain, needing no sandbox.

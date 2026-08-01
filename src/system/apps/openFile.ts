@@ -17,6 +17,7 @@ export { payloadFileId } from "./filePayload";
 const FAMILY_DEFAULTS: Array<{ prefix: string; appId: string }> = [
   { prefix: "text/", appId: "notes" },
   { prefix: "image/", appId: "viewer" },
+  { prefix: "application/pdf", appId: "documents" },
   { prefix: "audio/", appId: "player" },
   { prefix: "video/", appId: "player" },
 ];

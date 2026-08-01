@@ -8,8 +8,10 @@
     "node": "22.23.1"
   },
   "scripts": {
+    "predev": "pnpm build:sandbox",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "pnpm build:sandbox && tsc --noEmit && vite build",
+    "build:sandbox": "node scripts/build-sandbox.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -28,6 +30,7 @@
     "@tauri-apps/plugin-fs": "~2.5.1",
     "fflate": "0.8.3",
     "lucide-react": "^1.22.0",
+    "pdfjs-dist": "^6.1.200",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zustand": "^5.0.14"
