@@ -1,4 +1,4 @@
-import type { Plugin } from "vite";
+import type { Connect, Plugin, PreviewServer, ViteDevServer } from "vite";
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
@@ -67,8 +67,49 @@ function cspMeta(): Plugin {
   };
 }
 
+/**
+ * `Access-Control-Allow-Origin: *` for `/sandbox/*` static assets only.
+ *
+ * The capability sandbox's iframe (`sandbox="allow-scripts"`, no
+ * `allow-same-origin`) has an opaque origin (`window.location.origin ===
+ * "null"`), so it's always cross-origin from this app's own server —
+ * confirmed empirically, not just reasoned about: `new Worker(url, { type:
+ * "module" })` from inside such a frame throws a synchronous `SecurityError`
+ * regardless of response headers (a hard platform restriction pdf.js, step
+ * 16b's first real sandboxed app, hits and falls back from — see
+ * `src/apps/documents/sandboxEntry.ts`). This header exists for the
+ * fallback path instead: pdf.js's "fake worker" mode does a bare `import()`
+ * of the same script from the frame's own thread, which *is* permitted
+ * cross-origin — but only with a permissive ACAO response header, same as
+ * any other cross-origin module fetch. Scoped to `/sandbox/` (public,
+ * non-sensitive JS bundles) rather than every response. Unlike CSP this
+ * doesn't have a static-build equivalent — it must be a real response
+ * header, so this only helps `vite dev`/`vite preview`; production hosting
+ * needs the same header configured at the CDN/server, alongside the
+ * existing `frame-ancestors`/HSTS note above.
+ */
+function sandboxAssetCorsMiddleware(): Connect.NextHandleFunction {
+  return (req, res, next) => {
+    if (req.url?.startsWith("/sandbox/"))
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    next();
+  };
+}
+
+function sandboxAssetCors(): Plugin {
+  return {
+    name: "kagami-sandbox-asset-cors",
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use(sandboxAssetCorsMiddleware());
+    },
+    configurePreviewServer(server: PreviewServer) {
+      server.middlewares.use(sandboxAssetCorsMiddleware());
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), cspMeta()],
+  plugins: [react(), tailwindcss(), cspMeta(), sandboxAssetCors()],
   // Injected build-time so About (SettingsApp) shows the real package
   // version instead of a string that only ever gets more stale
   // (review-backlog #15).
