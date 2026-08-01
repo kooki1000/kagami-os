@@ -113,10 +113,15 @@ test.describe("Desktop icons (B7)", () => {
     if (!before)
       throw new Error("icon has no bounding box");
 
-    // Drag hard toward the bottom-right corner of the large viewport.
+    // Drag hard toward the top-right corner of the large viewport — X still
+    // needs clamping once the viewport shrinks, and top (not bottom) keeps
+    // the clamped icon clear of the dock regardless of how many apps are
+    // pinned: the dock is bottom-anchored and grows with the app suite, so
+    // a bottom-right target becomes flakier every time a new app ships
+    // pinned (it did, for step 16b's Documents app).
     await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
     await page.mouse.down();
-    await page.mouse.move(1260, 880, { steps: 8 });
+    await page.mouse.move(1260, 20, { steps: 8 });
     await page.mouse.up();
 
     await page.setViewportSize({ width: 640, height: 480 });
