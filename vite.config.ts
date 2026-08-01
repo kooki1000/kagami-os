@@ -68,25 +68,14 @@ function cspMeta(): Plugin {
 }
 
 /**
- * `Access-Control-Allow-Origin: *` for `/sandbox/*` static assets only.
- *
- * The capability sandbox's iframe (`sandbox="allow-scripts"`, no
- * `allow-same-origin`) has an opaque origin (`window.location.origin ===
- * "null"`), so it's always cross-origin from this app's own server —
- * confirmed empirically, not just reasoned about: `new Worker(url, { type:
- * "module" })` from inside such a frame throws a synchronous `SecurityError`
- * regardless of response headers (a hard platform restriction pdf.js, step
- * 16b's first real sandboxed app, hits and falls back from — see
- * `src/apps/documents/sandboxEntry.ts`). This header exists for the
- * fallback path instead: pdf.js's "fake worker" mode does a bare `import()`
- * of the same script from the frame's own thread, which *is* permitted
- * cross-origin — but only with a permissive ACAO response header, same as
- * any other cross-origin module fetch. Scoped to `/sandbox/` (public,
- * non-sensitive JS bundles) rather than every response. Unlike CSP this
- * doesn't have a static-build equivalent — it must be a real response
- * header, so this only helps `vite dev`/`vite preview`; production hosting
- * needs the same header configured at the CDN/server, alongside the
- * existing `frame-ancestors`/HSTS note above.
+ * `Access-Control-Allow-Origin: *` for `/sandbox/*` static assets only —
+ * the sandboxed iframe's opaque origin makes even same-server fetches
+ * cross-origin from its perspective, which pdf.js's worker fallback needs
+ * CORS for (see `src/apps/documents/sandboxEntry.ts` for the full story).
+ * Scoped to `/sandbox/` (public, non-sensitive JS bundles) rather than
+ * every response. Unlike CSP this can't be a static-build meta tag — it
+ * only helps `vite dev`/`vite preview`; production hosting needs the same
+ * header at the CDN/server, alongside the `frame-ancestors`/HSTS note above.
  */
 function sandboxAssetCorsMiddleware(): Connect.NextHandleFunction {
   return (req, res, next) => {

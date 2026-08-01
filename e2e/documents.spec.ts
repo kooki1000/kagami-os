@@ -76,14 +76,10 @@ test.describe("Documents (step 16b, D6)", () => {
     await expect(frame.locator("#status-text")).toHaveText("No document open.");
   });
 
-  // Step-16 exit criterion (ROADMAP.md §8): a deliberately hostile PDF
-  // fixture renders without script execution and without a CSP violation.
-  // hostile.pdf carries an /OpenAction JavaScript entry that would call
-  // app.alert()/this.print() in a scripting-enabled viewer — getDocument()
-  // here never wires the scripting API at all, so it's inert data, the same
-  // "closed vocabulary" guarantee D1's markdown preview shipped with
-  // (§6 decision 8), just enforced by pdf.js's API surface instead of a
-  // hand-rolled parser.
+  // Step-16 exit criterion (ROADMAP.md §8). hostile.pdf's /OpenAction would
+  // fire app.alert()/this.print() in a scripting-enabled viewer; getDocument()
+  // never wires that API, so it's just inert data — the same closed-vocabulary
+  // guarantee D1's markdown preview shipped with (§6 decision 8).
   test("a hostile PDF (embedded JavaScript) renders inertly with no console errors", async ({ page }) => {
     const errors = collectErrors(page);
     let dialogFired = false;
