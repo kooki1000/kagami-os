@@ -36,10 +36,23 @@ export function buildDocumentsEntryHtml(fileId: string | null): string {
     overflow: auto;
   }
   #status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 8px 12px;
     color: #75706a;
   }
   #status[hidden] { display: none; }
+  #spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(15, 155, 142, .25);
+    border-top-color: #0f9b8e;
+    animation: spin .7s linear infinite;
+  }
+  #spinner[hidden] { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   #page {
     margin: 16px;
     box-shadow: 0 1px 4px rgba(30, 25, 18, .18);
@@ -47,11 +60,29 @@ export function buildDocumentsEntryHtml(fileId: string | null): string {
     max-width: calc(100% - 32px);
     height: auto;
   }
+  #pageinfo {
+    position: fixed;
+    /* Top, not bottom: the shell's dock always sits at the bottom of the
+       screen and would otherwise cover this for any window near it. */
+    right: 12px;
+    top: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(43, 41, 37, .78);
+    color: #efece5;
+    font-size: 11px;
+    letter-spacing: .01em;
+  }
+  #pageinfo[hidden] { display: none; }
 </style>
 </head>
 <body${fileIdAttr}>
-  <div id="status" role="status"></div>
+  <div id="status" role="status">
+    <span id="spinner" hidden></span>
+    <span id="status-text"></span>
+  </div>
   <canvas id="page"></canvas>
+  <div id="pageinfo" hidden></div>
   <script src="/sandbox/documents.js"></script>
 </body>
 </html>`;

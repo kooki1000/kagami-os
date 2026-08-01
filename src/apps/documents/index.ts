@@ -29,5 +29,20 @@ export const documentsApp: AppManifest = {
         { label: "Close Window", command: "window.close", shortcut: "⌘W" },
       ],
     },
+    {
+      title: "View",
+      items: [
+        { label: "Zoom In", appCommand: "documents.zoomIn", shortcut: "⌘+" },
+        { label: "Zoom Out", appCommand: "documents.zoomOut", shortcut: "⌘−" },
+        { label: "Zoom to Fit Width", appCommand: "documents.zoomFit", shortcut: "⌘0" },
+      ],
+    },
+    {
+      title: "Go",
+      items: [
+        { label: "Previous Page", appCommand: "documents.previousPage", shortcut: "⌘[" },
+        { label: "Next Page", appCommand: "documents.nextPage", shortcut: "⌘]" },
+      ],
+    },
   ],
 };
