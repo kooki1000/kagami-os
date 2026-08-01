@@ -177,7 +177,7 @@ scope and the reasoning are preserved in §3.X.1 rather than deleted.
 | D3  | **Terminal: engine v2** — `cp`, `mv`, `head/tail`, `grep`, `open` (launches the associated app), `>>` append, pipes between builtins, tab completion, `..`-aware path arguments for `mkdir`/`touch`                                       | L        | Keep the engine pure and unit-tested; completion needs a small readline layer in `TerminalApp`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | D4  | **Code/text editor app** — syntax highlighting, multi-tab, association for `.json/.ts/.css/…`                                                                                                                                             | L        | Evaluate CodeMirror 6 vs. a lighter highlighter under the `minimumReleaseAge` install policy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | D5  | **Media player app** — audio/video playback for uploaded files (post-B1), playlist from a folder                                                                                                                                          | M        | `<audio>/<video>` over Blob URLs; add mime associations                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| D6  | **PDF viewing** — render uploaded PDFs (pdf.js) in Viewer or a dedicated app                                                                                                                                                              | M        | Dependency-policy check needed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D6  | ~~**PDF viewing**~~ — ✅ shipped (step 16b, 2026-08-01): renders inside the capability sandbox (16a) via `pdfjs-dist`, page navigation + zoom, as a new standalone "Documents" app rather than folded into Viewer                         | M        | The sandbox's first real (non-demo) consumer — see `src/apps/documents/`. PDF parsing runs on the sandboxed frame's own main thread, not a background Worker: verified empirically that `new Worker()` throws synchronously from an opaque origin regardless of CORS headers, so pdf.js's built-in "fake worker" fallback is the only viable path inside this sandbox model, not a bug                                                                                                                                                                                                                                                                                                    |
 | D7  | **Small utilities** — Calculator, Clock/timer, Paint-style canvas                                                                                                                                                                         | S–M each | Cheap wins that exercise the manifest pattern; good first-contribution targets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | D8  | **Third-party app SDK** — apps as sandboxed iframes with a postMessage bridge exposing a _capability-scoped_ API (fs scopes, windowing, notifications); manifest install/uninstall UI                                                     | XL       | The long-term platform play; requires G2's sandbox model first. Everything before it should keep the manifest pattern clean                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -445,9 +445,12 @@ the sandbox so first-party apps harden the bridge before any third-party
 code touches it — D1 Notes markdown preview shipped early in step 15
 outside it (§6 decision 8) and no longer needs this step. D9 (Notes inline
 WYSIWYG), if picked up, is re-evaluated against the sandbox requirement at
-that time. Then D4 (code editor with syntax highlighting and file
-associations) and D7 (Calculator, Clock, Paint), which need no sandbox and
-re-exercise the manifest pattern that step 17 has to carry.
+that time. **D6 shipped 2026-08-01** as a new standalone "Documents" app
+(§3 area D) — see `src/apps/documents/`; `e2e/documents.spec.ts` covers the
+step's hostile-PDF exit criterion below. Then D4 (code editor with syntax
+highlighting and file associations) and D7 (Calculator, Clock, Paint), which
+need no sandbox and re-exercise the manifest pattern that step 17 has to
+carry.
 
 **Exit:** a first-party app runs sandboxed, reads only its granted scope, and
 is provably unable to reach storage, cookies, or the network; every file type
@@ -651,7 +654,10 @@ onerror>`) as inert text, unit-tested, confirming D1 shipped safely outside
 - A deliberately hostile PDF fixture renders without script execution and
   without a CSP violation (D1's markdown fixture equivalent already covers
   step 15's shipped preview; D9, if it opens the editor schema to raw HTML,
-  repeats this check before shipping).
+  repeats this check before shipping). **✅ Verified 2026-08-01** —
+  `e2e/fixtures/hostile.pdf` carries an `/OpenAction` JavaScript entry;
+  `e2e/documents.spec.ts` confirms no dialog fires and the console stays
+  clean, since `getDocument()` never wires pdf.js's scripting API.
 
 **Step 17 (app SDK)**
 
@@ -906,11 +912,11 @@ interface SavedSession {
 - **Shell integration over the same bridge:** window title updates, menu
   section declaration (reusing the `MenuSection` shape), `appCommand`
   delivery back into the iframe, dock badge/progress.
-- **First consumer is first-party:** the D6 PDF viewer renders inside this
-  sandbox before any external code does (D1's markdown renderer shipped
-  independently — §6 decision 8 — and only needs this if D9 opens its
-  editor schema to raw HTML) —
-  the bridge gets hardened on friendly apps.
+- **First consumer is first-party:** the D6 PDF viewer (✅ shipped, step 16b,
+  2026-08-01) renders inside this sandbox before any external code does
+  (D1's markdown renderer shipped independently — §6 decision 8 — and only
+  needs this if D9 opens its editor schema to raw HTML) — the bridge gets
+  hardened on friendly apps.
 
 ## Appendix B — Phase 9 work breakdown _(shipped)_
 
