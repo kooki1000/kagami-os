@@ -69,9 +69,17 @@ describe("blob GC vs. an in-flight blob write", () => {
       new Blob(["fresh upload bytes"], { type: "image/png" }),
     );
 
+    // Bounded by iteration count, not a timer: a microtask-only spin loop
+    // can starve out `setTimeout` (and Vitest's own test timeout, which is
+    // timer-based) indefinitely if the awaited condition never flips, so a
+    // `Promise.race` timeout wouldn't have caught a broken invariant here —
+    // this did hang CI for 6h twice (2026-07-27) before this bound existed.
     const hash = await hashBlob(new Blob(["fresh upload bytes"], { type: "image/png" }));
-    while (!(await blobStore.has(hash)))
+    for (let i = 0; !(await blobStore.has(hash)); i++) {
+      if (i >= 1000)
+        throw new Error("timed out waiting for the blob write to land");
       await Promise.resolve();
+    }
 
     // A concurrent deletion elsewhere sweeps while the upload is mid-flight.
     await sweepUnreferencedBlobs(api().nodes, blobStore);

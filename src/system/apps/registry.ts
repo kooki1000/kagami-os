@@ -4,6 +4,7 @@ import { devCrashApp } from "@/apps/devcrash";
 import { filesApp } from "@/apps/files";
 import { notesApp } from "@/apps/notes";
 import { playerApp } from "@/apps/player";
+import { sandboxDemoApp } from "@/apps/sandboxDemo";
 import { settingsApp } from "@/apps/settings";
 import { terminalApp } from "@/apps/terminal";
 import { viewerApp } from "@/apps/viewer";
@@ -30,6 +31,8 @@ export const apps: AppManifest[] = [
   // boundary; excluded from the array entirely unless the `e2e_crash` flag
   // is on, so a default build's `apps` is byte-for-byte what it was before.
   ...(isFlagEnabled("e2e_crash") ? [devCrashApp] : []),
+  // Dev-only capability-sandbox demo (step 16a), same exclusion pattern.
+  ...(isFlagEnabled("app_sandbox") ? [sandboxDemoApp] : []),
 ];
 
 const byId = new Map(apps.map(app => [app.id, app]));

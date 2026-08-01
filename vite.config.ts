@@ -23,7 +23,12 @@ const pkgVersion = (
  *    back to `default-src`, not `img-src`, so omitting it blocks every
  *    `<audio>`/`<video>` blob URL in a production build;
  *  - `style-src 'unsafe-inline'` for React inline styles and the live
- *    accent/wallpaper custom properties written onto `<html>`.
+ *    accent/wallpaper custom properties written onto `<html>`;
+ *  - `frame-src 'self'` for the capability sandbox's srcdoc iframe (step
+ *    16a) — no second origin needed, since `sandbox="allow-scripts"` (no
+ *    `allow-same-origin`) already forces an opaque origin on its own; see
+ *    `src/system/sandbox/SandboxedAppHost.tsx` and
+ *    `src/apps/sandboxDemo/demoEntry.ts` for the fuller mechanism.
  *
  * `script-src 'self'` holds because the production bundle emits no inline
  * scripts. Injected build-only — the dev server needs inline/eval for HMR.
@@ -39,6 +44,7 @@ const CSP = [
   "font-src 'self' data:",
   "connect-src 'self'",
   "worker-src 'self' blob:",
+  "frame-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
