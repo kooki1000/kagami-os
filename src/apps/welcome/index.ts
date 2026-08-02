@@ -10,7 +10,13 @@ export const welcomeApp: AppManifest = {
   defaultSize: { width: 560, height: 460 },
   minSize: { width: 420, height: 320 },
   component: lazy(() => import("./WelcomeApp")),
-  pinned: true,
+  // Deliberately unpinned, unlike every other app: Welcome is a first-run
+  // greeting, not something to reach for again — a permanent dock tile for a
+  // tour you've already taken is clutter. It stays reachable from Settings ›
+  // About › Replay Tour and the "About Kagami OS" menu item (`system.about`).
+  // Existing installs are cleaned up by dockStore's v2 migration, since
+  // `reconcilePinned` never removes a pin on its own.
+  pinned: false,
   menus: [
     {
       title: "File",
