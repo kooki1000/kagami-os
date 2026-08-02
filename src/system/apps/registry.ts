@@ -6,6 +6,7 @@ import { devCrashApp } from "@/apps/devcrash";
 import { documentsApp } from "@/apps/documents";
 import { filesApp } from "@/apps/files";
 import { notesApp } from "@/apps/notes";
+import { paintApp } from "@/apps/paint";
 import { playerApp } from "@/apps/player";
 import { sandboxDemoApp } from "@/apps/sandboxDemo";
 import { settingsApp } from "@/apps/settings";
@@ -25,6 +26,7 @@ export const apps: AppManifest[] = [
   documentsApp,
   calculatorApp,
   clockApp,
+  paintApp,
   playerApp,
   terminalApp,
   welcomeApp,
