@@ -2,6 +2,7 @@ import type { Operator, UnaryFn } from "./calculatorEngine";
 import type { AppWindowProps } from "@/system/apps/types";
 import { useEffect, useState } from "react";
 import { useAppCommand } from "@/system/appCommands";
+import { isOverlayOpen } from "@/system/overlay/overlayRegistry";
 import {
   applyUnary,
   backspace,
@@ -21,18 +22,24 @@ import {
   toggleSign,
 } from "./calculatorEngine";
 
-const padButton
-  = "grid h-9 place-items-center rounded-btn text-13 font-medium text-ink enabled:hover:bg-ph disabled:opacity-35";
+const padButton = "grid h-9 place-items-center rounded-btn text-13 font-medium text-ink hover:bg-ph";
 const operatorButton = `${padButton} text-accent`;
-const sciButton
-  = "grid h-8 place-items-center rounded-btn text-11.5 font-medium text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink";
+const sciButton = "grid h-8 place-items-center rounded-btn text-11.5 font-medium text-ink-2 hover:bg-ph hover:text-ink";
 
-const SCI_BUTTONS: { label: string; fn: UnaryFn }[][] = [
-  [{ label: "sin", fn: "sin" }, { label: "cos", fn: "cos" }, { label: "tan", fn: "tan" }],
-  [{ label: "sin⁻¹", fn: "asin" }, { label: "cos⁻¹", fn: "acos" }, { label: "tan⁻¹", fn: "atan" }],
-  [{ label: "ln", fn: "ln" }, { label: "log", fn: "log10" }, { label: "√x", fn: "sqrt" }],
-  [{ label: "x²", fn: "square" }, { label: "1/x", fn: "reciprocal" }, { label: "eˣ", fn: "exp" }],
-  [{ label: "x!", fn: "factorial" }],
+const SCI_BUTTONS: { label: string; fn: UnaryFn }[] = [
+  { label: "sin", fn: "sin" },
+  { label: "cos", fn: "cos" },
+  { label: "tan", fn: "tan" },
+  { label: "sin⁻¹", fn: "asin" },
+  { label: "cos⁻¹", fn: "acos" },
+  { label: "tan⁻¹", fn: "atan" },
+  { label: "ln", fn: "ln" },
+  { label: "log", fn: "log10" },
+  { label: "√x", fn: "sqrt" },
+  { label: "x²", fn: "square" },
+  { label: "1/x", fn: "reciprocal" },
+  { label: "eˣ", fn: "exp" },
+  { label: "x!", fn: "factorial" },
 ];
 
 export default function CalculatorApp({ windowId, focused }: AppWindowProps) {
@@ -47,6 +54,10 @@ export default function CalculatorApp({ windowId, focused }: AppWindowProps) {
     if (!focused)
       return;
     function onKeyDown(e: KeyboardEvent): void {
+      // A menu, search overlay, or dialog is open on top of this window —
+      // let it own the keyboard instead of also mutating hidden state here.
+      if (isOverlayOpen())
+        return;
       if (/^\d$/.test(e.key)) {
         setState(s => inputDigit(s, e.key));
         return;
@@ -113,7 +124,7 @@ export default function CalculatorApp({ windowId, focused }: AppWindowProps) {
 
       <div className="flex min-h-0 flex-1 gap-2 p-2">
         <div className="grid w-28 flex-none auto-rows-fr grid-cols-3 gap-1">
-          {SCI_BUTTONS.flat().map(({ label, fn }) => (
+          {SCI_BUTTONS.map(({ label, fn }) => (
             <button key={fn} type="button" className={sciButton} onClick={() => setState(s => applyUnary(s, fn))}>
               {label}
             </button>

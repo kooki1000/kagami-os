@@ -2,6 +2,7 @@ import type { Point, Stroke } from "./paintHistory";
 import type { AppWindowProps } from "@/system/apps/types";
 import { Eraser, Paintbrush, Save, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 import { useAppCommand } from "@/system/appCommands";
 import { useFsStore } from "@/system/fs/fsStore";
 import { PICTURES_ID } from "@/system/fs/types";
@@ -25,7 +26,7 @@ function applyStrokeStyle(ctx: CanvasRenderingContext2D, stroke: Pick<Stroke, "c
   ctx.globalCompositeOperation = stroke.erase ? "destination-out" : "source-over";
 }
 
-/** A full polyline for one stroke — used for the from-history redraw (undo/clear/resize). */
+/** A stroke's full polyline (or a dot for a single point) — a 2-point stroke draws one live segment as the pointer moves. */
 function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   if (stroke.points.length === 0)
     return;
@@ -46,22 +47,17 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
   ctx.restore();
 }
 
-/** One incremental segment, drawn live as the pointer moves (redrawing the whole canvas on every move would be wasteful). */
-function drawSegment(ctx: CanvasRenderingContext2D, from: Point, to: Point, style: Pick<Stroke, "color" | "size" | "erase">): void {
-  ctx.save();
-  applyStrokeStyle(ctx, style);
-  ctx.beginPath();
-  ctx.moveTo(from.x, from.y);
-  ctx.lineTo(to.x, to.y);
-  ctx.stroke();
-  ctx.restore();
+/** The 2D context, pre-scaled to the device pixel ratio so callers can draw straight in CSS-pixel coordinates. */
+function getScaledContext(canvas: HTMLCanvasElement, dpr: number): CanvasRenderingContext2D | null {
+  const ctx = canvas.getContext("2d");
+  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
 }
 
 function redrawAll(canvas: HTMLCanvasElement, history: Stroke[], dpr: number): void {
-  const ctx = canvas.getContext("2d");
+  const ctx = getScaledContext(canvas, dpr);
   if (!ctx)
     return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const cssWidth = canvas.width / dpr;
   const cssHeight = canvas.height / dpr;
   ctx.globalCompositeOperation = "source-over";
@@ -93,6 +89,10 @@ export default function PaintApp({ windowId }: AppWindowProps) {
   const dprRef = useRef(1);
   const currentStrokeRef = useRef<Stroke | null>(null);
   const historyRef = useRef<Stroke[]>([]);
+  // Set right before a plain stroke-append commit, whose pixels are already
+  // on screen from handlePointerMove's incremental drawing — skips the
+  // O(n) full-history redraw that undo/clear/resize genuinely need.
+  const skipNextRedrawRef = useRef(false);
 
   const [history, setHistory] = useState<Stroke[]>([]);
   const [color, setColor] = useState(COLORS[0]);
@@ -103,17 +103,18 @@ export default function PaintApp({ windowId }: AppWindowProps) {
     historyRef.current = history;
   });
 
-  // Full redraw whenever the committed stroke list changes (undo/redo/clear).
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (skipNextRedrawRef.current) {
+      skipNextRedrawRef.current = false;
+      return;
+    }
     if (canvas)
       redrawAll(canvas, history, dprRef.current);
   }, [history]);
 
-  // Track the container's box and keep the canvas's backing store crisp at
-  // the device pixel ratio; a resize necessarily wipes canvas pixels, so it
-  // redraws from `historyRef` (kept fresh via the layout effect above, so
-  // this observer doesn't need to be torn down and rebuilt every stroke).
+  // A resize wipes canvas pixels, so it redraws from `historyRef` (kept
+  // fresh above) rather than tearing down/rebuilding this observer per stroke.
   useLayoutEffect(() => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
@@ -136,15 +137,13 @@ export default function PaintApp({ windowId }: AppWindowProps) {
   }, []);
 
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>): void {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    capturePointer(e.currentTarget, e.pointerId);
     const point = getPoint(e);
     const stroke: Stroke = { points: [point], color, size: brushSize, erase };
     currentStrokeRef.current = stroke;
-    const ctx = canvasRef.current?.getContext("2d");
-    if (ctx) {
-      ctx.setTransform(dprRef.current, 0, 0, dprRef.current, 0, 0);
+    const ctx = canvasRef.current && getScaledContext(canvasRef.current, dprRef.current);
+    if (ctx)
       drawStroke(ctx, stroke); // renders the single-point dot immediately, so a click-without-drag still marks the canvas
-    }
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>): void {
@@ -154,18 +153,19 @@ export default function PaintApp({ windowId }: AppWindowProps) {
     const point = getPoint(e);
     const prev = stroke.points[stroke.points.length - 1];
     currentStrokeRef.current = appendPoint(stroke, point);
-    const ctx = canvasRef.current?.getContext("2d");
-    if (ctx) {
-      ctx.setTransform(dprRef.current, 0, 0, dprRef.current, 0, 0);
-      drawSegment(ctx, prev, point, stroke);
-    }
+    const ctx = canvasRef.current && getScaledContext(canvasRef.current, dprRef.current);
+    if (ctx)
+      drawStroke(ctx, { ...stroke, points: [prev, point] });
   }
 
-  function handlePointerUp(): void {
+  function handlePointerUp(e: React.PointerEvent<HTMLCanvasElement>): void {
+    releasePointer(e.currentTarget, e.pointerId);
     const stroke = currentStrokeRef.current;
     currentStrokeRef.current = null;
-    if (stroke)
+    if (stroke) {
+      skipNextRedrawRef.current = true;
       setHistory(h => pushStroke(h, stroke));
+    }
   }
 
   function handleUndo(): void {
