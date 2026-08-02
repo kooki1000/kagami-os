@@ -16,7 +16,7 @@ import {
   Search,
   Upload,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
@@ -542,7 +542,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // already rendered; if it's scrolled out of the virtualizer's range, asks
   // FilesView to bring it into range (`scrollToIdRef`) and retries a frame
   // later, once react-virtual has mounted it.
-  function withNode(id: string, action: (el: HTMLElement) => void): void {
+  const withNode = useCallback((id: string, action: (el: HTMLElement) => void): void => {
     const existing = container?.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
     if (existing) {
       action(existing);
@@ -554,11 +554,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       if (el)
         action(el);
     });
-  }
+  }, [container]);
 
-  function focusNode(id: string): void {
+  const focusNode = useCallback((id: string): void => {
     withNode(id, el => el.focus());
-  }
+  }, [withNode]);
 
   /** Scrolls the item into view and focuses it. */
   function focusAndScrollIntoView(id: string): void {
@@ -610,7 +610,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     if (renamingId || !cursorId)
       return;
     focusNode(cursorId);
-  }, [cursorId, renamingId, container]);
+  }, [cursorId, renamingId, focusNode]);
 
   // The item Enter/F2 act on: the cursor when it's part of the selection,
   // else the sole selected item — never ambiguous across a multi-selection.

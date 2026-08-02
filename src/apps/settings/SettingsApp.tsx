@@ -152,7 +152,7 @@ function PreviewGroup<T extends string>({
   columns: number;
   aspect: string;
 }) {
-  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const buttonElsRef = useRef<Array<HTMLButtonElement | null>>([]);
   // Never leave the group untabbable if `value` matches nothing.
   const activeIndex = Math.max(0, options.findIndex(option => option.value === value));
 
@@ -165,7 +165,7 @@ function PreviewGroup<T extends string>({
     event.preventDefault();
     const next = (index + delta + options.length) % options.length;
     onChange(options[next].value);
-    buttonRefs.current[next]?.focus();
+    buttonElsRef.current[next]?.focus();
   }
 
   return (
@@ -180,7 +180,7 @@ function PreviewGroup<T extends string>({
         return (
           <button
             key={option.value}
-            ref={(el) => { buttonRefs.current[index] = el; }}
+            ref={(el) => { buttonElsRef.current[index] = el; }}
             type="button"
             role="radio"
             aria-checked={selected}
