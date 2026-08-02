@@ -520,5 +520,8 @@ local-first with no server.
 Steps 13–15 and step 16a (the capability sandbox — `src/system/sandbox/`, an
 `<iframe sandbox="allow-scripts">` + capability-checked postMessage bridge)
 are done; step 16b is underway, with D6 (PDF viewing, `src/apps/documents/`)
-shipped 2026-08-01 as the sandbox's first real (non-demo) consumer. D4 (code
-editor) and D7 (small utilities) remain, needing no sandbox.
+shipped 2026-08-01 as the sandbox's first real (non-demo) consumer, and D7
+(small utilities — Calculator, Clock, Paint; `src/apps/calculator/`,
+`src/apps/clock/`, `src/apps/paint/`) shipped 2026-08-02, needing no sandbox.
+D4 (code editor) is the only item left before step 16b's exit criteria are
+fully met.

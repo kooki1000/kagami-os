@@ -1,4 +1,5 @@
 import type { ChangeEvent, CSSProperties, ReactNode } from "react";
+import type { SegmentOption } from "@/components/ui/Segmented";
 import type { WallpaperTone } from "@/design/color";
 import type { UiScale } from "@/design/tokens";
 import type { AppWindowProps } from "@/system/apps/types";
@@ -12,6 +13,7 @@ import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
+import { Segmented } from "@/components/ui/Segmented";
 import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
@@ -82,42 +84,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
     <div className="px-5 py-4 hairline-b">
       <div className="mb-2.5 text-12.5 font-semibold text-ink">{label}</div>
       {children}
-    </div>
-  );
-}
-
-interface SegmentOption<T> {
-  value: T;
-  label: string;
-}
-
-function Segmented<T extends string | number>({
-  options,
-  value,
-  onChange,
-  width,
-}: {
-  options: SegmentOption<T>[];
-  value: T;
-  onChange: (value: T) => void;
-  width?: number;
-}) {
-  return (
-    <div className="flex rounded-[9px] bg-ph p-0.75" style={{ width }}>
-      {options.map(option => (
-        <button
-          key={option.value}
-          type="button"
-          className={`flex-1 rounded-btn px-3 py-[calc(6px*var(--ui-scale))] text-12 transition-colors ${
-            value === option.value
-              ? "bg-surface font-semibold text-ink shadow-[0_1px_3px_rgba(0,0,0,.14)]"
-              : "font-medium text-ink-2 hover:text-ink"
-          }`}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
     </div>
   );
 }

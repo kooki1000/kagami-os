@@ -1,0 +1,282 @@
+import type { Point, Stroke } from "./paintHistory";
+import type { AppWindowProps } from "@/system/apps/types";
+import { Eraser, Paintbrush, Save, Trash2, Undo2 } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { capturePointer, releasePointer } from "@/lib/pointerCapture";
+import { useAppCommand } from "@/system/appCommands";
+import { useFsStore } from "@/system/fs/fsStore";
+import { PICTURES_ID } from "@/system/fs/types";
+import { notify } from "@/system/notifications/notificationStore";
+import { appendPoint, clearHistory, pushStroke, undo } from "./paintHistory";
+
+const COLORS = ["#1e1e1e", "#e0654b", "#e8a23b", "#3f9e6d", "#3d7fc7", "#8a5fd6", "#ffffff"];
+const SIZES = [2, 4, 8, 16];
+
+function getPoint(e: React.PointerEvent<HTMLCanvasElement>): Point {
+  const rect = e.currentTarget.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function applyStrokeStyle(ctx: CanvasRenderingContext2D, stroke: Pick<Stroke, "color" | "size" | "erase">): void {
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = stroke.size;
+  ctx.strokeStyle = stroke.color;
+  ctx.fillStyle = stroke.color;
+  ctx.globalCompositeOperation = stroke.erase ? "destination-out" : "source-over";
+}
+
+/** A stroke's full polyline (or a dot for a single point) — a 2-point stroke draws one live segment as the pointer moves. */
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke): void {
+  if (stroke.points.length === 0)
+    return;
+  ctx.save();
+  applyStrokeStyle(ctx, stroke);
+  if (stroke.points.length === 1) {
+    const [p] = stroke.points;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, stroke.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  else {
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    for (const p of stroke.points.slice(1)) ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** The 2D context, pre-scaled to the device pixel ratio so callers can draw straight in CSS-pixel coordinates. */
+function getScaledContext(canvas: HTMLCanvasElement, dpr: number): CanvasRenderingContext2D | null {
+  const ctx = canvas.getContext("2d");
+  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
+function redrawAll(canvas: HTMLCanvasElement, history: Stroke[], dpr: number): void {
+  const ctx = getScaledContext(canvas, dpr);
+  if (!ctx)
+    return;
+  const cssWidth = canvas.width / dpr;
+  const cssHeight = canvas.height / dpr;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+  for (const stroke of history) drawStroke(ctx, stroke);
+}
+
+// size-6 / rounded-[6px] matches every other toolbar icon button in the app
+// (ViewerApp's toolButton, PlayerApp's transportButton/toggleButton) — not
+// rounded-btn (7px), which the app reserves for bigger CTA-style buttons.
+function toolButtonClass(active: boolean): string {
+  return `grid size-6 place-items-center rounded-[6px] ${
+    active ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent" : "text-ink-2 hover:bg-ph hover:text-ink"
+  }`;
+}
+const actionButtonClass = "grid size-6 place-items-center rounded-[6px] text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
+/** Matches SettingsApp.tsx's CustomAccentPicker swatch exactly (ring via box-shadow, not Tailwind's ring-* utilities). */
+function swatchClass(active: boolean): string {
+  return `size-[calc(18px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 p-0 ${
+    active ? "shadow-[0_0_0_2px_var(--surface),0_0_0_3px_var(--accent)]" : ""
+  }`;
+}
+const divider = <div className="mx-1.5 h-4 w-px flex-none bg-hairline" />;
+
+export default function PaintApp({ windowId }: AppWindowProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dprRef = useRef(1);
+  const currentStrokeRef = useRef<Stroke | null>(null);
+  const historyRef = useRef<Stroke[]>([]);
+  // Set right before a plain stroke-append commit, whose pixels are already
+  // on screen from handlePointerMove's incremental drawing — skips the
+  // O(n) full-history redraw that undo/clear/resize genuinely need.
+  const skipNextRedrawRef = useRef(false);
+
+  const [history, setHistory] = useState<Stroke[]>([]);
+  const [color, setColor] = useState(COLORS[0]);
+  const [brushSize, setBrushSize] = useState(SIZES[1]);
+  const [erase, setErase] = useState(false);
+
+  useLayoutEffect(() => {
+    historyRef.current = history;
+  });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (skipNextRedrawRef.current) {
+      skipNextRedrawRef.current = false;
+      return;
+    }
+    if (canvas)
+      redrawAll(canvas, history, dprRef.current);
+  }, [history]);
+
+  // A resize wipes canvas pixels, so it redraws from `historyRef` (kept
+  // fresh above) rather than tearing down/rebuilding this observer per stroke.
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas)
+      return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width === 0 || height === 0)
+        return;
+      const dpr = window.devicePixelRatio || 1;
+      dprRef.current = dpr;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      redrawAll(canvas, historyRef.current, dpr);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>): void {
+    capturePointer(e.currentTarget, e.pointerId);
+    const point = getPoint(e);
+    const stroke: Stroke = { points: [point], color, size: brushSize, erase };
+    currentStrokeRef.current = stroke;
+    const ctx = canvasRef.current && getScaledContext(canvasRef.current, dprRef.current);
+    if (ctx)
+      drawStroke(ctx, stroke); // renders the single-point dot immediately, so a click-without-drag still marks the canvas
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>): void {
+    const stroke = currentStrokeRef.current;
+    if (!stroke)
+      return;
+    const point = getPoint(e);
+    const prev = stroke.points[stroke.points.length - 1];
+    currentStrokeRef.current = appendPoint(stroke, point);
+    const ctx = canvasRef.current && getScaledContext(canvasRef.current, dprRef.current);
+    if (ctx)
+      drawStroke(ctx, { ...stroke, points: [prev, point] });
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLCanvasElement>): void {
+    releasePointer(e.currentTarget, e.pointerId);
+    const stroke = currentStrokeRef.current;
+    currentStrokeRef.current = null;
+    if (stroke) {
+      skipNextRedrawRef.current = true;
+      setHistory(h => pushStroke(h, stroke));
+    }
+  }
+
+  function handleUndo(): void {
+    setHistory(undo);
+  }
+
+  function handleClear(): void {
+    setHistory(clearHistory);
+  }
+
+  async function handleSave(): Promise<void> {
+    const canvas = canvasRef.current;
+    if (!canvas || history.length === 0) {
+      notify({ title: "Nothing to save", body: "Draw something first.", tone: "danger" });
+      return;
+    }
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!blob) {
+      notify({ title: "Save failed", body: "Couldn't export the canvas as an image.", tone: "danger" });
+      return;
+    }
+    const node = await useFsStore.getState().createBlobFile(PICTURES_ID, "Drawing.png", blob, "image/png");
+    notify({ title: "Saved", body: `“${node.name}” was added to Pictures.`, appId: "paint" });
+  }
+
+  useAppCommand(windowId, (command) => {
+    switch (command) {
+      case "paint.new":
+        handleClear();
+        break;
+      case "paint.save":
+        void handleSave();
+        break;
+    }
+  });
+
+  return (
+    <div className="flex h-full flex-col bg-surface select-none">
+      <div className="flex h-[38px] flex-none items-center gap-1 px-3 select-none hairline-b">
+        <button type="button" aria-label="Brush" aria-pressed={!erase} className={toolButtonClass(!erase)} onClick={() => setErase(false)}>
+          <Paintbrush className="size-4" />
+        </button>
+        <button type="button" aria-label="Eraser" aria-pressed={erase} className={toolButtonClass(erase)} onClick={() => setErase(true)}>
+          <Eraser className="size-4" />
+        </button>
+
+        {divider}
+
+        <div className="flex items-center gap-1">
+          {COLORS.map(c => (
+            <button
+              key={c}
+              type="button"
+              aria-label={`Color ${c}`}
+              aria-pressed={color === c}
+              className={swatchClass(color === c)}
+              style={{ backgroundColor: c }}
+              onClick={() => setColor(c)}
+            />
+          ))}
+          <input
+            type="color"
+            aria-label="Custom color"
+            value={color}
+            onChange={e => setColor(e.target.value)}
+            className="size-[calc(18px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 bg-transparent p-0"
+          />
+        </div>
+
+        {divider}
+
+        <div className="flex items-center gap-1">
+          {SIZES.map(s => (
+            <button
+              key={s}
+              type="button"
+              aria-label={`Brush size ${s}`}
+              aria-pressed={brushSize === s}
+              className={toolButtonClass(brushSize === s)}
+              onClick={() => setBrushSize(s)}
+            >
+              <span className="rounded-full bg-current" style={{ width: s, height: s }} />
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex items-center gap-1">
+          <button type="button" aria-label="Undo" className={actionButtonClass} disabled={history.length === 0} onClick={handleUndo}>
+            <Undo2 className="size-4" />
+          </button>
+          <button type="button" aria-label="Clear canvas" className={actionButtonClass} disabled={history.length === 0} onClick={handleClear}>
+            <Trash2 className="size-4" />
+          </button>
+          {divider}
+          <button type="button" aria-label="Save to Pictures" className={actionButtonClass} disabled={history.length === 0} onClick={() => void handleSave()}>
+            <Save className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      <div ref={containerRef} className="min-h-0 flex-1 p-2">
+        <canvas
+          ref={canvasRef}
+          className="size-full touch-none rounded-btn hairline"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,9 +1,12 @@
 import type { AppManifest } from "./types";
 import { browserApp } from "@/apps/browser";
+import { calculatorApp } from "@/apps/calculator";
+import { clockApp } from "@/apps/clock";
 import { devCrashApp } from "@/apps/devcrash";
 import { documentsApp } from "@/apps/documents";
 import { filesApp } from "@/apps/files";
 import { notesApp } from "@/apps/notes";
+import { paintApp } from "@/apps/paint";
 import { playerApp } from "@/apps/player";
 import { sandboxDemoApp } from "@/apps/sandboxDemo";
 import { settingsApp } from "@/apps/settings";
@@ -21,6 +24,9 @@ export const apps: AppManifest[] = [
   notesApp,
   viewerApp,
   documentsApp,
+  calculatorApp,
+  clockApp,
+  paintApp,
   playerApp,
   terminalApp,
   welcomeApp,
