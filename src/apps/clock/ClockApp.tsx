@@ -38,20 +38,26 @@ function useTicker(active: boolean, intervalMs: number): number {
   return now;
 }
 
+// Matches Settings' `Segmented` control exactly (SettingsApp.tsx) — a
+// neutral bg-ph pill with a bg-surface + shadow active segment, the app's
+// one established segmented-control pattern, rather than a filled accent tab.
 function tabButtonClass(active: boolean): string {
-  return `flex-1 rounded-btn px-2 py-1.5 text-12 font-medium ${
-    active ? "bg-accent text-white" : "text-ink-2 hover:bg-ph hover:text-ink"
+  return `flex-1 rounded-btn px-3 py-[calc(6px*var(--ui-scale))] text-12 transition-colors ${
+    active
+      ? "bg-surface font-semibold text-ink shadow-[0_1px_3px_rgba(0,0,0,.14)]"
+      : "font-medium text-ink-2 hover:text-ink"
   }`;
 }
-const actionButtonClass = "rounded-btn px-4 py-1.5 text-12 font-medium text-ink enabled:hover:bg-ph disabled:opacity-35";
-const primaryButtonClass = "rounded-btn bg-accent px-5 py-1.5 text-12 font-semibold text-white enabled:hover:opacity-90 disabled:opacity-35";
+// Secondary/primary pair matches WindowErrorBoundary.tsx's "Close window"/"Reload app" buttons.
+const actionButtonClass = "rounded-btn bg-ph px-3 py-[calc(6px*var(--ui-scale))] text-12 font-medium text-ink enabled:hover:bg-surface-2 disabled:opacity-35";
+const primaryButtonClass = "rounded-btn bg-accent px-4 py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-white disabled:opacity-35";
 
 export default function ClockApp(_props: AppWindowProps) {
   const [tab, setTab] = useState<Tab>("clock");
 
   return (
     <div className="flex h-full flex-col bg-surface select-none">
-      <div className="flex flex-none gap-1 p-2 hairline-b">
+      <div className="m-2 flex flex-none rounded-[9px] bg-ph p-0.75">
         <button type="button" className={tabButtonClass(tab === "clock")} onClick={() => setTab("clock")}>Clock</button>
         <button type="button" className={tabButtonClass(tab === "stopwatch")} onClick={() => setTab("stopwatch")}>Stopwatch</button>
         <button type="button" className={tabButtonClass(tab === "timer")} onClick={() => setTab("timer")}>Timer</button>
@@ -176,7 +182,7 @@ function Timer({ active }: { active: boolean }) {
             max={99}
             value={minutesInput}
             onChange={e => setMinutesInput(Math.max(0, Math.min(99, Number(e.target.value) || 0)))}
-            className="w-12 rounded-btn border border-hairline bg-surface-2 px-1.5 py-1 text-center text-ink tabular-nums"
+            className="w-12 rounded-[6px] bg-ph px-2 py-1 text-center text-ink tabular-nums outline-none"
             aria-label="Minutes"
           />
           <span>min</span>
@@ -186,7 +192,7 @@ function Timer({ active }: { active: boolean }) {
             max={59}
             value={secondsInput}
             onChange={e => setSecondsInput(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
-            className="w-12 rounded-btn border border-hairline bg-surface-2 px-1.5 py-1 text-center text-ink tabular-nums"
+            className="w-12 rounded-[6px] bg-ph px-2 py-1 text-center text-ink tabular-nums outline-none"
             aria-label="Seconds"
           />
           <span>sec</span>

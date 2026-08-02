@@ -70,12 +70,22 @@ function redrawAll(canvas: HTMLCanvasElement, history: Stroke[], dpr: number): v
   for (const stroke of history) drawStroke(ctx, stroke);
 }
 
+// size-6 / rounded-[6px] matches every other toolbar icon button in the app
+// (ViewerApp's toolButton, PlayerApp's transportButton/toggleButton) — not
+// rounded-btn (7px), which the app reserves for bigger CTA-style buttons.
 function toolButtonClass(active: boolean): string {
-  return `grid size-7 place-items-center rounded-btn ${
+  return `grid size-6 place-items-center rounded-[6px] ${
     active ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent" : "text-ink-2 hover:bg-ph hover:text-ink"
   }`;
 }
-const actionButtonClass = "grid size-7 place-items-center rounded-btn text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
+const actionButtonClass = "grid size-6 place-items-center rounded-[6px] text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
+/** Matches SettingsApp.tsx's CustomAccentPicker swatch exactly (ring via box-shadow, not Tailwind's ring-* utilities). */
+function swatchClass(active: boolean): string {
+  return `size-[calc(18px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 p-0 ${
+    active ? "shadow-[0_0_0_2px_var(--surface),0_0_0_3px_var(--accent)]" : ""
+  }`;
+}
+const divider = <div className="mx-1.5 h-4 w-px flex-none bg-hairline" />;
 
 export default function PaintApp({ windowId }: AppWindowProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -194,15 +204,15 @@ export default function PaintApp({ windowId }: AppWindowProps) {
 
   return (
     <div className="flex h-full flex-col bg-surface select-none">
-      <div className="flex flex-none flex-wrap items-center gap-3 p-2 hairline-b">
-        <div className="flex items-center gap-1">
-          <button type="button" aria-label="Brush" aria-pressed={!erase} className={toolButtonClass(!erase)} onClick={() => setErase(false)}>
-            <Paintbrush className="size-4" />
-          </button>
-          <button type="button" aria-label="Eraser" aria-pressed={erase} className={toolButtonClass(erase)} onClick={() => setErase(true)}>
-            <Eraser className="size-4" />
-          </button>
-        </div>
+      <div className="flex h-[38px] flex-none items-center gap-1 px-3 select-none hairline-b">
+        <button type="button" aria-label="Brush" aria-pressed={!erase} className={toolButtonClass(!erase)} onClick={() => setErase(false)}>
+          <Paintbrush className="size-4" />
+        </button>
+        <button type="button" aria-label="Eraser" aria-pressed={erase} className={toolButtonClass(erase)} onClick={() => setErase(true)}>
+          <Eraser className="size-4" />
+        </button>
+
+        {divider}
 
         <div className="flex items-center gap-1">
           {COLORS.map(c => (
@@ -211,7 +221,7 @@ export default function PaintApp({ windowId }: AppWindowProps) {
               type="button"
               aria-label={`Color ${c}`}
               aria-pressed={color === c}
-              className={`size-5 rounded-full ${color === c ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "hairline"}`}
+              className={swatchClass(color === c)}
               style={{ backgroundColor: c }}
               onClick={() => setColor(c)}
             />
@@ -221,9 +231,11 @@ export default function PaintApp({ windowId }: AppWindowProps) {
             aria-label="Custom color"
             value={color}
             onChange={e => setColor(e.target.value)}
-            className="size-5 cursor-pointer rounded-full border-0 bg-transparent p-0"
+            className="size-[calc(18px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 bg-transparent p-0"
           />
         </div>
+
+        {divider}
 
         <div className="flex items-center gap-1">
           {SIZES.map(s => (
@@ -247,6 +259,7 @@ export default function PaintApp({ windowId }: AppWindowProps) {
           <button type="button" aria-label="Clear canvas" className={actionButtonClass} disabled={history.length === 0} onClick={handleClear}>
             <Trash2 className="size-4" />
           </button>
+          {divider}
           <button type="button" aria-label="Save to Pictures" className={actionButtonClass} disabled={history.length === 0} onClick={() => void handleSave()}>
             <Save className="size-4" />
           </button>
