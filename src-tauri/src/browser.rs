@@ -5,10 +5,13 @@
 //! Kagami render arbitrary third-party sites, which `frame-ancestors`/CORS
 //! forbid embedding as an iframe in the main webview. `add_child`/multiwebview
 //! is behind Tauri's `unstable` cargo feature (see `Cargo.toml`) and has no
-//! z-order control relative to the main window's own DOM content — by design
-//! the frontend only shows this webview while its window is focused,
-//! unminimized, and no shell overlay (menu, search, notification center) is
-//! open, so it never needs to render "behind" anything.
+//! z-order control relative to the main window's own DOM content, so it can
+//! never render "behind" anything. The frontend decides when it may be shown:
+//! whenever nothing the shell stacks above it covers its content region and
+//! no overlay (menu, search, notification center) is open — see
+//! `browserVisibility.ts`. That is deliberately *not* "while the window is
+//! focused", which is what it used to be and blanked the page in background
+//! windows nothing was covering.
 //!
 //! Call ordering for a given id is the frontend's job (a per-id queue in
 //! `browserBridge.ts`); each command here is still idempotent against a
@@ -23,13 +26,17 @@
 //! let the resulting `on_page_load` report the outcome.
 
 use serde::{Deserialize, Serialize};
-use tauri::webview::PageLoadEvent;
+use tauri::webview::{DownloadEvent, PageLoadEvent};
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewBuilder, WebviewUrl,
 };
 
 const HOST_WINDOW: &str = "main";
 const NAV_CHANGED_EVENT: &str = "browser://nav-changed";
+const LOAD_STATE_EVENT: &str = "browser://load-state";
+const FIND_RESULT_EVENT: &str = "browser://find-result";
+const DOWNLOAD_STARTED_EVENT: &str = "browser://download-started";
+const DOWNLOAD_FINISHED_EVENT: &str = "browser://download-finished";
 
 /// Content-area bounds in logical (CSS) pixels — mirrors `BrowserBounds` in `browserBridge.ts`.
 #[derive(Deserialize)]
@@ -60,6 +67,70 @@ struct NavChanged {
     id: String,
     url: String,
     title: String,
+}
+
+/// Payload for `browser://load-state`. Emitted from both edges of
+/// `on_page_load`, so the frontend can show a page as loading and offer Stop
+/// while it is. Separate from `NavChanged` because that one waits on an
+/// `eval` round-trip for the title, and the loading edge must not.
+#[derive(Clone, Serialize)]
+struct LoadState {
+    id: String,
+    url: String,
+    loading: bool,
+}
+
+/// Payload for `browser://find-result`. `found` is all `window.find` reports —
+/// see [`browser_find`] for why there is no match count.
+#[derive(Clone, Serialize)]
+struct FindResult {
+    id: String,
+    found: bool,
+}
+
+/// Payloads for the two download events. The OS webview writes downloads to a
+/// real filesystem path; Kagami's "disk" is the VFS, so a download is staged
+/// to a temp directory and the frontend moves the bytes across with
+/// [`browser_take_download`]. See the staging notes on [`download_staging_dir`].
+#[derive(Clone, Serialize)]
+struct DownloadStarted {
+    id: String,
+    filename: String,
+}
+
+#[derive(Clone, Serialize)]
+struct DownloadFinished {
+    id: String,
+    filename: String,
+    /// Absolute staging path, handed straight back to [`browser_take_download`].
+    path: String,
+    success: bool,
+}
+
+/// Where in-flight downloads land before the frontend moves them into the VFS.
+///
+/// Each download gets its own numbered subdirectory rather than a name-mangled
+/// file: two downloads of `report.pdf` must not collide, and the original
+/// filename has to survive intact — it becomes the VFS node's name.
+fn download_staging_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("kagami-browser-downloads")
+}
+
+/// A staging path is the one thing the frontend passes back that names a real
+/// filesystem location, so it's checked against the staging root rather than
+/// read as given — `..` in an IPC argument shouldn't be able to reach the
+/// user's actual files.
+fn staged_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let root = download_staging_dir()
+        .canonicalize()
+        .map_err(|error| format!("no staging directory: {error}"))?;
+    let candidate = std::path::Path::new(path)
+        .canonicalize()
+        .map_err(|error| format!("no such download: {error}"))?;
+    if !candidate.starts_with(&root) {
+        return Err("path is outside the download staging directory".into());
+    }
+    Ok(candidate)
 }
 
 /// Full-size content view: the native title bar overlaps the web content, so
@@ -129,6 +200,44 @@ fn compute_content_inset_y(_window: &tauri::Window) -> f64 {
     0.0
 }
 
+/// Rounds the child webview's bottom corners to `radius`.
+///
+/// The webview is a real OS view painted over the window, so nothing in CSS
+/// clips it: with square corners it squares off the window's own rounded
+/// bottom edge the moment the window is focused (the webview is hidden when
+/// it isn't, which is why the two states didn't match). Only the bottom two
+/// corners are masked — the top edge meets the address bar and is interior.
+///
+/// `radius` comes from the frontend's `design/tokens.ts`, so the shell's
+/// radius pairing stays the single source of truth rather than being
+/// duplicated here.
+#[cfg(target_os = "macos")]
+fn round_bottom_corners(webview: &tauri::Webview, radius: f64) {
+    use objc2_app_kit::NSView;
+    use objc2_quartz_core::CACornerMask;
+
+    // Runs on the main thread, which is where AppKit layer writes belong.
+    let _ = webview.with_webview(move |platform| {
+        // `inner()` is the WKWebView, which is an NSView subclass.
+        let view: &NSView = unsafe { &*(platform.inner() as *const NSView) };
+        let Some(layer) = view.layer() else {
+            return;
+        };
+        layer.setCornerRadius(radius);
+        // MaxY, not MinY: WKWebView's layer is geometry-flipped, so the Y axis
+        // runs downward and the *bottom* corners are the MaxY pair. Masking
+        // MinY here rounds the top edge instead — visible as two notches under
+        // the address bar, with the bottom left square.
+        layer.setMaskedCorners(
+            CACornerMask::LayerMinXMaxYCorner | CACornerMask::LayerMaxXMaxYCorner,
+        );
+        layer.setMasksToBounds(true);
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn round_bottom_corners(_webview: &tauri::Webview, _radius: f64) {}
+
 fn webview_label(id: &str) -> String {
     format!("browser-{id}")
 }
@@ -148,6 +257,13 @@ fn eval_on_webview(app: &AppHandle, id: &str, js: &str) -> Result<(), String> {
     webview.eval(js).map_err(|error| error.to_string())
 }
 
+fn emit_load_state(webview: &Webview, id: String, url: String, loading: bool) {
+    let _ = webview.app_handle().emit(
+        LOAD_STATE_EVENT,
+        LoadState { id, url, loading },
+    );
+}
+
 fn emit_nav_changed(webview: &Webview, id: String, url: String) {
     let app = webview.app_handle().clone();
     // eval_with_callback is the only way to read page state (title) — its
@@ -165,6 +281,75 @@ fn emit_nav_changed(webview: &Webview, id: String, url: String) {
     });
 }
 
+/// Redirects a download into its own staging directory and reports both edges
+/// to the frontend, which is what turns it into a VFS file.
+///
+/// Returning `true` from `Requested` lets the download proceed. Nothing here
+/// decides *whether* to download — the click already did — so there's no
+/// prompt to gate it on.
+fn on_download(webview: &Webview, id: &str, event: DownloadEvent<'_>) -> bool {
+    match event {
+        DownloadEvent::Requested { destination, .. } => {
+            let filename = destination
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "download".to_string());
+            // Nanoseconds, not a counter: this closure is shared across every
+            // download in one webview and holds no state of its own.
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = download_staging_dir().join(unique.to_string());
+            if std::fs::create_dir_all(&dir).is_err() {
+                // Leaving `destination` alone lets the OS put it wherever it
+                // would have; failing the download outright would be worse.
+                return true;
+            }
+            *destination = dir.join(&filename);
+            let _ = webview.app_handle().emit(
+                DOWNLOAD_STARTED_EVENT,
+                DownloadStarted { id: id.to_string(), filename },
+            );
+            true
+        }
+        DownloadEvent::Finished { path, success, .. } => {
+            let path = path.unwrap_or_default();
+            let filename = path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "download".to_string());
+            let _ = webview.app_handle().emit(
+                DOWNLOAD_FINISHED_EVENT,
+                DownloadFinished {
+                    id: id.to_string(),
+                    filename,
+                    path: path.to_string_lossy().to_string(),
+                    success,
+                },
+            );
+            true
+        }
+        _ => true,
+    }
+}
+
+/// Hands a finished download's bytes to the frontend and removes the staged
+/// copy — a move into the VFS, not a copy, so nothing is left behind outside
+/// the "disk" the user can actually see.
+#[tauri::command]
+pub fn browser_take_download(path: String) -> Result<tauri::ipc::Response, String> {
+    let staged = staged_path(&path)?;
+    let bytes = std::fs::read(&staged).map_err(|error| error.to_string())?;
+    // Best-effort: the bytes are already in hand, and failing the whole
+    // download because a temp file outlived it would be the wrong trade.
+    let _ = std::fs::remove_file(&staged);
+    if let Some(dir) = staged.parent() {
+        let _ = std::fs::remove_dir(dir);
+    }
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 pub async fn browser_open(
     app: AppHandle,
@@ -172,6 +357,7 @@ pub async fn browser_open(
     url: String,
     bounds: Bounds,
     visible: bool,
+    radius: f64,
 ) -> Result<(), String> {
     let window = app
         .get_window(HOST_WINDOW)
@@ -179,10 +365,19 @@ pub async fn browser_open(
     let nav_id = id.clone();
     let inset_y = content_inset_y(&window);
 
+    let download_id = id.clone();
     let builder = WebviewBuilder::new(webview_label(&id), WebviewUrl::External(parse_url(url)?))
+        .on_download(move |webview, event| on_download(&webview, &download_id, event))
         .on_page_load(move |webview, payload| {
-            if payload.event() == PageLoadEvent::Finished {
-                emit_nav_changed(&webview, nav_id.clone(), payload.url().to_string());
+            let url = payload.url().to_string();
+            match payload.event() {
+                PageLoadEvent::Started => {
+                    emit_load_state(&webview, nav_id.clone(), url, true);
+                }
+                PageLoadEvent::Finished => {
+                    emit_load_state(&webview, nav_id.clone(), url.clone(), false);
+                    emit_nav_changed(&webview, nav_id.clone(), url);
+                }
             }
         });
     let webview = match window.add_child(builder, bounds.position(inset_y), bounds.size()) {
@@ -191,6 +386,7 @@ pub async fn browser_open(
         Err(tauri::Error::WebviewLabelAlreadyExists(_)) => return Ok(()),
         Err(error) => return Err(error.to_string()),
     };
+    round_bottom_corners(&webview, radius);
     if !visible {
         webview.hide().map_err(|error| error.to_string())?;
     }
@@ -215,6 +411,62 @@ pub fn browser_back(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn browser_forward(app: AppHandle, id: String) -> Result<(), String> {
     eval_on_webview(&app, &id, "history.forward()")
+}
+
+/// Halts an in-flight load. Like back/forward there's no native API, so this
+/// goes through the page's own `window.stop()`. A stopped load may never reach
+/// `PageLoadEvent::Finished`, so the frontend clears its own loading state
+/// when it asks for this rather than waiting for an edge that may not come.
+#[tauri::command]
+pub fn browser_stop(app: AppHandle, id: String) -> Result<(), String> {
+    eval_on_webview(&app, &id, "window.stop()")
+}
+
+/// Find-in-page (U17), on the page's own `window.find` — non-standard, but
+/// implemented by every engine wry runs on (WKWebView, WebKit2GTK, WebView2),
+/// and the only find that doesn't mean walking the DOM of a page we don't own.
+///
+/// It reports a bare hit/miss, which is why the find bar shows "Not found"
+/// rather than "3 of 12": a count would mean injecting a highlighter and
+/// keeping it in sync with a live document — a much larger job than this, and
+/// one that mutates third-party pages.
+///
+/// `query` is embedded through `serde_json` rather than formatted in: it is
+/// user text going into a JS source string, evaluated on whatever origin the
+/// page currently holds.
+#[tauri::command]
+pub fn browser_find(app: AppHandle, id: String, query: String, forward: bool) -> Result<(), String> {
+    let Some(webview) = find_webview(&app, &id) else {
+        return Ok(());
+    };
+    let literal = serde_json::to_string(&query).map_err(|error| error.to_string())?;
+    // (query, caseSensitive, backwards, wrapAround, wholeWord, searchInFrames, showDialog)
+    let script = format!("window.find({literal}, false, {}, true, false, true, false)", !forward);
+    let app_handle = app.clone();
+    webview
+        .eval_with_callback(script, move |found_json| {
+            let found = serde_json::from_str::<bool>(&found_json).unwrap_or(false);
+            let _ = app_handle.emit(FIND_RESULT_EVENT, FindResult { id: id.clone(), found });
+        })
+        .map_err(|error| error.to_string())
+}
+
+/// Drops the selection `browser_find` left behind, so closing the find bar
+/// doesn't leave the last match highlighted on the page.
+#[tauri::command]
+pub fn browser_find_clear(app: AppHandle, id: String) -> Result<(), String> {
+    eval_on_webview(&app, &id, "window.getSelection()?.removeAllRanges()")
+}
+
+/// Page zoom (U17). Unlike back/forward/stop this one *is* native, so it
+/// scales the page the way the OS browser would — layout included — rather
+/// than by restyling content we don't own.
+#[tauri::command]
+pub fn browser_set_zoom(app: AppHandle, id: String, factor: f64) -> Result<(), String> {
+    let Some(webview) = find_webview(&app, &id) else {
+        return Ok(());
+    };
+    webview.set_zoom(factor).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

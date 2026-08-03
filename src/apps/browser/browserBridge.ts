@@ -31,14 +31,33 @@ function queueFor(id: string): ReturnType<typeof createWriteQueue> {
  * `id` is the Browser window's `windowId`, doubling as the child webview's label.
  */
 export const browserBridge = {
-  open: (id: string, url: string, bounds: BrowserBounds, visible: boolean) =>
-    queueFor(id)(() => invoke<void>("browser_open", { id, url, bounds, visible })),
+  /**
+   * `radius` rounds the child webview's bottom corners to match the window's
+   * own — nothing in CSS clips a native webview, so it would otherwise square
+   * off the window's bottom edge whenever the window is focused.
+   */
+  open: (id: string, url: string, bounds: BrowserBounds, visible: boolean, radius: number) =>
+    queueFor(id)(() => invoke<void>("browser_open", { id, url, bounds, visible, radius })),
   navigate: (id: string, url: string) =>
     queueFor(id)(() => invoke<void>("browser_navigate", { id, url })),
   back: (id: string) =>
     queueFor(id)(() => invoke<void>("browser_back", { id })),
   forward: (id: string) =>
     queueFor(id)(() => invoke<void>("browser_forward", { id })),
+  stop: (id: string) =>
+    queueFor(id)(() => invoke<void>("browser_stop", { id })),
+  setZoom: (id: string, factor: number) =>
+    queueFor(id)(() => invoke<void>("browser_set_zoom", { id, factor })),
+  find: (id: string, query: string, forward: boolean) =>
+    queueFor(id)(() => invoke<void>("browser_find", { id, query, forward })),
+  clearFind: (id: string) =>
+    queueFor(id)(() => invoke<void>("browser_find_clear", { id })),
+  /**
+   * Reads a finished download's bytes and removes the staged file. Not queued
+   * per window: it names a path rather than a webview, and it must not sit
+   * behind a navigation that's still in flight.
+   */
+  takeDownload: (path: string) => invoke<ArrayBuffer>("browser_take_download", { path }),
   setBounds: (id: string, bounds: BrowserBounds) =>
     queueFor(id)(() => invoke<void>("browser_set_bounds", { id, bounds })),
   setVisible: (id: string, visible: boolean) =>
@@ -54,15 +73,23 @@ export interface BrowserNavChanged {
   title: string;
 }
 
+/** Payload of the Rust side's `browser://load-state` event — both edges of a page load. */
+export interface BrowserLoadState {
+  id: string;
+  url: string;
+  loading: boolean;
+}
+
 /**
- * Subscribes to real navigation changes, including ones from `back`/
- * `forward`/in-page link clicks, not just calls made through this bridge.
- * Returns an unsubscribe function, safe to call immediately.
+ * `listen()` resolves asynchronously, but a React effect's cleanup can run
+ * before it does. Bridging it to a synchronous unsubscribe keeps callers on
+ * the plain `return subscribe(...)` effect shape and makes an immediate
+ * unsubscribe safe.
  */
-export function onNavChanged(handler: (event: BrowserNavChanged) => void): () => void {
+function subscribe<T>(event: string, handler: (payload: T) => void): () => void {
   let cancelled = false;
   let unlisten: (() => void) | null = null;
-  listen<BrowserNavChanged>("browser://nav-changed", event => handler(event.payload)).then((fn) => {
+  listen<T>(event, e => handler(e.payload)).then((fn) => {
     if (cancelled)
       fn();
     else
@@ -72,4 +99,50 @@ export function onNavChanged(handler: (event: BrowserNavChanged) => void): () =>
     cancelled = true;
     unlisten?.();
   };
+}
+
+/**
+ * Subscribes to real navigation changes, including ones from `back`/
+ * `forward`/in-page link clicks, not just calls made through this bridge.
+ * Returns an unsubscribe function, safe to call immediately.
+ */
+export function onNavChanged(handler: (event: BrowserNavChanged) => void): () => void {
+  return subscribe("browser://nav-changed", handler);
+}
+
+/** Subscribes to page-load start/finish for every Browser window. */
+export function onLoadState(handler: (event: BrowserLoadState) => void): () => void {
+  return subscribe("browser://load-state", handler);
+}
+
+/** Payload of `browser://find-result` — hit or miss, no count (see `browser.rs`). */
+export interface BrowserFindResult {
+  id: string;
+  found: boolean;
+}
+
+/** Subscribes to the outcome of each find-in-page step. */
+export function onFindResult(handler: (event: BrowserFindResult) => void): () => void {
+  return subscribe("browser://find-result", handler);
+}
+
+export interface BrowserDownloadStarted {
+  id: string;
+  filename: string;
+}
+
+export interface BrowserDownloadFinished {
+  id: string;
+  filename: string;
+  /** Staging path to hand back to {@link browserBridge.takeDownload}. */
+  path: string;
+  success: boolean;
+}
+
+export function onDownloadStarted(handler: (event: BrowserDownloadStarted) => void): () => void {
+  return subscribe("browser://download-started", handler);
+}
+
+export function onDownloadFinished(handler: (event: BrowserDownloadFinished) => void): () => void {
+  return subscribe("browser://download-finished", handler);
 }

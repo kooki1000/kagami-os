@@ -85,7 +85,9 @@ they produced overlapping symptoms and are correct independent of the offset:
 - `9298823` — bounds were measured via `getBoundingClientRect()` during the
   window enter animation (`transform: scale(0.96)` folded into the measurement,
   never re-measured). Bounds now derive from the store rect plus the
-  title-bar/address-bar chrome (`CHROME_HEIGHT` in `BrowserApp.tsx`).
+  title-bar/address-bar chrome (`chromeHeight()` in `BrowserApp.tsx` — a
+  constant at the time of this fix, a function since U17 added the optional
+  bookmarks and find bars).
 - `ea31c79` — the visibility/bounds sync effects skipped their first run,
   dropping any change between the open render and the first effect execution.
   Effects now re-send every run (both Rust commands are idempotent).

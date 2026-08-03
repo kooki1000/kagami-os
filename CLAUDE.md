@@ -171,6 +171,18 @@ the fs store — writes land in the same VFS the Files app shows. Keep new
 commands in the pure engine, not the React REPL shell
 (`TerminalApp.tsx`), so they stay unit-testable without React.
 
+### Browser (native only)
+
+`src/apps/browser/` is chrome-only React over a **native child webview** that
+Rust (`src-tauri/src/browser.rs`) layers on top of the content region — the
+page is never in the DOM. Nothing React renders can overlay it, find can't
+walk it, and keyboard focus inside it never reaches `system/shortcuts.ts`.
+`chromeHeight()` is therefore load-bearing: it's the arithmetic that positions
+the webview, so any new chrome strip must be added to it or it renders
+underneath the page. `docs/browser-depth.md` has the full constraint list and
+the security boundaries (address bar, restored payloads, download staging
+paths). The web build renders an "available in the desktop app" state instead.
+
 ### Blob storage (Phase 10, shipped)
 
 Design note: `docs/blob-architecture.md`. Large/binary file content lives

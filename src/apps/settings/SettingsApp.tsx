@@ -12,6 +12,7 @@ import type { ChordDescriptor } from "@/system/shortcuts";
 import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { SEARCH_ENGINES } from "@/apps/browser/searchEngines";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { Segmented } from "@/components/ui/Segmented";
 import { Switch } from "@/components/ui/Switch";
@@ -957,12 +958,33 @@ function ShortcutsSection() {
   );
 }
 
+/** U17 — the Browser's search engine, which is also the page it opens on. */
+const SEARCH_ENGINE_OPTIONS: SegmentOption<string>[] = SEARCH_ENGINES.map(engine => ({
+  value: engine.id,
+  label: engine.name,
+}));
+
 function GeneralSection() {
   const autoEmptyTrash = useSettingsStore(s => s.autoEmptyTrash);
   const setAutoEmptyTrash = useSettingsStore(s => s.setAutoEmptyTrash);
+  const searchEngineId = useSettingsStore(s => s.browserSearchEngineId);
+  const setSearchEngine = useSettingsStore(s => s.setBrowserSearchEngine);
 
   return (
     <>
+      <Row label="Search engine">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-12/relaxed text-ink-2">
+            Where the Browser sends anything typed into the address bar that
+            isn't a web address. New Browser windows open here too.
+          </p>
+          <Segmented
+            options={SEARCH_ENGINE_OPTIONS}
+            value={searchEngineId}
+            onChange={setSearchEngine}
+          />
+        </div>
+      </Row>
       <Row label="Trash">
         <div className="flex items-center justify-between gap-4">
           <p className="text-12/relaxed text-ink-2">
