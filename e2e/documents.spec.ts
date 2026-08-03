@@ -115,8 +115,7 @@ test.describe("Documents (step 16b, D6)", () => {
     // The frame's own backdrop, painted from the `--surface-2` the host pushes
     // over the theme event. Reading it *inside* the iframe is the point: this
     // is the surface that used to be hardcoded light and unreachable.
-    const frameBackdrop = () => documentsFrame(page).locator("body")
-      .evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+    const frameBackdrop = () => documentsFrame(page).locator("body").evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
     const lightFrame = await frameBackdrop();
 
     // Switch through Settings, the way a user does. Poking `data-theme`
