@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryStorage } from "@/testUtils/memoryStorage";
-import { clampFontSize, findHistoryMatch, pushHistory, stepFontSize } from "./terminalStore";
+import { clampFontSize, findHistoryMatch, fontStack, pushHistory, stepFontSize } from "./terminalStore";
 
 describe("pushHistory", () => {
   it("appends a trimmed, non-blank command", () => {
@@ -55,6 +55,19 @@ describe("clampFontSize / stepFontSize", () => {
   });
 });
 
+describe("fontStack", () => {
+  it("resolves a known id to its stack", () => {
+    expect(fontStack("courier")).toContain("Courier");
+    expect(fontStack("kagami")).toBe("var(--font-mono)");
+  });
+
+  it("falls back to the default for an unrecognised id", () => {
+    // A stored value from a build where the ids differed shouldn't render
+    // as an invalid font-family — the app reads this on every render.
+    expect(fontStack("comic-sans")).toBe(fontStack("kagami"));
+  });
+});
+
 describe("terminalStore persistence", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -68,7 +81,7 @@ describe("terminalStore persistence", () => {
 
   it("declares a persist version so a future shape change can migrate", async () => {
     const { useTerminalStore } = await import("./terminalStore");
-    expect(useTerminalStore.persist.getOptions().version).toBe(1);
+    expect(useTerminalStore.persist.getOptions().version).toBe(2);
   });
 
   it("drops mismatched-version persisted data instead of applying it blindly", async () => {
@@ -78,8 +91,8 @@ describe("terminalStore persistence", () => {
     );
     const { useTerminalStore } = await import("./terminalStore");
     await useTerminalStore.persist.rehydrate();
-    // No `migrate` is registered, so a version mismatch is discarded rather
-    // than silently adopted — the store keeps its own default instead.
+    // v1 is the only version `migrate` knows how to carry forward, so an
+    // unrecognised one is discarded rather than silently adopted.
     expect(useTerminalStore.getState().history).toEqual([]);
   });
 
@@ -108,5 +121,38 @@ describe("terminalStore persistence", () => {
     useTerminalStore.getState().addHistory("pwd");
     useTerminalStore.getState().clearHistory();
     expect(useTerminalStore.getState().history).toEqual([]);
+  });
+
+  it("migrates a v1 install by filling in the appearance defaults", async () => {
+    localStorage.setItem("kagami-terminal", JSON.stringify({
+      version: 1,
+      state: { history: ["ls"], fontSize: 14, aliases: {} },
+    }));
+    const { useTerminalStore } = await import("./terminalStore");
+    const state = useTerminalStore.getState();
+    expect(state.history).toEqual(["ls"]);
+    expect(state.fontSize).toBe(14);
+    expect(state.fontFamily).toBe("kagami");
+    expect(state.promptStyle).toBe("short");
+  });
+
+  it("replaces an unrecognised persisted appearance value rather than keeping it", async () => {
+    localStorage.setItem("kagami-terminal", JSON.stringify({
+      version: 1,
+      state: { history: [], fontSize: 12.5, aliases: {}, fontFamily: "wingdings", promptStyle: "loud" },
+    }));
+    const { useTerminalStore } = await import("./terminalStore");
+    expect(useTerminalStore.getState().fontFamily).toBe("kagami");
+    expect(useTerminalStore.getState().promptStyle).toBe("short");
+  });
+
+  it("persists a chosen font and prompt style", async () => {
+    const { useTerminalStore } = await import("./terminalStore");
+    useTerminalStore.getState().setFontFamily("courier");
+    useTerminalStore.getState().setPromptStyle("minimal");
+    const persisted = JSON.parse(localStorage.getItem("kagami-terminal") ?? "{}");
+    expect(persisted.state.fontFamily).toBe("courier");
+    expect(persisted.state.promptStyle).toBe("minimal");
+    expect(persisted.version).toBe(2);
   });
 });

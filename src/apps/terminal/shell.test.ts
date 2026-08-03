@@ -3,7 +3,7 @@ import type { FsNode } from "@/system/fs/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { indexNodes, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, HOME_ID, ROOT_ID, TRASH_ID } from "@/system/fs/types";
-import { completeToken, expandAlias, resolveCompletion, resolvePath, runCommand } from "./shell";
+import { completeToken, completionTarget, expandAlias, quoteToken, resolveCompletion, resolvePath, runCommand, splitSequence, statusOf } from "./shell";
 
 let openedNodes: FsNode[] = [];
 let openPathResult = true;
@@ -51,6 +51,11 @@ function ctx(cwd = HOME_ID): ShellContext {
       return openPathResult;
     },
     user: "kagami",
+    history: [],
+    clearHistory: () => {},
+    // Same as the app: a sequence's later segments re-read the store rather
+    // than reusing the snapshot the line started with.
+    readNodes: () => useFsStore.getState().nodes,
     aliases: testAliases,
     setAlias: (name, expansion) => {
       testAliases = { ...testAliases, [name]: expansion };
@@ -315,20 +320,58 @@ describe("redirects and quoting (T5)", () => {
 });
 
 describe("completeToken", () => {
+  function complete(partial: string, index: number, aliases?: string[]) {
+    return completeToken(useFsStore.getState().nodes, HOME_ID, { partial, index }, aliases);
+  }
+
   it("completes builtin command names for the first token", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["mk"])).toEqual(["mkdir"]);
+    expect(complete("mk", 0)).toEqual(["mkdir"]);
+  });
+
+  it("completes the user's own aliases alongside the builtins", () => {
+    expect(complete("l", 0, ["ll"])).toEqual(["ll", "ls"]);
   });
 
   it("completes a path argument against the resolved directory's children", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cd", "doc"])).toEqual(["Documents/"]);
+    expect(complete("doc", 1)).toEqual(["Documents/"]);
   });
 
   it("resolves a directory prefix before completing the leaf", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cat", "Documents/rep"])).toEqual(["Documents/Reports/"]);
+    expect(complete("Documents/rep", 1)).toEqual(["Documents/Reports/"]);
   });
 
   it("returns nothing for an unresolvable parent path", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cd", "nope/x"])).toEqual([]);
+    expect(complete("nope/x", 1)).toEqual([]);
+  });
+});
+
+describe("completionTarget", () => {
+  it("splits the line around the token being typed", () => {
+    expect(completionTarget("cd Doc")).toEqual({ head: "cd ", partial: "Doc", index: 1 });
+  });
+
+  it("treats trailing whitespace as the start of a new, empty token", () => {
+    expect(completionTarget("cd ")).toEqual({ head: "cd ", partial: "", index: 1 });
+    expect(completionTarget("")).toEqual({ head: "", partial: "", index: 0 });
+  });
+
+  it("keeps a quoted span together and hands back its unquoted text", () => {
+    // The REPL's old split(/\s+/) saw `\"My` here and completed against a
+    // directory that doesn't exist.
+    expect(completionTarget("cd \"My Folder/Su")).toEqual({
+      head: "cd ",
+      partial: "My Folder/Su",
+      index: 1,
+    });
+  });
+
+  it("counts a quoted argument as one token when locating the next", () => {
+    expect(completionTarget("cp \"My Folder\" de")).toEqual({ head: "cp \"My Folder\" ", partial: "de", index: 2 });
+  });
+
+  it("quoteToken only quotes what would otherwise re-tokenize", () => {
+    expect(quoteToken("Documents/")).toBe("Documents/");
+    expect(quoteToken("My Folder/")).toBe("\"My Folder/\"");
   });
 });
 
@@ -423,6 +466,250 @@ describe("alias", () => {
   it("a defined alias actually runs the expanded command", () => {
     run("alias ll=ls");
     expect(text("ll Documents", HOME_ID)).toBe(text("ls Documents", HOME_ID));
+  });
+});
+
+describe("command flags", () => {
+  it("ls -l prints a type marker, a size and a date per entry", () => {
+    const lines = text("ls -l Documents", HOME_ID).split("\n");
+    expect(lines[0]).toMatch(/^d\s+-\s+\S/);
+    expect(lines[0]).toContain("Reports/");
+    expect(lines.find(l => l.includes("note.md"))).toMatch(/^-\s+2 bytes/);
+  });
+
+  it("ls hides dot-files unless -a is given", () => {
+    run("touch .hidden", DOCUMENTS_ID);
+    expect(text("ls", DOCUMENTS_ID)).not.toContain(".hidden");
+    expect(text("ls -a", DOCUMENTS_ID)).toContain(".hidden");
+  });
+
+  it("mkdir -p creates every missing parent", () => {
+    run("mkdir -p a/b/c", DOCUMENTS_ID);
+    const nodes = useFsStore.getState().nodes;
+    expect(resolvePath(nodes, DOCUMENTS_ID, "a/b/c")).toBeTruthy();
+  });
+
+  it("mkdir -p is silent when the directory already exists", () => {
+    expect(run("mkdir -p Reports", DOCUMENTS_ID).lines).toHaveLength(0);
+    expect(nodesByName("Reports 2")).toBeUndefined();
+  });
+
+  it("mkdir -p refuses to descend through a file", () => {
+    expect(run("mkdir -p note.md/sub", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("mkdir without -p still requires the parent to exist", () => {
+    expect(run("mkdir a/b", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("rm refuses a folder without -r, and accepts it with", () => {
+    expect(run("rm Reports", DOCUMENTS_ID).lines[0].text).toContain("is a directory");
+    expect(run("rm -r Reports", DOCUMENTS_ID).lines[0].text).toContain("moved 'Reports' to Trash");
+  });
+
+  it("rm still trashes a plain file without -r", () => {
+    expect(run("rm note.md", DOCUMENTS_ID).lines[0].text).toContain("moved 'note.md' to Trash");
+  });
+
+  it("grep -E treats the pattern as a regular expression", () => {
+    expect(text("grep -E ^r poem.txt", DOCUMENTS_ID)).toBe("roses");
+    expect(text("grep -E -i ^r poem.txt", DOCUMENTS_ID).split("\n")).toEqual(["roses", "ROSES again"]);
+  });
+
+  it("grep -E reports an invalid pattern instead of throwing", () => {
+    expect(() => run("grep -E \"[\" poem.txt", DOCUMENTS_ID)).not.toThrow();
+    expect(run("grep -E \"[\" poem.txt", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("grep -r searches a whole subtree and prefixes each hit with its path", () => {
+    expect(text("grep -r roses .", DOCUMENTS_ID)).toBe("./poem.txt:roses");
+  });
+
+  it("grep -r defaults to the current directory", () => {
+    expect(text("grep -r hi", DOCUMENTS_ID)).toBe("./note.md:hi");
+  });
+
+  it("grep reports status 1 when nothing matches, without printing an error", () => {
+    const result = run("grep nothing poem.txt", DOCUMENTS_ID);
+    expect(result.lines).toHaveLength(0);
+    expect(statusOf(result)).toBe(1);
+    expect(text("grep nothing poem.txt || echo none", DOCUMENTS_ID)).toBe("none");
+  });
+
+  it("a failing grep still lets the rest of its pipeline run", () => {
+    expect(text("cat poem.txt | grep nothing | wc -l", DOCUMENTS_ID)).toBe("0");
+  });
+});
+
+describe("text builtins", () => {
+  it("wc counts lines, words and characters, and names the file", () => {
+    expect(text("wc poem.txt", DOCUMENTS_ID)).toBe("4 7 37 poem.txt");
+  });
+
+  it("wc flags each print one count on their own", () => {
+    expect(text("wc -l poem.txt", DOCUMENTS_ID)).toBe("4 poem.txt");
+    expect(text("wc -w poem.txt", DOCUMENTS_ID)).toBe("7 poem.txt");
+  });
+
+  it("wc reads piped stdin when given no file", () => {
+    expect(text("cat poem.txt | wc -l", DOCUMENTS_ID)).toBe("4");
+  });
+
+  it("wc rejects an unknown flag", () => {
+    expect(run("wc -q poem.txt", DOCUMENTS_ID).lines[0].text).toContain("unknown option '-q'");
+  });
+
+  it("sort orders lines, and -r reverses them", () => {
+    expect(text("sort poem.txt", DOCUMENTS_ID).split("\n")).toEqual(["roses", "ROSES again", "sky is blue", "violets"]);
+    expect(text("sort -r poem.txt", DOCUMENTS_ID).split("\n").at(-1)).toBe("roses");
+  });
+
+  it("sort -n compares numerically rather than lexically", () => {
+    run("echo 10 > nums.txt", DOCUMENTS_ID);
+    expect(text("echo 9 >> nums.txt", DOCUMENTS_ID)).toBe("");
+    expect(text("sort -n nums.txt", DOCUMENTS_ID).trim().split("\n")).toEqual(["9", "10"]);
+  });
+
+  it("combined short flags are read as separate flags", () => {
+    run("echo 2 > n.txt", DOCUMENTS_ID);
+    run("echo 1 >> n.txt", DOCUMENTS_ID);
+    expect(text("sort -rn n.txt", DOCUMENTS_ID).trim().split("\n")).toEqual(["2", "1"]);
+  });
+
+  it("uniq collapses adjacent duplicates only", () => {
+    run("echo a > dup.txt", DOCUMENTS_ID);
+    run("echo a >> dup.txt", DOCUMENTS_ID);
+    run("echo b >> dup.txt", DOCUMENTS_ID);
+    run("echo a >> dup.txt", DOCUMENTS_ID);
+    expect(text("uniq dup.txt", DOCUMENTS_ID).trim().split("\n")).toEqual(["a", "b", "a"]);
+  });
+
+  it("uniq -c prefixes each run with its count", () => {
+    run("echo a > dup.txt", DOCUMENTS_ID);
+    run("echo a >> dup.txt", DOCUMENTS_ID);
+    expect(text("uniq -c dup.txt", DOCUMENTS_ID).trim().split("\n")[0]).toBe("2 a");
+  });
+});
+
+describe("which / history / du / exit", () => {
+  it("which names a builtin, an alias, and reports an unknown one", () => {
+    run("alias ll=ls");
+    expect(text("which ls")).toBe("ls: shell builtin");
+    expect(text("which ll")).toBe("ll: aliased to ls");
+    const missing = run("which frobnicate");
+    expect(missing.lines[0]).toMatchObject({ kind: "error" });
+    expect(statusOf(missing)).toBe(1);
+  });
+
+  it("history prints the context's entries, numbered", () => {
+    const result = runCommand("history", { ...ctx(), history: ["ls", "pwd"] });
+    expect(result.lines[0].text).toBe("1  ls\n2  pwd");
+  });
+
+  it("history -c clears through the context", () => {
+    let cleared = false;
+    runCommand("history -c", {
+      ...ctx(),
+      clearHistory: () => {
+        cleared = true;
+      },
+    });
+    expect(cleared).toBe(true);
+  });
+
+  it("du reports each directory below the target, children before parents", () => {
+    const lines = text("du Documents", HOME_ID).split("\n");
+    expect(lines.map(l => l.split("\t")[1])).toEqual([
+      "Documents/Reports/Child",
+      "Documents/Reports",
+      "Documents",
+    ]);
+    // note.md ("hi") + poem.txt, and Reports' own bytes, all roll up.
+    expect(Number(lines.at(-1)?.split("\t")[0])).toBeGreaterThan(0);
+  });
+
+  it("du -h prints human-readable sizes", () => {
+    expect(text("du -h Documents", HOME_ID)).toMatch(/^\d+ bytes\t/);
+  });
+
+  it("du on a file reports just that file", () => {
+    expect(text("du Documents/note.md", HOME_ID)).toBe("2\tDocuments/note.md");
+  });
+
+  it("exit asks the host to close, carrying its status", () => {
+    expect(run("exit")).toMatchObject({ exit: true, code: 0 });
+    expect(run("exit 3")).toMatchObject({ exit: true, code: 3 });
+    expect(run("exit banana").lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("nothing after exit on the same line runs", () => {
+    expect(text("exit; echo never")).toBe("");
+  });
+});
+
+describe("sequences and exit status", () => {
+  it("splitSequence keeps a single pipe inside its segment", () => {
+    expect(splitSequence("ls | grep a && pwd")).toEqual([
+      { op: null, text: "ls | grep a" },
+      { op: "&&", text: "pwd" },
+    ]);
+  });
+
+  it("splitSequence ignores operators inside quotes", () => {
+    expect(splitSequence("echo \"a && b\" ; pwd")).toEqual([
+      { op: null, text: "echo \"a && b\"" },
+      { op: ";", text: "pwd" },
+    ]);
+  });
+
+  it("statusOf falls back to 1 for a result that printed an error", () => {
+    expect(statusOf({ lines: [] })).toBe(0);
+    expect(statusOf({ lines: [{ kind: "error", text: "boom" }] })).toBe(1);
+    expect(statusOf({ lines: [{ kind: "error", text: "boom" }], code: 0 })).toBe(0);
+  });
+
+  it("; runs both sides regardless of status", () => {
+    expect(text("nope; echo second")).toBe("nope: command not found (try 'help')\nsecond");
+  });
+
+  it("&& runs the right side only on success", () => {
+    expect(text("echo one && echo two")).toBe("one\ntwo");
+    expect(text("nope && echo two")).toBe("nope: command not found (try 'help')");
+  });
+
+  it("|| runs the right side only on failure", () => {
+    expect(text("nope || echo rescued")).toBe("nope: command not found (try 'help')\nrescued");
+    expect(text("echo one || echo two")).toBe("one");
+  });
+
+  it("a && b || c falls through to c when a fails", () => {
+    expect(text("nope && echo b || echo c")).toContain("c");
+    expect(text("echo a && echo b || echo c")).toBe("a\nb");
+  });
+
+  it("a later segment sees what an earlier one wrote", () => {
+    const result = run("mkdir seq && cd seq", HOME_ID);
+    expect(result.cwd).toBe(nodesByName("seq")?.id);
+  });
+
+  it("the last cd of a sequence wins", () => {
+    expect(run("cd Documents; cd ..").cwd).toBeUndefined();
+    expect(run("cd Documents; cd Reports").cwd).toBe("reports");
+  });
+
+  it("clear mid-sequence wipes what came before it, not after", () => {
+    const result = run("echo gone; clear; echo kept");
+    expect(result.clear).toBe(true);
+    expect(result.lines.map(l => l.text)).toEqual(["kept"]);
+  });
+
+  it("$? expands to the previous command's status", () => {
+    expect(text("echo hi; echo $?")).toBe("hi\n0");
+    expect(text("nope; echo $?")).toBe("nope: command not found (try 'help')\n1");
+  });
+
+  it("$? carries the status of the previous line in from the context", () => {
+    expect(runCommand("echo $?", { ...ctx(), lastStatus: 7 }).lines[0].text).toBe("7");
   });
 });
 

@@ -306,6 +306,23 @@ body {
   animation: flyout-in 0.16s ease-out both;
 }
 
+/* ---- terminal block cursor: a hard on/off blink (step-end), not a fade —
+   a cursor that eases between states reads as a pulsing highlight rather
+   than a caret. ---- */
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  99% {
+    opacity: 0;
+  }
+}
+@utility animate-cursor-blink {
+  animation: cursor-blink 1.1s step-end infinite;
+}
+
 /* ---- reduced motion: collapse both entrance animations to a near-instant
    duration rather than dropping them — a literal 0s can be treated by some
    assistive tech as "no animation ran" (no animationend), so this keeps the
@@ -315,5 +332,11 @@ body {
   .animate-toast-in,
   .animate-flyout-in {
     animation-duration: 0.01ms;
+  }
+
+  /* The cursor is the exception: it has no entrance to shorten, it just
+     flashes forever. Reduced motion gets a steady block instead. */
+  .animate-cursor-blink {
+    animation: none;
   }
 }

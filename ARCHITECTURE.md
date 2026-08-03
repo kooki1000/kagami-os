@@ -381,12 +381,33 @@ focused instance without the shell knowing app internals.
 
 A sandboxed fake shell — **no code execution**. `shell.ts` is a pure,
 framework-agnostic engine (`runCommand(input, ctx) → ShellResult`) that
-interprets a fixed command set (`ls cd pwd cat mkdir touch echo rm tree
-whoami date clear help`, with `>` redirect, quoting, and `~`/`.`/`..` path
-resolution) against a `ShellContext` — a thin capability bag over the fs
-store, so writes land in the same VFS the Files app shows. `TerminalApp.tsx`
-is the REPL shell: scrollback, command history (↑/↓), and prompt path. The
-engine's purity makes it unit-testable without React (phase 8).
+interprets a fixed command set (`ls cd pwd cat mkdir touch echo rm cp mv
+head tail grep find tree wc sort uniq which history du alias open whoami
+date clear exit help`, with `>`/`>>` redirect, `|` pipelines, quoting, and
+`~`/`.`/`..` path resolution) against a `ShellContext` — a thin capability
+bag over the fs store, so writes land in the same VFS the Files app shows.
+
+One submitted line is a `;`/`&&`/`||` **sequence** of pipelines, threaded by
+an exit status (`statusOf`, `$?`). Two things follow from that and are easy
+to get backwards:
+
+- Later segments re-read the node map through `ctx.readNodes`. The `nodes`
+  the line started with is a snapshot, so without it `mkdir foo && cd foo`
+  can't see the folder it just made.
+- A pipeline stops on a printed **error**, not on a non-zero status. `grep`
+  reports 1 when it matches nothing — that's what makes `grep x f && …`
+  work — and `grep nope f | wc -l` still has to reach `wc` to print 0.
+
+Lines carry an optional `tone` (`dir`, `heading`, `muted`) naming what the
+text _is_; `TerminalApp.tsx` owns the palette that renders it, so the engine
+stays free of design tokens. The REPL is the rest: scrollback (capped at
+5000 lines), history (↑/↓ and ⌃R), the ⌃A/⌃E/⌃W/⌃U/⌃K bindings from
+`readline.ts`, Tab-cycling completion over the engine's own quote-aware
+tokenizer (`completionTarget`), and a block cursor positioned in `ch` units.
+Appearance prefs (size, font, prompt shape) live in `terminalStore.ts`.
+
+Keep new commands in the pure engine rather than the React shell — that's
+what keeps them unit-testable without mounting anything (phase 8).
 
 ## Settings (`src/apps/settings/` + `src/system/settings/`)
 
@@ -469,8 +490,10 @@ high-risk logic is framework-agnostic). Suites live next to their code:
   collection at depth (`collectSubtrees` indexes children once and walks
   iteratively, so deleting a deep subtree stays linear and a corrupt parent
   cycle terminates instead of overflowing the stack).
-- `apps/terminal/shell.test.ts` — `resolvePath` (relative/`..`/`~`/absolute)
-  and every command, driven against a seeded fs store.
+- `apps/terminal/shell.test.ts` — `resolvePath` (relative/`..`/`~`/absolute),
+  every command and flag, and the sequence operators' short-circuiting,
+  driven against a seeded fs store; `readline.test.ts` covers the line
+  editing bindings as pure caret arithmetic.
 - `system/fs/blobIntegrity.test.ts` — the `content` xor `contentRef`
   invariant: editing a blob-backed file inline releases its ref (and its
   bytes), `touchFile` bumps the timestamp without disturbing them, and the

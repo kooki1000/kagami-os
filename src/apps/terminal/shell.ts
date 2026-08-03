@@ -1,7 +1,9 @@
 import type { FsNode } from "@/system/fs/types";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatModified } from "@/lib/format";
 import {
+  cachedFolderSizes,
   childrenOf,
+  fileBytes,
   isDescendantOf,
   isSystemNode,
   isValidNodeName,
@@ -19,6 +21,13 @@ import { HOME_ID, ROOT_ID } from "@/system/fs/types";
 export interface ShellLine {
   kind: "input" | "output" | "error" | "system";
   text: string;
+  /**
+   * What the line *is*, for the REPL to colour by — a folder in a listing,
+   * a heading, an aside. The engine names the meaning and the app owns the
+   * palette, so nothing in here has to know a token from a hex value. Plain
+   * output leaves it unset.
+   */
+  tone?: "dir" | "heading" | "muted";
 }
 
 export interface ShellResult {
@@ -27,12 +36,42 @@ export interface ShellResult {
   cwd?: string;
   /** Request to clear the scrollback. */
   clear?: boolean;
+  /** Request to close the terminal (`exit`). */
+  exit?: boolean;
+  /**
+   * Exit status, when a command reports one that the printed lines don't
+   * already imply — `grep` finding nothing is a failure (status 1) without
+   * being an error worth printing, which is exactly the distinction `&&`
+   * and `||` need. Read it through {@link statusOf}, never directly.
+   */
+  code?: number;
+}
+
+/**
+ * The status a result reports: its explicit `code` when it set one, else 1
+ * if it printed an error line. Deriving the fallback keeps every existing
+ * builtin honest without each one having to remember to set a code.
+ */
+export function statusOf(result: ShellResult): number {
+  return result.code ?? (result.lines.some(l => l.kind === "error") ? 1 : 0);
 }
 
 /** Everything a command needs from the host (fs access + current dir). */
 export interface ShellContext {
   cwd: string;
   nodes: Record<string, FsNode>;
+  /**
+   * Exit status of the previous *line*, which `$?` expands to before the
+   * first command of this one runs.
+   */
+  lastStatus?: number;
+  /**
+   * Re-read the node map between the segments of a `;`/`&&`/`||` sequence.
+   * Without it `nodes` stays the snapshot taken when the line was submitted
+   * and `mkdir foo && cd foo` can't see the folder it just made. Optional so
+   * a caller running one command at a time needn't supply it.
+   */
+  readNodes?: () => Record<string, FsNode>;
   createFolder: (parentId: string, name: string) => FsNode;
   createFile: (parentId: string, name: string, content: string, mimeType?: string) => FsNode;
   updateFileContent: (id: string, content: string) => void;
@@ -44,6 +83,9 @@ export interface ShellContext {
   /** Launch the file's associated app; false when nothing is associated. */
   openPath: (node: FsNode) => boolean;
   user: string;
+  /** Submitted command lines, oldest first — what `history` prints. */
+  history: string[];
+  clearHistory: () => void;
   /** Alias name -> the command string it expands to (e.g. "ll" -> "ls"). */
   aliases: Record<string, string>;
   /** Persist a new/updated alias — write-through to the same store `aliases` reads from. */
@@ -72,33 +114,49 @@ const COMMAND_NAMES = [
   "tree",
   "find",
   "alias",
+  "wc",
+  "sort",
+  "uniq",
+  "which",
+  "history",
+  "du",
+  "exit",
 ] as const;
 
 const HELP_TEXT = [
   "Kagami Shell — available commands:",
-  "  ls [path]           list directory contents",
+  "  ls [-l] [-a] [path]  list directory contents (long form, including dot-files)",
   "  cd [path]           change directory (cd .. , cd ~ , cd /)",
   "  pwd                 print working directory",
   "  cat <file>          print a file's contents",
-  "  mkdir <path>        create a directory (parent dirs must exist)",
+  "  mkdir [-p] <path>   create a directory (-p creates missing parents too)",
   "  touch <path>        create an empty file (parent dirs must exist)",
   "  echo <text>         print text (> file to write, >> to append)",
   "  cp <src> <dest>     copy a file or folder",
   "  mv <src> <dest>     move or rename a file or folder",
   "  head [-n N] <file>  print the first N lines (default 10)",
   "  tail [-n N] <file>  print the last N lines (default 10)",
-  "  grep [-i] <pat> <file>  print lines matching a substring",
+  "  grep [-i] [-E] [-r] <pat> <file>  print matching lines (ignoring case,",
+  "                      as a regular expression, recursively through a folder)",
   "  open <path>         open a file in its associated app",
-  "  rm <name>           move an item to the Trash",
+  "  rm [-r] <name>      move an item to the Trash (-r for a folder)",
   "  tree                show the tree below the current directory",
   "  find [path] [-name <pattern>]  list everything under path, optionally",
   "                      filtered by a *?-glob name pattern (default path: .)",
   "  alias [name[=value] [value...]]  show/define a command alias",
+  "  wc [-l|-w|-c] [file]  count lines, words and characters",
+  "  sort [-r] [-n] [file]  sort lines (reversed, numerically)",
+  "  uniq [-c] [file]    drop adjacent duplicate lines (-c counts them)",
+  "  which <name>...     say what a name runs: a builtin or an alias",
+  "  history [-c]        list previously run commands (-c clears them)",
+  "  du [-h] [path]      size of each directory below path (-h human-readable)",
   "  whoami              print the current user",
   "  date                print the current date and time",
   "  clear               clear the screen",
+  "  exit                close this terminal",
   "  help                show this help",
   "Pipe builtins together with |, e.g. `ls | grep .txt`. Tab completes commands and paths.",
+  "Chain commands with ; (always), && (on success) or || (on failure); $? is the last exit status.",
 ].join("\n");
 
 /** Absolute "/a/b/c" path string for a node. */
@@ -166,8 +224,8 @@ function splitPath(path: string): { dir: string; leaf: string } {
     : { dir: path.slice(0, idx), leaf: path.slice(idx + 1) };
 }
 
-function line(kind: ShellLine["kind"], text: string): ShellLine {
-  return { kind, text };
+function line(kind: ShellLine["kind"], text: string, tone?: ShellLine["tone"]): ShellLine {
+  return tone ? { kind, text, tone } : { kind, text };
 }
 
 function err(text: string): ShellResult {
@@ -201,6 +259,52 @@ function resolveCreateParent(
   if (parentId === null)
     return { error: `${path}: no such directory` };
   return { parentId, leaf };
+}
+
+/**
+ * `mkdir -p`: create every missing segment of `path`, and succeed silently
+ * when it already exists. Walks from the deepest existing prefix rather than
+ * re-resolving, because `ctx.nodes` is a snapshot taken before the command
+ * ran — a folder created by an earlier segment of this same loop isn't in
+ * it, so each new segment's id has to come from `createFolder`'s return
+ * value instead of a lookup.
+ */
+function makeDirs(path: string, ctx: ShellContext): ShellResult {
+  const { nodes, cwd } = ctx;
+  let currentId: string;
+  let rest: string;
+  if (path === "~" || path.startsWith("~/")) {
+    currentId = HOME_ID;
+    rest = path.slice(1);
+  }
+  else if (path.startsWith("/")) {
+    currentId = ROOT_ID;
+    rest = path;
+  }
+  else {
+    currentId = cwd;
+    rest = path;
+  }
+
+  for (const segment of rest.split("/")) {
+    if (segment === "" || segment === ".")
+      continue;
+    if (segment === "..") {
+      currentId = nodes[currentId]?.parentId ?? currentId;
+      continue;
+    }
+    if (!isValidNodeName(segment))
+      return err(`mkdir: ${path}: invalid name '${segment}'`);
+    const existing = childByName(nodes, currentId, segment);
+    if (existing) {
+      if (existing.type !== "folder")
+        return err(`mkdir: ${path}: '${segment}' is not a directory`);
+      currentId = existing.id;
+      continue;
+    }
+    currentId = ctx.createFolder(currentId, segment).id;
+  }
+  return { lines: [] };
 }
 
 type Destination
@@ -256,6 +360,31 @@ function inputLines(
     return err(`${command}: ${path}: binary file`);
   const content = target.content ?? "";
   return content === "" ? [] : content.split("\n");
+}
+
+/**
+ * Pull leading short flags off an argument list: a `-rn` token counts as
+ * both `-r` and `-n`, every letter has to be in `allowed`, and the first
+ * non-flag token ends the run — so a positional argument that starts with
+ * `-` is still reachable once a flag-shaped one has been consumed.
+ */
+function parseFlags(
+  args: string[],
+  allowed: string,
+): { flags: Record<string, boolean>; rest: string[] } | { error: string } {
+  const flags: Record<string, boolean> = {};
+  let i = 0;
+  for (; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("-") || arg === "-")
+      break;
+    for (const letter of arg.slice(1)) {
+      if (!allowed.includes(letter))
+        return { error: `unknown option '-${letter}'` };
+      flags[letter] = true;
+    }
+  }
+  return { flags, rest: args.slice(i) };
 }
 
 /** Parse a leading `-n <count>` flag shared by head/tail, defaulting to 10 lines. */
@@ -403,13 +532,18 @@ function treeLines(
   nodes: Record<string, FsNode>,
   id: string,
   prefix: string,
-): string[] {
+): ShellLine[] {
   const kids = childrenOf(nodes, id);
-  const lines: string[] = [];
+  const lines: ShellLine[] = [];
   kids.forEach((kid, i) => {
     const last = i === kids.length - 1;
-    lines.push(`${prefix}${last ? "└─ " : "├─ "}${kid.name}${kid.type === "folder" ? "/" : ""}`);
-    if (kid.type === "folder")
+    const isFolder = kid.type === "folder";
+    lines.push(line(
+      "output",
+      `${prefix}${last ? "└─ " : "├─ "}${kid.name}${isFolder ? "/" : ""}`,
+      isFolder ? "dir" : undefined,
+    ));
+    if (isFolder)
       lines.push(...treeLines(nodes, kid.id, `${prefix}${last ? "   " : "│  "}`));
   });
   return lines;
@@ -460,7 +594,15 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
 
   switch (command) {
     case "help":
-      return out(HELP_TEXT);
+      // The command table is plain output; the title and the closing notes
+      // (everything not indented into the table) read as chrome around it.
+      return {
+        lines: HELP_TEXT.split("\n").map((text, i) => {
+          if (i === 0)
+            return line("output", text, "heading");
+          return line("output", text, text.startsWith("  ") ? undefined : "muted");
+        }),
+      };
 
     case "clear":
       return { lines: [], clear: true };
@@ -475,24 +617,39 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       return out(pathString(nodes, cwd));
 
     case "ls": {
-      const targetId = args[0] ? resolvePath(nodes, cwd, args[0]) : cwd;
+      const parsed = parseFlags(args, "la");
+      if ("error" in parsed)
+        return err(`ls: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const targetId = rest[0] ? resolvePath(nodes, cwd, rest[0]) : cwd;
       if (targetId === null)
-        return err(`ls: ${args[0]}: no such file or directory`);
+        return err(`ls: ${rest[0]}: no such file or directory`);
       const target = nodes[targetId];
       // Defensive (review-backlog #18): resolvePath can hand back `cwd`
       // unchecked (an empty `rest`), so a caller whose `cwd` no longer
       // exists in `nodes` would otherwise crash here rather than the
       // engine handling it itself.
       if (!target)
-        return err(`ls: ${args[0]}: no such file or directory`);
-      if (target.type === "file")
-        return out(target.name);
-      const kids = childrenOf(nodes, targetId);
-      if (kids.length === 0)
+        return err(`ls: ${rest[0]}: no such file or directory`);
+      const entries = target.type === "file" ? [target] : childrenOf(nodes, targetId);
+      // Dot-files are hidden without -a, the same convention Files' own
+      // "Show Hidden Items" follows.
+      const visible = flags.a ? entries : entries.filter(n => !n.name.startsWith("."));
+      if (visible.length === 0)
         return { lines: [] };
-      return out(
-        kids.map(n => (n.type === "folder" ? `${n.name}/` : n.name)).join("\n"),
-      );
+      return {
+        lines: visible.map((n) => {
+          const name = n.type === "folder" ? `${n.name}/` : n.name;
+          const tone = n.type === "folder" ? "dir" as const : undefined;
+          if (!flags.l)
+            return line("output", name, tone);
+          // Folders print "-" rather than a recursive byte total: that would
+          // cost a full-tree pass on every listing, and `du` already exists
+          // for when the total is what you actually want.
+          const size = n.type === "folder" ? "-" : formatBytes(fileBytes(n));
+          return line("output", `${n.type === "folder" ? "d" : "-"} ${size.padStart(9)}  ${formatModified(n.modifiedAt).padEnd(12)}${name}`, tone);
+        }),
+      };
     }
 
     case "cd": {
@@ -533,13 +690,19 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     }
 
     case "mkdir": {
-      if (!args[0])
+      const parsed = parseFlags(args, "p");
+      if ("error" in parsed)
+        return err(`mkdir: ${parsed.error}`);
+      const { flags, rest: mkdirArgs } = parsed;
+      if (!mkdirArgs[0])
         return err("mkdir: missing operand");
-      const resolved = resolveCreateParent(nodes, cwd, args[0]);
+      if (flags.p)
+        return makeDirs(mkdirArgs[0], ctx);
+      const resolved = resolveCreateParent(nodes, cwd, mkdirArgs[0]);
       if ("error" in resolved)
         return err(`mkdir: ${resolved.error}`);
       if (childByName(nodes, resolved.parentId, resolved.leaf))
-        return err(`mkdir: ${args[0]}: file exists`);
+        return err(`mkdir: ${mkdirArgs[0]}: file exists`);
       ctx.createFolder(resolved.parentId, resolved.leaf);
       return { lines: [] };
     }
@@ -622,17 +785,68 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     }
 
     case "grep": {
-      const ignoreCase = args[0] === "-i";
-      const rest = ignoreCase ? args.slice(1) : args;
+      const parsed = parseFlags(args, "irE");
+      if ("error" in parsed)
+        return err(`grep: ${parsed.error}`);
+      const { flags, rest } = parsed;
       const pattern = rest[0];
       if (!pattern)
         return err("grep: missing pattern");
+
+      let matches: (candidate: string) => boolean;
+      if (flags.E) {
+        // -E compiles the pattern as a regular expression. A bad pattern is
+        // a user error to report, not an exception to throw out of the
+        // engine, so the construction is guarded.
+        let regexp: RegExp;
+        try {
+          regexp = new RegExp(pattern, flags.i ? "i" : "");
+        }
+        catch {
+          return err(`grep: ${pattern}: invalid regular expression`);
+        }
+        matches = candidate => regexp.test(candidate);
+      }
+      else {
+        const needle = flags.i ? pattern.toLowerCase() : pattern;
+        matches = candidate => (flags.i ? candidate.toLowerCase() : candidate).includes(needle);
+      }
+
+      if (flags.r) {
+        const display = rest[1] ?? ".";
+        const rootId = rest[1] ? resolvePath(nodes, cwd, rest[1]) : cwd;
+        if (rootId === null || !nodes[rootId])
+          return err(`grep: ${display}: no such file or directory`);
+        const hits: string[] = [];
+        const walk = (id: string, path: string): void => {
+          const node = nodes[id];
+          if (!node)
+            return;
+          if (node.type === "folder") {
+            for (const kid of childrenOf(nodes, id))
+              walk(kid.id, `${path}/${kid.name}`);
+            return;
+          }
+          // Blob-backed files have no inline text to scan (B1) — skipped
+          // rather than reported, the way grep skips a binary file.
+          if (node.contentRef || !node.content)
+            return;
+          for (const candidate of node.content.split("\n")) {
+            if (matches(candidate))
+              hits.push(`${path}:${candidate}`);
+          }
+        };
+        walk(rootId, display);
+        return { lines: hits.map(hit => line("output", hit)), code: hits.length > 0 ? 0 : 1 };
+      }
+
       const linesOrErr = inputLines("grep", rest[1], nodes, cwd, stdin);
       if (!Array.isArray(linesOrErr))
         return linesOrErr;
-      const needle = ignoreCase ? pattern.toLowerCase() : pattern;
-      const matches = linesOrErr.filter(l => (ignoreCase ? l.toLowerCase() : l).includes(needle));
-      return out(matches.join("\n"));
+      const hits = linesOrErr.filter(matches);
+      // No match is a status-1 failure without being an error worth
+      // printing — what makes `grep x f && echo found` behave.
+      return { ...out(hits.join("\n")), code: hits.length > 0 ? 0 : 1 };
     }
 
     case "open": {
@@ -650,26 +864,33 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     }
 
     case "rm": {
-      if (!args[0])
+      const parsed = parseFlags(args, "rR");
+      if ("error" in parsed)
+        return err(`rm: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      if (!rest[0])
         return err("rm: missing operand");
-      const targetId = resolvePath(nodes, cwd, args[0]);
+      const targetId = resolvePath(nodes, cwd, rest[0]);
       if (targetId === null)
-        return err(`rm: ${args[0]}: no such file or directory`);
+        return err(`rm: ${rest[0]}: no such file or directory`);
       if (isSystemNode(targetId))
-        return err(`rm: ${args[0]}: cannot remove a system folder`);
+        return err(`rm: ${rest[0]}: cannot remove a system folder`);
+      // A folder needs -r, as it does in a real shell — trashing a whole
+      // subtree on a mistyped name is exactly the accident the flag exists
+      // to prevent, even with the Trash as a safety net.
+      if (nodes[targetId]?.type === "folder" && !(flags.r || flags.R))
+        return err(`rm: ${rest[0]}: is a directory (use -r)`);
       if (targetId === cwd)
         return err("rm: cannot remove the current directory");
         // Trashing an ancestor would silently drag the cwd into the Trash.
       if (isDescendantOf(nodes, cwd, targetId))
-        return err(`rm: ${args[0]}: contains the current directory`);
+        return err(`rm: ${rest[0]}: contains the current directory`);
       ctx.moveToTrash(targetId);
       return { lines: [line("output", `moved '${nodes[targetId].name}' to Trash`)] };
     }
 
-    case "tree": {
-      const lines = treeLines(nodes, cwd, "");
-      return out([".", ...lines].join("\n"));
-    }
+    case "tree":
+      return { lines: [line("output", ".", "dir"), ...treeLines(nodes, cwd, "")] };
 
     case "find": {
       // `find [path] [-name <pattern>]` — path is optional (defaults to
@@ -724,18 +945,135 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       return { lines: [] };
     }
 
+    case "wc": {
+      const parsed = parseFlags(args, "lwc");
+      if ("error" in parsed)
+        return err(`wc: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const linesOrErr = inputLines("wc", rest[0], nodes, cwd, stdin);
+      if (!Array.isArray(linesOrErr))
+        return linesOrErr;
+      const counts = {
+        l: linesOrErr.length,
+        w: linesOrErr.reduce((n, l) => n + (l.trim() === "" ? 0 : l.trim().split(/\s+/).length), 0),
+        // Characters as this shell stores them: the joined text, so the
+        // newlines *between* lines count and a trailing one doesn't exist.
+        c: linesOrErr.join("\n").length,
+      };
+      const wanted = (["l", "w", "c"] as const).filter(f => flags[f]);
+      const shown = (wanted.length > 0 ? wanted : (["l", "w", "c"] as const)).map(f => counts[f]);
+      return out([...shown, rest[0]].filter(v => v !== undefined).join(" "));
+    }
+
+    case "sort": {
+      const parsed = parseFlags(args, "rn");
+      if ("error" in parsed)
+        return err(`sort: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const linesOrErr = inputLines("sort", rest[0], nodes, cwd, stdin);
+      if (!Array.isArray(linesOrErr))
+        return linesOrErr;
+      const sorted = [...linesOrErr].sort((a, b) => (flags.n
+        // Non-numeric lines sort as 0 under -n, the same as plain sort.
+        ? (Number.parseFloat(a) || 0) - (Number.parseFloat(b) || 0)
+        : a.localeCompare(b)));
+      if (flags.r)
+        sorted.reverse();
+      return out(sorted.join("\n"));
+    }
+
+    case "uniq": {
+      const parsed = parseFlags(args, "c");
+      if ("error" in parsed)
+        return err(`uniq: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const linesOrErr = inputLines("uniq", rest[0], nodes, cwd, stdin);
+      if (!Array.isArray(linesOrErr))
+        return linesOrErr;
+      // Adjacent runs only, like plain uniq — `sort | uniq` is the idiom for
+      // deduping a whole file, and it works here because sort is a builtin too.
+      const runs: { text: string; count: number }[] = [];
+      for (const text of linesOrErr) {
+        const last = runs.at(-1);
+        if (last && last.text === text)
+          last.count++;
+        else
+          runs.push({ text, count: 1 });
+      }
+      return out(runs.map(r => (flags.c ? `${r.count} ${r.text}` : r.text)).join("\n"));
+    }
+
+    case "which": {
+      if (args.length === 0)
+        return err("which: missing name");
+      const lines = args.map((name) => {
+        if (ctx.aliases[name])
+          return line("output", `${name}: aliased to ${ctx.aliases[name]}`);
+        if ((COMMAND_NAMES as readonly string[]).includes(name))
+          return line("output", `${name}: shell builtin`);
+        return line("error", `which: ${name}: not found`);
+      });
+      return { lines };
+    }
+
+    case "history": {
+      if (args[0] === "-c") {
+        ctx.clearHistory();
+        return { lines: [] };
+      }
+      if (args[0] !== undefined)
+        return err(`history: unknown option '${args[0]}'`);
+      if (ctx.history.length === 0)
+        return out("no history yet");
+      // Right-aligned indices so the commands themselves line up.
+      const width = String(ctx.history.length).length;
+      return out(ctx.history.map((cmd, i) => `${String(i + 1).padStart(width, " ")}  ${cmd}`).join("\n"));
+    }
+
+    case "du": {
+      const parsed = parseFlags(args, "h");
+      if ("error" in parsed)
+        return err(`du: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const display = rest[0] ?? ".";
+      const targetId = rest[0] ? resolvePath(nodes, cwd, rest[0]) : cwd;
+      const target = targetId === null ? undefined : nodes[targetId];
+      if (!target)
+        return err(`du: ${display}: no such file or directory`);
+      const format = (bytes: number): string => (flags.h ? formatBytes(bytes) : String(bytes));
+      if (target.type === "file")
+        return out(`${format(fileBytes(target))}\t${display}`);
+      // Sizes in bytes rather than plain du's disk blocks — this VFS has no
+      // block size to round to. Post-order, so each directory is listed
+      // before the parent it counts towards.
+      const sizes = cachedFolderSizes(nodes);
+      const lines: string[] = [];
+      const walk = (id: string, path: string): void => {
+        for (const kid of childrenOf(nodes, id)) {
+          if (kid.type === "folder")
+            walk(kid.id, `${path}/${kid.name}`);
+        }
+        lines.push(`${format(sizes.get(id) ?? 0)}\t${path}`);
+      };
+      walk(target.id, display);
+      return out(lines.join("\n"));
+    }
+
+    case "exit": {
+      const code = args[0] === undefined ? 0 : Number.parseInt(args[0], 10);
+      if (Number.isNaN(code))
+        return err(`exit: ${args[0]}: numeric argument required`);
+      return { lines: [], exit: true, code };
+    }
+
     default:
       return err(`${command}: command not found (try 'help')`);
   }
 }
 
-/** Execute one command line, splitting on `|` and piping output between builtins. */
-export function runCommand(input: string, ctx: ShellContext): ShellResult {
-  const trimmed = input.trim();
-  if (trimmed === "")
-    return { lines: [] };
-
-  const segments = splitPipeline(trimmed);
+/** Execute one pipeline, splitting on `|` and piping output between builtins. */
+function runPipeline(input: string, ctx: ShellContext): ShellResult {
+  const segments = splitPipeline(input);
   if (segments.length === 1)
     return execSingle(segments[0], ctx, undefined);
 
@@ -743,6 +1081,9 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
   let result: ShellResult = { lines: [] };
   for (const [i, segment] of segments.entries()) {
     result = execSingle(segment, ctx, stdin);
+    // Only a printed error stops the pipeline. A plain non-zero status
+    // doesn't: `grep nope file | wc -l` still has to reach wc and print 0,
+    // exactly as it would in a real shell.
     if (result.lines.some(l => l.kind === "error"))
       return result;
     // Skip the join on the last segment — nothing reads `stdin` again.
@@ -752,20 +1093,211 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
   return result;
 }
 
+/** One pipeline of a sequence, plus the operator that introduced it. */
+interface SequenceSegment {
+  /** The operator *before* this segment; null for the first one. */
+  op: ";" | "&&" | "||" | null;
+  text: string;
+}
+
+/**
+ * Split a line on top-level `;`, `&&` and `||`, ignoring operators inside
+ * quotes. A single `|` is left alone — pipelines are split later, by
+ * `splitPipeline`, from within each segment.
+ */
+export function splitSequence(input: string): SequenceSegment[] {
+  const segments: SequenceSegment[] = [];
+  let current = "";
+  let op: SequenceSegment["op"] = null;
+  let quote: string | null = null;
+
+  const push = (next: SequenceSegment["op"]): void => {
+    segments.push({ op, text: current.trim() });
+    current = "";
+    op = next;
+  };
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote)
+        quote = null;
+      continue;
+    }
+    if (ch === "\"" || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ";") {
+      push(";");
+      continue;
+    }
+    if ((ch === "&" || ch === "|") && input[i + 1] === ch) {
+      push(ch === "&" ? "&&" : "||");
+      i++;
+      continue;
+    }
+    current += ch;
+  }
+  push(null);
+  return segments;
+}
+
+/**
+ * Substitute `$?` with the status of the command before it. The only
+ * variable this shell expands: there are no user variables to set, so a
+ * general `$VAR` pass would have nothing to look up.
+ */
+function expandStatus(input: string, status: number): string {
+  return input.replaceAll("$?", String(status));
+}
+
+/**
+ * Execute one submitted line: a `;`/`&&`/`||` sequence of pipelines, with
+ * `&&`/`||` short-circuiting on the running exit status. The returned result
+ * is the whole line's — every segment's output concatenated, the last `cd`
+ * to win, and the status of the last segment that actually ran.
+ */
+export function runCommand(input: string, ctx: ShellContext): ShellResult {
+  const trimmed = input.trim();
+  if (trimmed === "")
+    return { lines: [], code: ctx.lastStatus ?? 0 };
+
+  const segments = splitSequence(trimmed);
+  let status = ctx.lastStatus ?? 0;
+  let cwd = ctx.cwd;
+  const lines: ShellLine[] = [];
+  let clear = false;
+  let exit = false;
+
+  for (const segment of segments) {
+    if (segment.text === "")
+      continue;
+    if (segment.op === "&&" && status !== 0)
+      continue;
+    if (segment.op === "||" && status === 0)
+      continue;
+
+    const result = runPipeline(expandStatus(segment.text, status), {
+      ...ctx,
+      cwd,
+      lastStatus: status,
+      nodes: ctx.readNodes?.() ?? ctx.nodes,
+    });
+    status = statusOf(result);
+    if (result.clear) {
+      // `clear; ls` clears first and then shows the listing, so anything
+      // printed by an earlier segment goes with the cleared screen.
+      clear = true;
+      lines.length = 0;
+    }
+    lines.push(...result.lines);
+    if (result.cwd)
+      cwd = result.cwd;
+    if (result.exit) {
+      // Nothing after `exit` on the same line runs — the shell is gone.
+      exit = true;
+      break;
+    }
+  }
+
+  return {
+    lines,
+    code: status,
+    ...(clear ? { clear: true } : {}),
+    ...(exit ? { exit: true } : {}),
+    ...(cwd !== ctx.cwd ? { cwd } : {}),
+  };
+}
+
+/** Where each token of `input` starts and ends, with a quoted span counting as one token. */
+function tokenSpans(input: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
+  let start = -1;
+  let quote: string | null = null;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote)
+        quote = null;
+      continue;
+    }
+    if (ch === "\"" || ch === "'") {
+      if (start === -1)
+        start = i;
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (start !== -1) {
+        spans.push({ start, end: i });
+        start = -1;
+      }
+      continue;
+    }
+    if (start === -1)
+      start = i;
+  }
+  if (start !== -1)
+    spans.push({ start, end: input.length });
+  return spans;
+}
+
+export interface CompletionTarget {
+  /** Everything before the token being completed — put back verbatim around the result. */
+  head: string;
+  /** The token being completed, unquoted. */
+  partial: string;
+  /** Its position on the line; 0 is the command itself. */
+  index: number;
+}
+
+/**
+ * The token Tab should complete. Quote-aware, which the REPL's old
+ * `split(/\s+/)` was not: `cd "My Folder/Su` is one token there, so
+ * completion resolves inside "My Folder" instead of against a phantom
+ * directory called `"My`.
+ */
+export function completionTarget(input: string): CompletionTarget {
+  const spans = tokenSpans(input);
+  const last = spans.at(-1);
+  // Trailing whitespace (or an empty line) means a *new*, empty token —
+  // "ls " completes the first argument, not the command `ls` again.
+  if (!last || last.end < input.length)
+    return { head: input, partial: "", index: spans.length };
+  return { head: input.slice(0, last.start), partial: unquote(input.slice(last.start)), index: spans.length - 1 };
+}
+
+/**
+ * Wrap a completion in quotes when putting it back on the line unquoted
+ * would re-tokenize it into two arguments.
+ */
+export function quoteToken(token: string): string {
+  return /[\s"']/.test(token) ? `"${token}"` : token;
+}
+
 /**
  * Tab-completion candidates for the token currently being typed: the first
- * token completes against builtin command names, any later token completes
- * as a path relative to `cwd` (folders keep their existing `dir/` prefix).
+ * token completes against builtin command names (and the user's own
+ * aliases), any later token completes as a path relative to `cwd` (folders
+ * keep their existing `dir/` prefix).
  */
 export function completeToken(
   nodes: Record<string, FsNode>,
   cwd: string,
-  tokens: string[],
+  target: Pick<CompletionTarget, "partial" | "index">,
+  aliases: string[] = [],
 ): string[] {
-  const partial = tokens.at(-1) ?? "";
+  const { partial, index } = target;
 
-  if (tokens.length <= 1)
-    return COMMAND_NAMES.filter(name => name.startsWith(partial));
+  if (index === 0) {
+    return [...COMMAND_NAMES, ...aliases]
+      .filter(name => name.startsWith(partial))
+      .sort();
+  }
 
   const { dir, leaf } = splitPath(partial);
   const parentId = resolveParentDir(nodes, cwd, dir);

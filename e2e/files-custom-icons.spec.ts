@@ -13,6 +13,28 @@ function tileGlyph(page: import("@playwright/test").Page, name: string) {
   return page.getByRole("option", { name: new RegExp(name) }).locator("svg").first();
 }
 
+/** Has the node's chosen glyph reached IndexedDB yet (rather than only the store)? */
+function iconPersisted(page: import("@playwright/test").Page, name: string) {
+  return page.evaluate(async (nodeName) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("kagami-fs");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const rows = await new Promise<{ name: string; iconGlyph?: string }[]>((resolve, reject) => {
+        const request = db.transaction("nodes", "readonly").objectStore("nodes").getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      return rows.some(row => row.name === nodeName && Boolean(row.iconGlyph));
+    }
+    finally {
+      db.close();
+    }
+  }, name);
+}
+
 test.describe("Files custom icons", () => {
   test("a chosen glyph and tint apply, persist across a cold boot, and reset", async ({ page }) => {
     await openFiles(page);
@@ -38,6 +60,12 @@ test.describe("Files custom icons", () => {
 
     // Survives a cold boot: the icon lives on the node, in IndexedDB, which
     // `?fresh` leaves alone (it only bypasses session restore).
+    //
+    // Wait for the write to actually land first. `fsStore` persists
+    // write-through and fire-and-forget — the store updates (and the tile
+    // repaints) before the IndexedDB transaction commits, so reloading the
+    // moment the glyph changes on screen is a race the reload can win.
+    await expect.poll(() => iconPersisted(page, NAME)).toBe(true);
     await openFiles(page);
     await expect(async () => expect(await tileGlyph(page, NAME).innerHTML()).toBe(customGlyph)).toPass();
 
