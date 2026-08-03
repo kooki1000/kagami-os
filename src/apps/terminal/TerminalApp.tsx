@@ -7,6 +7,7 @@ import { useAppCommand } from "@/system/appCommands";
 import { openFile } from "@/system/apps/openFile";
 import { pathOf, useFsStore } from "@/system/fs/fsStore";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
+import { useWindowStore } from "@/system/windows/windowStore";
 import { completeToken, resolveCompletion, runCommand, statusOf } from "./shell";
 import { DEFAULT_FONT_SIZE, findHistoryMatch, useTerminalStore } from "./terminalStore";
 
@@ -101,6 +102,11 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       moveToTrash: state.moveToTrash,
       openPath: openFile,
       user: USER,
+      // The line being submitted isn't in `history` yet — `addHistory` below
+      // runs after the context is built, so `history` prints what came before
+      // it rather than listing itself as the most recent entry.
+      history: terminalState.history,
+      clearHistory: terminalState.clearHistory,
       aliases: terminalState.aliases,
       setAlias: terminalState.setAlias,
     };
@@ -123,6 +129,8 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     appendLines(result.lines);
     if (result.cwd)
       setCwd(result.cwd);
+    if (result.exit)
+      useWindowStore.getState().closeWindow(windowId);
   }
 
   useAppCommand(windowId, (command) => {

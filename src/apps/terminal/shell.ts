@@ -1,7 +1,9 @@
 import type { FsNode } from "@/system/fs/types";
 import { formatBytes } from "@/lib/format";
 import {
+  cachedFolderSizes,
   childrenOf,
+  fileBytes,
   isDescendantOf,
   isSystemNode,
   isValidNodeName,
@@ -27,6 +29,8 @@ export interface ShellResult {
   cwd?: string;
   /** Request to clear the scrollback. */
   clear?: boolean;
+  /** Request to close the terminal (`exit`). */
+  exit?: boolean;
   /**
    * Exit status, when a command reports one that the printed lines don't
    * already imply — `grep` finding nothing is a failure (status 1) without
@@ -72,6 +76,9 @@ export interface ShellContext {
   /** Launch the file's associated app; false when nothing is associated. */
   openPath: (node: FsNode) => boolean;
   user: string;
+  /** Submitted command lines, oldest first — what `history` prints. */
+  history: string[];
+  clearHistory: () => void;
   /** Alias name -> the command string it expands to (e.g. "ll" -> "ls"). */
   aliases: Record<string, string>;
   /** Persist a new/updated alias — write-through to the same store `aliases` reads from. */
@@ -100,6 +107,13 @@ const COMMAND_NAMES = [
   "tree",
   "find",
   "alias",
+  "wc",
+  "sort",
+  "uniq",
+  "which",
+  "history",
+  "du",
+  "exit",
 ] as const;
 
 const HELP_TEXT = [
@@ -122,9 +136,16 @@ const HELP_TEXT = [
   "  find [path] [-name <pattern>]  list everything under path, optionally",
   "                      filtered by a *?-glob name pattern (default path: .)",
   "  alias [name[=value] [value...]]  show/define a command alias",
+  "  wc [-l|-w|-c] [file]  count lines, words and characters",
+  "  sort [-r] [-n] [file]  sort lines (reversed, numerically)",
+  "  uniq [-c] [file]    drop adjacent duplicate lines (-c counts them)",
+  "  which <name>...     say what a name runs: a builtin or an alias",
+  "  history [-c]        list previously run commands (-c clears them)",
+  "  du [-h] [path]      size of each directory below path (-h human-readable)",
   "  whoami              print the current user",
   "  date                print the current date and time",
   "  clear               clear the screen",
+  "  exit                close this terminal",
   "  help                show this help",
   "Pipe builtins together with |, e.g. `ls | grep .txt`. Tab completes commands and paths.",
   "Chain commands with ; (always), && (on success) or || (on failure); $? is the last exit status.",
@@ -285,6 +306,31 @@ function inputLines(
     return err(`${command}: ${path}: binary file`);
   const content = target.content ?? "";
   return content === "" ? [] : content.split("\n");
+}
+
+/**
+ * Pull leading short flags off an argument list: a `-rn` token counts as
+ * both `-r` and `-n`, every letter has to be in `allowed`, and the first
+ * non-flag token ends the run — so a positional argument that starts with
+ * `-` is still reachable once a flag-shaped one has been consumed.
+ */
+function parseFlags(
+  args: string[],
+  allowed: string,
+): { flags: Record<string, boolean>; rest: string[] } | { error: string } {
+  const flags: Record<string, boolean> = {};
+  let i = 0;
+  for (; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith("-") || arg === "-")
+      break;
+    for (const letter of arg.slice(1)) {
+      if (!allowed.includes(letter))
+        return { error: `unknown option '-${letter}'` };
+      flags[letter] = true;
+    }
+  }
+  return { flags, rest: args.slice(i) };
 }
 
 /** Parse a leading `-n <count>` flag shared by head/tail, defaulting to 10 lines. */
@@ -753,6 +799,127 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       return { lines: [] };
     }
 
+    case "wc": {
+      const parsed = parseFlags(args, "lwc");
+      if ("error" in parsed)
+        return err(`wc: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const linesOrErr = inputLines("wc", rest[0], nodes, cwd, stdin);
+      if (!Array.isArray(linesOrErr))
+        return linesOrErr;
+      const counts = {
+        l: linesOrErr.length,
+        w: linesOrErr.reduce((n, l) => n + (l.trim() === "" ? 0 : l.trim().split(/\s+/).length), 0),
+        // Characters as this shell stores them: the joined text, so the
+        // newlines *between* lines count and a trailing one doesn't exist.
+        c: linesOrErr.join("\n").length,
+      };
+      const wanted = (["l", "w", "c"] as const).filter(f => flags[f]);
+      const shown = (wanted.length > 0 ? wanted : (["l", "w", "c"] as const)).map(f => counts[f]);
+      return out([...shown, rest[0]].filter(v => v !== undefined).join(" "));
+    }
+
+    case "sort": {
+      const parsed = parseFlags(args, "rn");
+      if ("error" in parsed)
+        return err(`sort: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const linesOrErr = inputLines("sort", rest[0], nodes, cwd, stdin);
+      if (!Array.isArray(linesOrErr))
+        return linesOrErr;
+      const sorted = [...linesOrErr].sort((a, b) => (flags.n
+        // Non-numeric lines sort as 0 under -n, the same as plain sort.
+        ? (Number.parseFloat(a) || 0) - (Number.parseFloat(b) || 0)
+        : a.localeCompare(b)));
+      if (flags.r)
+        sorted.reverse();
+      return out(sorted.join("\n"));
+    }
+
+    case "uniq": {
+      const parsed = parseFlags(args, "c");
+      if ("error" in parsed)
+        return err(`uniq: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const linesOrErr = inputLines("uniq", rest[0], nodes, cwd, stdin);
+      if (!Array.isArray(linesOrErr))
+        return linesOrErr;
+      // Adjacent runs only, like plain uniq — `sort | uniq` is the idiom for
+      // deduping a whole file, and it works here because sort is a builtin too.
+      const runs: { text: string; count: number }[] = [];
+      for (const text of linesOrErr) {
+        const last = runs.at(-1);
+        if (last && last.text === text)
+          last.count++;
+        else
+          runs.push({ text, count: 1 });
+      }
+      return out(runs.map(r => (flags.c ? `${r.count} ${r.text}` : r.text)).join("\n"));
+    }
+
+    case "which": {
+      if (args.length === 0)
+        return err("which: missing name");
+      const lines = args.map((name) => {
+        if (ctx.aliases[name])
+          return line("output", `${name}: aliased to ${ctx.aliases[name]}`);
+        if ((COMMAND_NAMES as readonly string[]).includes(name))
+          return line("output", `${name}: shell builtin`);
+        return line("error", `which: ${name}: not found`);
+      });
+      return { lines };
+    }
+
+    case "history": {
+      if (args[0] === "-c") {
+        ctx.clearHistory();
+        return { lines: [] };
+      }
+      if (args[0] !== undefined)
+        return err(`history: unknown option '${args[0]}'`);
+      if (ctx.history.length === 0)
+        return out("no history yet");
+      // Right-aligned indices so the commands themselves line up.
+      const width = String(ctx.history.length).length;
+      return out(ctx.history.map((cmd, i) => `${String(i + 1).padStart(width, " ")}  ${cmd}`).join("\n"));
+    }
+
+    case "du": {
+      const parsed = parseFlags(args, "h");
+      if ("error" in parsed)
+        return err(`du: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const display = rest[0] ?? ".";
+      const targetId = rest[0] ? resolvePath(nodes, cwd, rest[0]) : cwd;
+      const target = targetId === null ? undefined : nodes[targetId];
+      if (!target)
+        return err(`du: ${display}: no such file or directory`);
+      const format = (bytes: number): string => (flags.h ? formatBytes(bytes) : String(bytes));
+      if (target.type === "file")
+        return out(`${format(fileBytes(target))}\t${display}`);
+      // Sizes in bytes rather than plain du's disk blocks — this VFS has no
+      // block size to round to. Post-order, so each directory is listed
+      // before the parent it counts towards.
+      const sizes = cachedFolderSizes(nodes);
+      const lines: string[] = [];
+      const walk = (id: string, path: string): void => {
+        for (const kid of childrenOf(nodes, id)) {
+          if (kid.type === "folder")
+            walk(kid.id, `${path}/${kid.name}`);
+        }
+        lines.push(`${format(sizes.get(id) ?? 0)}\t${path}`);
+      };
+      walk(target.id, display);
+      return out(lines.join("\n"));
+    }
+
+    case "exit": {
+      const code = args[0] === undefined ? 0 : Number.parseInt(args[0], 10);
+      if (Number.isNaN(code))
+        return err(`exit: ${args[0]}: numeric argument required`);
+      return { lines: [], exit: true, code };
+    }
+
     default:
       return err(`${command}: command not found (try 'help')`);
   }
@@ -854,6 +1021,7 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
   let cwd = ctx.cwd;
   const lines: ShellLine[] = [];
   let clear = false;
+  let exit = false;
 
   for (const segment of segments) {
     if (segment.text === "")
@@ -879,12 +1047,18 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
     lines.push(...result.lines);
     if (result.cwd)
       cwd = result.cwd;
+    if (result.exit) {
+      // Nothing after `exit` on the same line runs — the shell is gone.
+      exit = true;
+      break;
+    }
   }
 
   return {
     lines,
     code: status,
     ...(clear ? { clear: true } : {}),
+    ...(exit ? { exit: true } : {}),
     ...(cwd !== ctx.cwd ? { cwd } : {}),
   };
 }

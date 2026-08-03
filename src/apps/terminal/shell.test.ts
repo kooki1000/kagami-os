@@ -51,6 +51,8 @@ function ctx(cwd = HOME_ID): ShellContext {
       return openPathResult;
     },
     user: "kagami",
+    history: [],
+    clearHistory: () => {},
     // Same as the app: a sequence's later segments re-read the store rather
     // than reusing the snapshot the line started with.
     readNodes: () => useFsStore.getState().nodes,
@@ -426,6 +428,112 @@ describe("alias", () => {
   it("a defined alias actually runs the expanded command", () => {
     run("alias ll=ls");
     expect(text("ll Documents", HOME_ID)).toBe(text("ls Documents", HOME_ID));
+  });
+});
+
+describe("text builtins", () => {
+  it("wc counts lines, words and characters, and names the file", () => {
+    expect(text("wc poem.txt", DOCUMENTS_ID)).toBe("4 7 37 poem.txt");
+  });
+
+  it("wc flags each print one count on their own", () => {
+    expect(text("wc -l poem.txt", DOCUMENTS_ID)).toBe("4 poem.txt");
+    expect(text("wc -w poem.txt", DOCUMENTS_ID)).toBe("7 poem.txt");
+  });
+
+  it("wc reads piped stdin when given no file", () => {
+    expect(text("cat poem.txt | wc -l", DOCUMENTS_ID)).toBe("4");
+  });
+
+  it("wc rejects an unknown flag", () => {
+    expect(run("wc -q poem.txt", DOCUMENTS_ID).lines[0].text).toContain("unknown option '-q'");
+  });
+
+  it("sort orders lines, and -r reverses them", () => {
+    expect(text("sort poem.txt", DOCUMENTS_ID).split("\n")).toEqual(["roses", "ROSES again", "sky is blue", "violets"]);
+    expect(text("sort -r poem.txt", DOCUMENTS_ID).split("\n").at(-1)).toBe("roses");
+  });
+
+  it("sort -n compares numerically rather than lexically", () => {
+    run("echo 10 > nums.txt", DOCUMENTS_ID);
+    expect(text("echo 9 >> nums.txt", DOCUMENTS_ID)).toBe("");
+    expect(text("sort -n nums.txt", DOCUMENTS_ID).trim().split("\n")).toEqual(["9", "10"]);
+  });
+
+  it("combined short flags are read as separate flags", () => {
+    run("echo 2 > n.txt", DOCUMENTS_ID);
+    run("echo 1 >> n.txt", DOCUMENTS_ID);
+    expect(text("sort -rn n.txt", DOCUMENTS_ID).trim().split("\n")).toEqual(["2", "1"]);
+  });
+
+  it("uniq collapses adjacent duplicates only", () => {
+    run("echo a > dup.txt", DOCUMENTS_ID);
+    run("echo a >> dup.txt", DOCUMENTS_ID);
+    run("echo b >> dup.txt", DOCUMENTS_ID);
+    run("echo a >> dup.txt", DOCUMENTS_ID);
+    expect(text("uniq dup.txt", DOCUMENTS_ID).trim().split("\n")).toEqual(["a", "b", "a"]);
+  });
+
+  it("uniq -c prefixes each run with its count", () => {
+    run("echo a > dup.txt", DOCUMENTS_ID);
+    run("echo a >> dup.txt", DOCUMENTS_ID);
+    expect(text("uniq -c dup.txt", DOCUMENTS_ID).trim().split("\n")[0]).toBe("2 a");
+  });
+});
+
+describe("which / history / du / exit", () => {
+  it("which names a builtin, an alias, and reports an unknown one", () => {
+    run("alias ll=ls");
+    expect(text("which ls")).toBe("ls: shell builtin");
+    expect(text("which ll")).toBe("ll: aliased to ls");
+    const missing = run("which frobnicate");
+    expect(missing.lines[0]).toMatchObject({ kind: "error" });
+    expect(statusOf(missing)).toBe(1);
+  });
+
+  it("history prints the context's entries, numbered", () => {
+    const result = runCommand("history", { ...ctx(), history: ["ls", "pwd"] });
+    expect(result.lines[0].text).toBe("1  ls\n2  pwd");
+  });
+
+  it("history -c clears through the context", () => {
+    let cleared = false;
+    runCommand("history -c", {
+      ...ctx(),
+      clearHistory: () => {
+        cleared = true;
+      },
+    });
+    expect(cleared).toBe(true);
+  });
+
+  it("du reports each directory below the target, children before parents", () => {
+    const lines = text("du Documents", HOME_ID).split("\n");
+    expect(lines.map(l => l.split("\t")[1])).toEqual([
+      "Documents/Reports/Child",
+      "Documents/Reports",
+      "Documents",
+    ]);
+    // note.md ("hi") + poem.txt, and Reports' own bytes, all roll up.
+    expect(Number(lines.at(-1)?.split("\t")[0])).toBeGreaterThan(0);
+  });
+
+  it("du -h prints human-readable sizes", () => {
+    expect(text("du -h Documents", HOME_ID)).toMatch(/^\d+ bytes\t/);
+  });
+
+  it("du on a file reports just that file", () => {
+    expect(text("du Documents/note.md", HOME_ID)).toBe("2\tDocuments/note.md");
+  });
+
+  it("exit asks the host to close, carrying its status", () => {
+    expect(run("exit")).toMatchObject({ exit: true, code: 0 });
+    expect(run("exit 3")).toMatchObject({ exit: true, code: 3 });
+    expect(run("exit banana").lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("nothing after exit on the same line runs", () => {
+    expect(text("exit; echo never")).toBe("");
   });
 });
 
