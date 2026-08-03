@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
+import { Segmented } from "@/components/ui/Segmented";
 import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId, usePayloadFileId } from "@/system/apps/filePayload";
@@ -282,27 +283,16 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
               <FolderOpen className="size-3 flex-none" />
               <span className="truncate">{nodes[scopeFolderId]?.name ?? "Documents"}</span>
             </button>
-            <div className="flex flex-none gap-0.5 rounded-btn bg-ph p-0.5">
-              <button
-                type="button"
-                title="Just this folder"
-                className={`rounded-[5px] px-1.5 py-0.5 text-[calc(10px*var(--ui-scale))] font-medium ${
-                  scopeMode === "folder" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.12)]" : "text-ink-2"
-                }`}
-                onClick={() => setScopeMode("folder")}
-              >
-                Folder
-              </button>
-              <button
-                type="button"
-                title="This folder and its subfolders"
-                className={`rounded-[5px] px-1.5 py-0.5 text-[calc(10px*var(--ui-scale))] font-medium ${
-                  scopeMode === "subtree" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.12)]" : "text-ink-2"
-                }`}
-                onClick={() => setScopeMode("subtree")}
-              >
-                +Sub
-              </button>
+            <div className="flex-none">
+              <Segmented
+                size="sm"
+                value={scopeMode}
+                onChange={setScopeMode}
+                options={[
+                  { value: "folder", label: "Folder", title: "Just this folder" },
+                  { value: "subtree", label: "+Sub", title: "This folder and its subfolders" },
+                ]}
+              />
             </div>
           </div>
 

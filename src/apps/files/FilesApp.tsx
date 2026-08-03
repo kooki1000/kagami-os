@@ -1147,7 +1147,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                     aria-pressed={view === mode}
                     className={`grid h-[18px] w-6 place-items-center rounded-[5px] ${
                       view === mode
-                        ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.12)]"
+                        ? "bg-surface text-ink shadow-(--shadow-chip)"
                         : "text-ink-2"
                     }`}
                     onClick={() => setView(mode)}
