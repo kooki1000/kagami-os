@@ -3,7 +3,7 @@ import type { FsNode } from "@/system/fs/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { indexNodes, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, HOME_ID, ROOT_ID, TRASH_ID } from "@/system/fs/types";
-import { completeToken, expandAlias, resolveCompletion, resolvePath, runCommand } from "./shell";
+import { completeToken, expandAlias, resolveCompletion, resolvePath, runCommand, splitSequence, statusOf } from "./shell";
 
 let openedNodes: FsNode[] = [];
 let openPathResult = true;
@@ -51,6 +51,9 @@ function ctx(cwd = HOME_ID): ShellContext {
       return openPathResult;
     },
     user: "kagami",
+    // Same as the app: a sequence's later segments re-read the store rather
+    // than reusing the snapshot the line started with.
+    readNodes: () => useFsStore.getState().nodes,
     aliases: testAliases,
     setAlias: (name, expansion) => {
       testAliases = { ...testAliases, [name]: expansion };
@@ -423,6 +426,72 @@ describe("alias", () => {
   it("a defined alias actually runs the expanded command", () => {
     run("alias ll=ls");
     expect(text("ll Documents", HOME_ID)).toBe(text("ls Documents", HOME_ID));
+  });
+});
+
+describe("sequences and exit status", () => {
+  it("splitSequence keeps a single pipe inside its segment", () => {
+    expect(splitSequence("ls | grep a && pwd")).toEqual([
+      { op: null, text: "ls | grep a" },
+      { op: "&&", text: "pwd" },
+    ]);
+  });
+
+  it("splitSequence ignores operators inside quotes", () => {
+    expect(splitSequence("echo \"a && b\" ; pwd")).toEqual([
+      { op: null, text: "echo \"a && b\"" },
+      { op: ";", text: "pwd" },
+    ]);
+  });
+
+  it("statusOf falls back to 1 for a result that printed an error", () => {
+    expect(statusOf({ lines: [] })).toBe(0);
+    expect(statusOf({ lines: [{ kind: "error", text: "boom" }] })).toBe(1);
+    expect(statusOf({ lines: [{ kind: "error", text: "boom" }], code: 0 })).toBe(0);
+  });
+
+  it("; runs both sides regardless of status", () => {
+    expect(text("nope; echo second")).toBe("nope: command not found (try 'help')\nsecond");
+  });
+
+  it("&& runs the right side only on success", () => {
+    expect(text("echo one && echo two")).toBe("one\ntwo");
+    expect(text("nope && echo two")).toBe("nope: command not found (try 'help')");
+  });
+
+  it("|| runs the right side only on failure", () => {
+    expect(text("nope || echo rescued")).toBe("nope: command not found (try 'help')\nrescued");
+    expect(text("echo one || echo two")).toBe("one");
+  });
+
+  it("a && b || c falls through to c when a fails", () => {
+    expect(text("nope && echo b || echo c")).toContain("c");
+    expect(text("echo a && echo b || echo c")).toBe("a\nb");
+  });
+
+  it("a later segment sees what an earlier one wrote", () => {
+    const result = run("mkdir seq && cd seq", HOME_ID);
+    expect(result.cwd).toBe(nodesByName("seq")?.id);
+  });
+
+  it("the last cd of a sequence wins", () => {
+    expect(run("cd Documents; cd ..").cwd).toBeUndefined();
+    expect(run("cd Documents; cd Reports").cwd).toBe("reports");
+  });
+
+  it("clear mid-sequence wipes what came before it, not after", () => {
+    const result = run("echo gone; clear; echo kept");
+    expect(result.clear).toBe(true);
+    expect(result.lines.map(l => l.text)).toEqual(["kept"]);
+  });
+
+  it("$? expands to the previous command's status", () => {
+    expect(text("echo hi; echo $?")).toBe("hi\n0");
+    expect(text("nope; echo $?")).toBe("nope: command not found (try 'help')\n1");
+  });
+
+  it("$? carries the status of the previous line in from the context", () => {
+    expect(runCommand("echo $?", { ...ctx(), lastStatus: 7 }).lines[0].text).toBe("7");
   });
 });
 

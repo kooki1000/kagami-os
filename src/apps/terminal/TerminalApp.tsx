@@ -7,7 +7,7 @@ import { useAppCommand } from "@/system/appCommands";
 import { openFile } from "@/system/apps/openFile";
 import { pathOf, useFsStore } from "@/system/fs/fsStore";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
-import { completeToken, resolveCompletion, runCommand } from "./shell";
+import { completeToken, resolveCompletion, runCommand, statusOf } from "./shell";
 import { DEFAULT_FONT_SIZE, findHistoryMatch, useTerminalStore } from "./terminalStore";
 
 const USER = "kagami";
@@ -49,6 +49,8 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Exit status of the last line, for the next one's `$?`. A ref, not state: nothing renders it. */
+  const statusRef = useRef(0);
 
   const nodes = useFsStore(s => s.nodes);
   // Root exists once the store is ready; fall back to root if cwd vanished.
@@ -85,6 +87,10 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     const ctx: ShellContext = {
       cwd: safeCwd,
       nodes: state.nodes,
+      lastStatus: statusRef.current,
+      // `mkdir foo && cd foo`: the second segment has to see the folder the
+      // first one just made, which the snapshot above predates.
+      readNodes: () => useFsStore.getState().nodes,
       createFolder: state.createFolder,
       createFile: state.createFile,
       updateFileContent: state.updateFileContent,
@@ -109,10 +115,11 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     setHistoryPos(null);
 
     const result = runCommand(raw, ctx);
-    if (result.clear) {
+    statusRef.current = statusOf(result);
+    // `clear` wipes the scrollback but doesn't end the line — a later
+    // segment of the same `clear; ls` still gets to print.
+    if (result.clear)
       setEntries([]);
-      return;
-    }
     appendLines(result.lines);
     if (result.cwd)
       setCwd(result.cwd);

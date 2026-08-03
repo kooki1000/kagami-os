@@ -27,12 +27,40 @@ export interface ShellResult {
   cwd?: string;
   /** Request to clear the scrollback. */
   clear?: boolean;
+  /**
+   * Exit status, when a command reports one that the printed lines don't
+   * already imply — `grep` finding nothing is a failure (status 1) without
+   * being an error worth printing, which is exactly the distinction `&&`
+   * and `||` need. Read it through {@link statusOf}, never directly.
+   */
+  code?: number;
+}
+
+/**
+ * The status a result reports: its explicit `code` when it set one, else 1
+ * if it printed an error line. Deriving the fallback keeps every existing
+ * builtin honest without each one having to remember to set a code.
+ */
+export function statusOf(result: ShellResult): number {
+  return result.code ?? (result.lines.some(l => l.kind === "error") ? 1 : 0);
 }
 
 /** Everything a command needs from the host (fs access + current dir). */
 export interface ShellContext {
   cwd: string;
   nodes: Record<string, FsNode>;
+  /**
+   * Exit status of the previous *line*, which `$?` expands to before the
+   * first command of this one runs.
+   */
+  lastStatus?: number;
+  /**
+   * Re-read the node map between the segments of a `;`/`&&`/`||` sequence.
+   * Without it `nodes` stays the snapshot taken when the line was submitted
+   * and `mkdir foo && cd foo` can't see the folder it just made. Optional so
+   * a caller running one command at a time needn't supply it.
+   */
+  readNodes?: () => Record<string, FsNode>;
   createFolder: (parentId: string, name: string) => FsNode;
   createFile: (parentId: string, name: string, content: string, mimeType?: string) => FsNode;
   updateFileContent: (id: string, content: string) => void;
@@ -99,6 +127,7 @@ const HELP_TEXT = [
   "  clear               clear the screen",
   "  help                show this help",
   "Pipe builtins together with |, e.g. `ls | grep .txt`. Tab completes commands and paths.",
+  "Chain commands with ; (always), && (on success) or || (on failure); $? is the last exit status.",
 ].join("\n");
 
 /** Absolute "/a/b/c" path string for a node. */
@@ -729,13 +758,9 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
   }
 }
 
-/** Execute one command line, splitting on `|` and piping output between builtins. */
-export function runCommand(input: string, ctx: ShellContext): ShellResult {
-  const trimmed = input.trim();
-  if (trimmed === "")
-    return { lines: [] };
-
-  const segments = splitPipeline(trimmed);
+/** Execute one pipeline, splitting on `|` and piping output between builtins. */
+function runPipeline(input: string, ctx: ShellContext): ShellResult {
+  const segments = splitPipeline(input);
   if (segments.length === 1)
     return execSingle(segments[0], ctx, undefined);
 
@@ -743,13 +768,125 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
   let result: ShellResult = { lines: [] };
   for (const [i, segment] of segments.entries()) {
     result = execSingle(segment, ctx, stdin);
-    if (result.lines.some(l => l.kind === "error"))
+    if (statusOf(result) !== 0)
       return result;
     // Skip the join on the last segment — nothing reads `stdin` again.
     if (i < segments.length - 1)
       stdin = result.lines.map(l => l.text).join("\n");
   }
   return result;
+}
+
+/** One pipeline of a sequence, plus the operator that introduced it. */
+interface SequenceSegment {
+  /** The operator *before* this segment; null for the first one. */
+  op: ";" | "&&" | "||" | null;
+  text: string;
+}
+
+/**
+ * Split a line on top-level `;`, `&&` and `||`, ignoring operators inside
+ * quotes. A single `|` is left alone — pipelines are split later, by
+ * `splitPipeline`, from within each segment.
+ */
+export function splitSequence(input: string): SequenceSegment[] {
+  const segments: SequenceSegment[] = [];
+  let current = "";
+  let op: SequenceSegment["op"] = null;
+  let quote: string | null = null;
+
+  const push = (next: SequenceSegment["op"]): void => {
+    segments.push({ op, text: current.trim() });
+    current = "";
+    op = next;
+  };
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote)
+        quote = null;
+      continue;
+    }
+    if (ch === "\"" || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ";") {
+      push(";");
+      continue;
+    }
+    if ((ch === "&" || ch === "|") && input[i + 1] === ch) {
+      push(ch === "&" ? "&&" : "||");
+      i++;
+      continue;
+    }
+    current += ch;
+  }
+  push(null);
+  return segments;
+}
+
+/**
+ * Substitute `$?` with the status of the command before it. The only
+ * variable this shell expands: there are no user variables to set, so a
+ * general `$VAR` pass would have nothing to look up.
+ */
+function expandStatus(input: string, status: number): string {
+  return input.replaceAll("$?", String(status));
+}
+
+/**
+ * Execute one submitted line: a `;`/`&&`/`||` sequence of pipelines, with
+ * `&&`/`||` short-circuiting on the running exit status. The returned result
+ * is the whole line's — every segment's output concatenated, the last `cd`
+ * to win, and the status of the last segment that actually ran.
+ */
+export function runCommand(input: string, ctx: ShellContext): ShellResult {
+  const trimmed = input.trim();
+  if (trimmed === "")
+    return { lines: [], code: ctx.lastStatus ?? 0 };
+
+  const segments = splitSequence(trimmed);
+  let status = ctx.lastStatus ?? 0;
+  let cwd = ctx.cwd;
+  const lines: ShellLine[] = [];
+  let clear = false;
+
+  for (const segment of segments) {
+    if (segment.text === "")
+      continue;
+    if (segment.op === "&&" && status !== 0)
+      continue;
+    if (segment.op === "||" && status === 0)
+      continue;
+
+    const result = runPipeline(expandStatus(segment.text, status), {
+      ...ctx,
+      cwd,
+      lastStatus: status,
+      nodes: ctx.readNodes?.() ?? ctx.nodes,
+    });
+    status = statusOf(result);
+    if (result.clear) {
+      // `clear; ls` clears first and then shows the listing, so anything
+      // printed by an earlier segment goes with the cleared screen.
+      clear = true;
+      lines.length = 0;
+    }
+    lines.push(...result.lines);
+    if (result.cwd)
+      cwd = result.cwd;
+  }
+
+  return {
+    lines,
+    code: status,
+    ...(clear ? { clear: true } : {}),
+    ...(cwd !== ctx.cwd ? { cwd } : {}),
+  };
 }
 
 /**
