@@ -31,8 +31,13 @@ function queueFor(id: string): ReturnType<typeof createWriteQueue> {
  * `id` is the Browser window's `windowId`, doubling as the child webview's label.
  */
 export const browserBridge = {
-  open: (id: string, url: string, bounds: BrowserBounds, visible: boolean) =>
-    queueFor(id)(() => invoke<void>("browser_open", { id, url, bounds, visible })),
+  /**
+   * `radius` rounds the child webview's bottom corners to match the window's
+   * own — nothing in CSS clips a native webview, so it would otherwise square
+   * off the window's bottom edge whenever the window is focused.
+   */
+  open: (id: string, url: string, bounds: BrowserBounds, visible: boolean, radius: number) =>
+    queueFor(id)(() => invoke<void>("browser_open", { id, url, bounds, visible, radius })),
   navigate: (id: string, url: string) =>
     queueFor(id)(() => invoke<void>("browser_navigate", { id, url })),
   back: (id: string) =>

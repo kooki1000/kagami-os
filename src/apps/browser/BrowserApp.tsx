@@ -8,6 +8,7 @@ import type { WindowRect } from "@/system/windows/windowStore";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Globe, House, Lock, RotateCw, Search, ShieldAlert, Star, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { radius } from "@/design/tokens";
 import { useAppCommand } from "@/system/appCommands";
 import { launchApp } from "@/system/apps/launch";
 import { useFsStore } from "@/system/fs/fsStore";
@@ -235,7 +236,7 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
       findBar: false,
     });
     browserBridge
-      .open(windowId, openUrl, webviewBounds(openWindow.rect, openChrome), visibleRef.current)
+      .open(windowId, openUrl, webviewBounds(openWindow.rect, openChrome), visibleRef.current, radius.window)
       .catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));

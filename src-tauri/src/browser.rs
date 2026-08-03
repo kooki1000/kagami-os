@@ -197,6 +197,44 @@ fn compute_content_inset_y(_window: &tauri::Window) -> f64 {
     0.0
 }
 
+/// Rounds the child webview's bottom corners to `radius`.
+///
+/// The webview is a real OS view painted over the window, so nothing in CSS
+/// clips it: with square corners it squares off the window's own rounded
+/// bottom edge the moment the window is focused (the webview is hidden when
+/// it isn't, which is why the two states didn't match). Only the bottom two
+/// corners are masked — the top edge meets the address bar and is interior.
+///
+/// `radius` comes from the frontend's `design/tokens.ts`, so the shell's
+/// radius pairing stays the single source of truth rather than being
+/// duplicated here.
+#[cfg(target_os = "macos")]
+fn round_bottom_corners(webview: &tauri::Webview, radius: f64) {
+    use objc2_app_kit::NSView;
+    use objc2_quartz_core::CACornerMask;
+
+    // Runs on the main thread, which is where AppKit layer writes belong.
+    let _ = webview.with_webview(move |platform| {
+        // `inner()` is the WKWebView, which is an NSView subclass.
+        let view: &NSView = unsafe { &*(platform.inner() as *const NSView) };
+        let Some(layer) = view.layer() else {
+            return;
+        };
+        layer.setCornerRadius(radius);
+        // MaxY, not MinY: WKWebView's layer is geometry-flipped, so the Y axis
+        // runs downward and the *bottom* corners are the MaxY pair. Masking
+        // MinY here rounds the top edge instead — visible as two notches under
+        // the address bar, with the bottom left square.
+        layer.setMaskedCorners(
+            CACornerMask::LayerMinXMaxYCorner | CACornerMask::LayerMaxXMaxYCorner,
+        );
+        layer.setMasksToBounds(true);
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn round_bottom_corners(_webview: &tauri::Webview, _radius: f64) {}
+
 fn webview_label(id: &str) -> String {
     format!("browser-{id}")
 }
@@ -316,6 +354,7 @@ pub async fn browser_open(
     url: String,
     bounds: Bounds,
     visible: bool,
+    radius: f64,
 ) -> Result<(), String> {
     let window = app
         .get_window(HOST_WINDOW)
@@ -344,6 +383,7 @@ pub async fn browser_open(
         Err(tauri::Error::WebviewLabelAlreadyExists(_)) => return Ok(()),
         Err(error) => return Err(error.to_string()),
     };
+    round_bottom_corners(&webview, radius);
     if !visible {
         webview.hide().map_err(|error| error.to_string())?;
     }
