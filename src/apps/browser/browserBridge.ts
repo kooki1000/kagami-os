@@ -43,6 +43,10 @@ export const browserBridge = {
     queueFor(id)(() => invoke<void>("browser_stop", { id })),
   setZoom: (id: string, factor: number) =>
     queueFor(id)(() => invoke<void>("browser_set_zoom", { id, factor })),
+  find: (id: string, query: string, forward: boolean) =>
+    queueFor(id)(() => invoke<void>("browser_find", { id, query, forward })),
+  clearFind: (id: string) =>
+    queueFor(id)(() => invoke<void>("browser_find_clear", { id })),
   setBounds: (id: string, bounds: BrowserBounds) =>
     queueFor(id)(() => invoke<void>("browser_set_bounds", { id, bounds })),
   setVisible: (id: string, visible: boolean) =>
@@ -98,4 +102,15 @@ export function onNavChanged(handler: (event: BrowserNavChanged) => void): () =>
 /** Subscribes to page-load start/finish for every Browser window. */
 export function onLoadState(handler: (event: BrowserLoadState) => void): () => void {
   return subscribe("browser://load-state", handler);
+}
+
+/** Payload of `browser://find-result` — hit or miss, no count (see `browser.rs`). */
+export interface BrowserFindResult {
+  id: string;
+  found: boolean;
+}
+
+/** Subscribes to the outcome of each find-in-page step. */
+export function onFindResult(handler: (event: BrowserFindResult) => void): () => void {
+  return subscribe("browser://find-result", handler);
 }

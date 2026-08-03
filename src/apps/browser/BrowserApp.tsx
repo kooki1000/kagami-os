@@ -5,7 +5,7 @@ import type { Bookmark } from "./browserPrefsStore";
 import type { ConnectionSecurity } from "./browserUrl";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { WindowRect } from "@/system/windows/windowStore";
-import { ChevronLeft, ChevronRight, Globe, House, Lock, RotateCw, ShieldAlert, Star, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Globe, House, Lock, RotateCw, Search, ShieldAlert, Star, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { useAppCommand } from "@/system/appCommands";
@@ -13,7 +13,7 @@ import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayReg
 import { isTauri } from "@/system/platform";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
-import { browserBridge, onLoadState, onNavChanged } from "./browserBridge";
+import { browserBridge, onFindResult, onLoadState, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
 import { payloadUrl } from "./browserPayload";
 import { isBookmarked, useBrowserPrefsStore, zoomForHost } from "./browserPrefsStore";
@@ -27,10 +27,14 @@ import { searchEngineById } from "./searchEngines";
 // this arithmetic says would sit underneath it.
 const ADDRESS_BAR_HEIGHT = 40;
 const BOOKMARKS_BAR_HEIGHT = 30;
+const FIND_BAR_HEIGHT = 34;
 
 /** Everything stacked above the content region, which the webview starts below. */
-function chromeHeight(showBookmarksBar: boolean): number {
-  return TITLE_BAR_HEIGHT + ADDRESS_BAR_HEIGHT + (showBookmarksBar ? BOOKMARKS_BAR_HEIGHT : 0);
+function chromeHeight({ bookmarksBar, findBar }: { bookmarksBar: boolean; findBar: boolean }): number {
+  return TITLE_BAR_HEIGHT
+    + ADDRESS_BAR_HEIGHT
+    + (bookmarksBar ? BOOKMARKS_BAR_HEIGHT : 0)
+    + (findBar ? FIND_BAR_HEIGHT : 0);
 }
 
 function logBridgeError(action: string): (error: unknown) => void {
@@ -96,7 +100,10 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   const setShowBookmarksBar = useBrowserPrefsStore(s => s.setShowBookmarksBar);
   const removeBookmark = useBrowserPrefsStore(s => s.removeBookmark);
   const saved = isBookmarked(bookmarks, url);
-  const chrome = chromeHeight(showBookmarksBar);
+  // Find state is per window and deliberately not persisted — a find bar left
+  // open from a previous session is noise, not a preference.
+  const [find, setFind] = useState<{ query: string; missed: boolean } | null>(null);
+  const chrome = chromeHeight({ bookmarksBar: showBookmarksBar, findBar: find !== null });
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
   const visible = focused && !overlayOpen;
   // Latest visibility, readable from the open effect without depending on it.
@@ -144,6 +151,13 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
     });
   }, [windowId]);
 
+  useEffect(() => {
+    return onFindResult(({ id, found }) => {
+      if (id === windowId)
+        setFind(current => (current ? { ...current, missed: !found } : current));
+    });
+  }, [windowId]);
+
   // One child webview per Browser window instance, created with its
   // mount-time bounds/visibility already baked in so the sync effects below
   // only need to handle *changes*, not mount. Closed on unmount, which
@@ -159,7 +173,10 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
       return;
     const home = searchEngineById(useSettingsStore.getState().browserSearchEngineId).homeUrl;
     const openUrl = payloadUrl(openWindow.payload) ?? home;
-    const openChrome = chromeHeight(useBrowserPrefsStore.getState().showBookmarksBar);
+    const openChrome = chromeHeight({
+      bookmarksBar: useBrowserPrefsStore.getState().showBookmarksBar,
+      findBar: false,
+    });
     browserBridge
       .open(windowId, openUrl, webviewBounds(openWindow.rect, openChrome), visibleRef.current)
       .catch(logBridgeError("open"));
@@ -226,8 +243,25 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
       case "browser.toggleBookmarksBar":
         setShowBookmarksBar(!showBookmarksBar);
         break;
+      case "browser.find":
+        // Re-opening an already-open bar is a request to search again from
+        // the top, so the query survives but the miss state doesn't.
+        setFind(current => ({ query: current?.query ?? "", missed: false }));
+        break;
     }
   });
+
+  /** One find step. An empty query does nothing rather than matching everything. */
+  function runFind(query: string, forward: boolean): void {
+    if (!query)
+      return;
+    browserBridge.find(windowId, query, forward).catch(logBridgeError("find"));
+  }
+
+  function closeFind(): void {
+    setFind(null);
+    browserBridge.clearFind(windowId).catch(logBridgeError("find_clear"));
+  }
 
   /** Submitting the address bar: anything that isn't an address becomes a search. */
   function submitAddress(): void {
@@ -317,6 +351,15 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
           onRemove={removeBookmark}
         />
       )}
+      {find && (
+        <FindBar
+          query={find.query}
+          missed={find.missed}
+          onChange={query => setFind({ query, missed: false })}
+          onStep={forward => runFind(find.query, forward)}
+          onClose={closeFind}
+        />
+      )}
       {/* The native child webview is layered over this region by the Rust
           side while the window is focused. The OS webview paints on top, so
           this standby state shows through only while it's hidden (window in
@@ -327,6 +370,67 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
         <span className="font-mono text-13 text-ink">{host}</span>
         <span className="text-11.5 opacity-70">Select this window to keep browsing</span>
       </BrowserEmptyState>
+    </div>
+  );
+}
+
+/**
+ * Find-in-page (U17). Shows a bare "Not found" rather than "3 of 12" —
+ * `window.find` reports only whether it moved to a match, and counting would
+ * mean injecting a highlighter into a page we don't own (see `browser.rs`).
+ */
+function FindBar({ query, missed, onChange, onStep, onClose }: {
+  query: string;
+  missed: boolean;
+  onChange: (query: string) => void;
+  onStep: (forward: boolean) => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // The bar mounts on ⌘F, so focusing on mount is what makes the chord land
+  // the caret where the user is already typing.
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <div
+      className="flex flex-none items-center gap-1.5 px-2.5 text-ink-2 hairline-b"
+      style={{ height: FIND_BAR_HEIGHT }}
+    >
+      <Search className="size-[calc(13px*var(--ui-scale))] flex-none opacity-60" />
+      <input
+        ref={inputRef}
+        value={query}
+        aria-label="Find in page"
+        placeholder="Find in page"
+        className="max-w-[260px] min-w-0 flex-1 rounded-btn bg-ph px-[calc(8px*var(--ui-scale))] py-0.5 text-12 text-ink outline-none placeholder:text-ink-2 focus:bg-ph-2"
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onStep(!e.shiftKey);
+          }
+          else if (e.key === "Escape") {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+      />
+      {missed && query && <span className="flex-none text-11.5 text-accent-2">Not found</span>}
+      <div className="ml-auto flex items-center gap-0.5">
+        <ToolbarButton label="Find previous" disabled={!query} onClick={() => onStep(false)}>
+          <ChevronUp className="size-[calc(14px*var(--ui-scale))]" />
+        </ToolbarButton>
+        <ToolbarButton label="Find next" disabled={!query} onClick={() => onStep(true)}>
+          <ChevronDown className="size-[calc(14px*var(--ui-scale))]" />
+        </ToolbarButton>
+        <ToolbarButton label="Close find bar" onClick={onClose}>
+          <X className="size-[calc(13px*var(--ui-scale))]" />
+        </ToolbarButton>
+      </div>
     </div>
   );
 }

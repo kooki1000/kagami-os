@@ -31,6 +31,7 @@ use tauri::{
 const HOST_WINDOW: &str = "main";
 const NAV_CHANGED_EVENT: &str = "browser://nav-changed";
 const LOAD_STATE_EVENT: &str = "browser://load-state";
+const FIND_RESULT_EVENT: &str = "browser://find-result";
 
 /// Content-area bounds in logical (CSS) pixels — mirrors `BrowserBounds` in `browserBridge.ts`.
 #[derive(Deserialize)]
@@ -72,6 +73,14 @@ struct LoadState {
     id: String,
     url: String,
     loading: bool,
+}
+
+/// Payload for `browser://find-result`. `found` is all `window.find` reports —
+/// see [`browser_find`] for why there is no match count.
+#[derive(Clone, Serialize)]
+struct FindResult {
+    id: String,
+    found: bool,
 }
 
 /// Full-size content view: the native title bar overlaps the web content, so
@@ -250,6 +259,42 @@ pub fn browser_forward(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn browser_stop(app: AppHandle, id: String) -> Result<(), String> {
     eval_on_webview(&app, &id, "window.stop()")
+}
+
+/// Find-in-page (U17), on the page's own `window.find` — non-standard, but
+/// implemented by every engine wry runs on (WKWebView, WebKit2GTK, WebView2),
+/// and the only find that doesn't mean walking the DOM of a page we don't own.
+///
+/// It reports a bare hit/miss, which is why the find bar shows "Not found"
+/// rather than "3 of 12": a count would mean injecting a highlighter and
+/// keeping it in sync with a live document — a much larger job than this, and
+/// one that mutates third-party pages.
+///
+/// `query` is embedded through `serde_json` rather than formatted in: it is
+/// user text going into a JS source string, evaluated on whatever origin the
+/// page currently holds.
+#[tauri::command]
+pub fn browser_find(app: AppHandle, id: String, query: String, forward: bool) -> Result<(), String> {
+    let Some(webview) = find_webview(&app, &id) else {
+        return Ok(());
+    };
+    let literal = serde_json::to_string(&query).map_err(|error| error.to_string())?;
+    // (query, caseSensitive, backwards, wrapAround, wholeWord, searchInFrames, showDialog)
+    let script = format!("window.find({literal}, false, {}, true, false, true, false)", !forward);
+    let app_handle = app.clone();
+    webview
+        .eval_with_callback(script, move |found_json| {
+            let found = serde_json::from_str::<bool>(&found_json).unwrap_or(false);
+            let _ = app_handle.emit(FIND_RESULT_EVENT, FindResult { id: id.clone(), found });
+        })
+        .map_err(|error| error.to_string())
+}
+
+/// Drops the selection `browser_find` left behind, so closing the find bar
+/// doesn't leave the last match highlighted on the page.
+#[tauri::command]
+pub fn browser_find_clear(app: AppHandle, id: String) -> Result<(), String> {
+    eval_on_webview(&app, &id, "window.getSelection()?.removeAllRanges()")
 }
 
 /// Page zoom (U17). Unlike back/forward/stop this one *is* native, so it

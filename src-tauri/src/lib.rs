@@ -11,6 +11,8 @@ pub fn run() {
             browser::browser_forward,
             browser::browser_stop,
             browser::browser_set_zoom,
+            browser::browser_find,
+            browser::browser_find_clear,
             browser::browser_set_bounds,
             browser::browser_set_visible,
             browser::browser_close,
