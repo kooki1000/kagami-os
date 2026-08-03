@@ -40,9 +40,23 @@ whole feature set:
    already paints over both, so counting them would make an unfocused window
    hide where a focused one doesn't).
 
-   What remains unavoidable: a window overlapping by a single pixel hides the
-   whole page, because occlusion isn't rectangular in general and a native
-   view can't be partially clipped to an arbitrary shape.
+   A window overlapping by a single pixel still hides the whole page, because
+   the visible remainder isn't a rectangle and the webview is one rectangle.
+
+   **Considered and deferred: masking instead of hiding.** The remainder
+   doesn't have to be a rectangle — a `CAShapeLayer` mask on the webview's own
+   layer, built from a `CGPath` of the content rect plus each occluder as a
+   subpath under `kCAFillRuleEvenOdd`, would punch a hole exactly where each
+   covering window sits and let the rest of the page keep rendering. Every
+   API needed is already in the `objc2` crates wry pulls in, and the frontend
+   already computes the occluder rects. What it costs: covering windows lose
+   their drop shadow over the page (a shadow falls outside its window's rect,
+   onto page pixels, and gets clipped — padding the holes to preserve it cuts
+   a visible ring of missing page instead); an IPC message per drag frame;
+   translucent windows showing the wallpaper through themselves rather than
+   the page; and macOS-only behaviour, since the mask is AppKit. Costed and
+   parked 2026-08-03 rather than rejected — revisit if background windows
+   being blanked by a small utility window becomes a real annoyance.
 
 2. **The page's content is not ours to walk.** Find can't query the DOM,
    highlight matches, or count them; it drives the page's own `window.find`.
