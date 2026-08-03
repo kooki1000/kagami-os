@@ -258,10 +258,9 @@ fn eval_on_webview(app: &AppHandle, id: &str, js: &str) -> Result<(), String> {
 }
 
 fn emit_load_state(webview: &Webview, id: String, url: String, loading: bool) {
-    let _ = webview.app_handle().emit(
-        LOAD_STATE_EVENT,
-        LoadState { id, url, loading },
-    );
+    let _ = webview
+        .app_handle()
+        .emit(LOAD_STATE_EVENT, LoadState { id, url, loading });
 }
 
 fn emit_nav_changed(webview: &Webview, id: String, url: String) {
@@ -309,7 +308,10 @@ fn on_download(webview: &Webview, id: &str, event: DownloadEvent<'_>) -> bool {
             *destination = dir.join(&filename);
             let _ = webview.app_handle().emit(
                 DOWNLOAD_STARTED_EVENT,
-                DownloadStarted { id: id.to_string(), filename },
+                DownloadStarted {
+                    id: id.to_string(),
+                    filename,
+                },
             );
             true
         }
@@ -435,18 +437,32 @@ pub fn browser_stop(app: AppHandle, id: String) -> Result<(), String> {
 /// user text going into a JS source string, evaluated on whatever origin the
 /// page currently holds.
 #[tauri::command]
-pub fn browser_find(app: AppHandle, id: String, query: String, forward: bool) -> Result<(), String> {
+pub fn browser_find(
+    app: AppHandle,
+    id: String,
+    query: String,
+    forward: bool,
+) -> Result<(), String> {
     let Some(webview) = find_webview(&app, &id) else {
         return Ok(());
     };
     let literal = serde_json::to_string(&query).map_err(|error| error.to_string())?;
     // (query, caseSensitive, backwards, wrapAround, wholeWord, searchInFrames, showDialog)
-    let script = format!("window.find({literal}, false, {}, true, false, true, false)", !forward);
+    let script = format!(
+        "window.find({literal}, false, {}, true, false, true, false)",
+        !forward
+    );
     let app_handle = app.clone();
     webview
         .eval_with_callback(script, move |found_json| {
             let found = serde_json::from_str::<bool>(&found_json).unwrap_or(false);
-            let _ = app_handle.emit(FIND_RESULT_EVENT, FindResult { id: id.clone(), found });
+            let _ = app_handle.emit(
+                FIND_RESULT_EVENT,
+                FindResult {
+                    id: id.clone(),
+                    found,
+                },
+            );
         })
         .map_err(|error| error.to_string())
 }
