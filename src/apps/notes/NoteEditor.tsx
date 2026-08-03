@@ -162,7 +162,13 @@ export function NoteEditor({
         "aria-label": "Note",
       },
     },
-    onUpdate: () => setDirty(true),
+    // `docChanged`, not every update: Tiptap emits one stepless
+    // transaction as the editor mounts, and taking that at face value made
+    // a note mark itself dirty and save itself the moment it was opened.
+    onUpdate: ({ transaction }) => {
+      if (transaction.docChanged)
+        setDirty(true);
+    },
   });
 
   // Load blob-backed text once (review-backlog #11 / U11): gated on size so
