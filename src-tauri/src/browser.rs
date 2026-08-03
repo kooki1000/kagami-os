@@ -30,6 +30,7 @@ use tauri::{
 
 const HOST_WINDOW: &str = "main";
 const NAV_CHANGED_EVENT: &str = "browser://nav-changed";
+const LOAD_STATE_EVENT: &str = "browser://load-state";
 
 /// Content-area bounds in logical (CSS) pixels — mirrors `BrowserBounds` in `browserBridge.ts`.
 #[derive(Deserialize)]
@@ -60,6 +61,17 @@ struct NavChanged {
     id: String,
     url: String,
     title: String,
+}
+
+/// Payload for `browser://load-state`. Emitted from both edges of
+/// `on_page_load`, so the frontend can show a page as loading and offer Stop
+/// while it is. Separate from `NavChanged` because that one waits on an
+/// `eval` round-trip for the title, and the loading edge must not.
+#[derive(Clone, Serialize)]
+struct LoadState {
+    id: String,
+    url: String,
+    loading: bool,
 }
 
 /// Full-size content view: the native title bar overlaps the web content, so
@@ -148,6 +160,13 @@ fn eval_on_webview(app: &AppHandle, id: &str, js: &str) -> Result<(), String> {
     webview.eval(js).map_err(|error| error.to_string())
 }
 
+fn emit_load_state(webview: &Webview, id: String, url: String, loading: bool) {
+    let _ = webview.app_handle().emit(
+        LOAD_STATE_EVENT,
+        LoadState { id, url, loading },
+    );
+}
+
 fn emit_nav_changed(webview: &Webview, id: String, url: String) {
     let app = webview.app_handle().clone();
     // eval_with_callback is the only way to read page state (title) — its
@@ -181,8 +200,15 @@ pub async fn browser_open(
 
     let builder = WebviewBuilder::new(webview_label(&id), WebviewUrl::External(parse_url(url)?))
         .on_page_load(move |webview, payload| {
-            if payload.event() == PageLoadEvent::Finished {
-                emit_nav_changed(&webview, nav_id.clone(), payload.url().to_string());
+            let url = payload.url().to_string();
+            match payload.event() {
+                PageLoadEvent::Started => {
+                    emit_load_state(&webview, nav_id.clone(), url, true);
+                }
+                PageLoadEvent::Finished => {
+                    emit_load_state(&webview, nav_id.clone(), url.clone(), false);
+                    emit_nav_changed(&webview, nav_id.clone(), url);
+                }
             }
         });
     let webview = match window.add_child(builder, bounds.position(inset_y), bounds.size()) {
@@ -215,6 +241,15 @@ pub fn browser_back(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn browser_forward(app: AppHandle, id: String) -> Result<(), String> {
     eval_on_webview(&app, &id, "history.forward()")
+}
+
+/// Halts an in-flight load. Like back/forward there's no native API, so this
+/// goes through the page's own `window.stop()`. A stopped load may never reach
+/// `PageLoadEvent::Finished`, so the frontend clears its own loading state
+/// when it asks for this rather than waiting for an edge that may not come.
+#[tauri::command]
+pub fn browser_stop(app: AppHandle, id: String) -> Result<(), String> {
+    eval_on_webview(&app, &id, "window.stop()")
 }
 
 #[tauri::command]

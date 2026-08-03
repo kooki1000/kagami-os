@@ -39,6 +39,8 @@ export const browserBridge = {
     queueFor(id)(() => invoke<void>("browser_back", { id })),
   forward: (id: string) =>
     queueFor(id)(() => invoke<void>("browser_forward", { id })),
+  stop: (id: string) =>
+    queueFor(id)(() => invoke<void>("browser_stop", { id })),
   setBounds: (id: string, bounds: BrowserBounds) =>
     queueFor(id)(() => invoke<void>("browser_set_bounds", { id, bounds })),
   setVisible: (id: string, visible: boolean) =>
@@ -54,15 +56,23 @@ export interface BrowserNavChanged {
   title: string;
 }
 
+/** Payload of the Rust side's `browser://load-state` event — both edges of a page load. */
+export interface BrowserLoadState {
+  id: string;
+  url: string;
+  loading: boolean;
+}
+
 /**
- * Subscribes to real navigation changes, including ones from `back`/
- * `forward`/in-page link clicks, not just calls made through this bridge.
- * Returns an unsubscribe function, safe to call immediately.
+ * `listen()` resolves asynchronously, but a React effect's cleanup can run
+ * before it does. Bridging it to a synchronous unsubscribe keeps callers on
+ * the plain `return subscribe(...)` effect shape and makes an immediate
+ * unsubscribe safe.
  */
-export function onNavChanged(handler: (event: BrowserNavChanged) => void): () => void {
+function subscribe<T>(event: string, handler: (payload: T) => void): () => void {
   let cancelled = false;
   let unlisten: (() => void) | null = null;
-  listen<BrowserNavChanged>("browser://nav-changed", event => handler(event.payload)).then((fn) => {
+  listen<T>(event, e => handler(e.payload)).then((fn) => {
     if (cancelled)
       fn();
     else
@@ -72,4 +82,18 @@ export function onNavChanged(handler: (event: BrowserNavChanged) => void): () =>
     cancelled = true;
     unlisten?.();
   };
+}
+
+/**
+ * Subscribes to real navigation changes, including ones from `back`/
+ * `forward`/in-page link clicks, not just calls made through this bridge.
+ * Returns an unsubscribe function, safe to call immediately.
+ */
+export function onNavChanged(handler: (event: BrowserNavChanged) => void): () => void {
+  return subscribe("browser://nav-changed", handler);
+}
+
+/** Subscribes to page-load start/finish for every Browser window. */
+export function onLoadState(handler: (event: BrowserLoadState) => void): () => void {
+  return subscribe("browser://load-state", handler);
 }

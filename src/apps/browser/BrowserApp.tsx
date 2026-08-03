@@ -1,16 +1,18 @@
 import type { ReactNode } from "react";
 import type { BrowserBounds } from "./browserBridge";
+import type { ConnectionSecurity } from "./browserUrl";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { WindowRect } from "@/system/windows/windowStore";
-import { ChevronLeft, ChevronRight, Globe, RotateCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Globe, House, Lock, RotateCw, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { isTauri } from "@/system/platform";
+import { useSettingsStore } from "@/system/settings/settingsStore";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
-import { browserBridge, onNavChanged } from "./browserBridge";
+import { browserBridge, onLoadState, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
-
-const HOME_URL = "https://example.com";
+import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
+import { searchEngineById } from "./searchEngines";
 
 // Address bar height. Kept as a constant (applied to the <form> via inline
 // style below) so it and the bounds math can't drift apart.
@@ -21,19 +23,6 @@ const CHROME_HEIGHT = TITLE_BAR_HEIGHT + ADDRESS_BAR_HEIGHT;
 
 function logBridgeError(action: string): (error: unknown) => void {
   return error => console.error(`[kagami-browser] ${action} failed:`, error);
-}
-
-/**
- * Bare host for the address, for the standby state below. Falls back to the
- * raw string for anything that isn't a parseable absolute URL.
- */
-function hostnameOf(rawUrl: string): string {
-  try {
-    return new URL(rawUrl).hostname || rawUrl;
-  }
-  catch {
-    return rawUrl;
-  }
 }
 
 /**
@@ -59,14 +48,19 @@ function webviewBounds(rect: WindowRect): BrowserBounds {
 
 /** The desktop-only chrome + native child webview (N4). */
 function NativeBrowser({ windowId, focused }: AppWindowProps) {
+  // The chosen search engine doubles as the homepage (U17) — a new window
+  // opens on it, and the Home button goes back to it.
+  const engine = searchEngineById(useSettingsStore(s => s.browserSearchEngineId));
   // `history` is rebuilt from the webview's own `nav-changed` events (see
   // browserHistory.ts) rather than tracked optimistically from `go()`.
-  const [history, setHistory] = useState(() => initialHistory(HOME_URL));
+  const [history, setHistory] = useState(() => initialHistory(engine.homeUrl));
   const url = history.entries[history.index];
   // Parsed per navigation, not per render — `rect` re-renders this on every
-  // drag/resize frame, and the standby host line rarely changes.
+  // drag/resize frame, and neither line changes anywhere near that often.
   const host = useMemo(() => hostnameOf(url), [url]);
+  const security = useMemo(() => connectionSecurity(url), [url]);
   const [addressInput, setAddressInput] = useState(url);
+  const [loading, setLoading] = useState(false);
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
   // Drag/resize/snap/maximize all mutate a window's `rect` (a fresh object
   // only when geometry actually changes — see windowStore.ts), so it's the
@@ -102,14 +96,25 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
     });
   }, [windowId, setWindowTitle]);
 
+  // Loading is driven purely by the webview's own page-load edges rather than
+  // set optimistically when we ask it to navigate: a request that never starts
+  // a load (a same-document fragment jump) would otherwise leave the spinner
+  // running with nothing left to clear it.
+  useEffect(() => {
+    return onLoadState(({ id, loading: isLoading }) => {
+      if (id === windowId)
+        setLoading(isLoading);
+    });
+  }, [windowId]);
+
   // One child webview per Browser window instance, created with its
   // mount-time bounds/visibility already baked in so the sync effects below
   // only need to handle *changes*, not mount. Closed on unmount, which
   // covers both closing the window and minimizing it (WindowLayer unmounts
-  // minimized windows rather than just hiding them). Opens with HOME_URL
-  // (not the `url` state) so this only depends on `windowId` and runs
-  // exactly once per window instance; later navigation goes through the
-  // `navigate` command instead of recreating the webview.
+  // minimized windows rather than just hiding them). Opens with the homepage
+  // read straight from the store (not the `url` state) so this only depends
+  // on `windowId` and runs exactly once per window instance; later navigation
+  // goes through the `navigate` command instead of recreating the webview.
   useEffect(() => {
     // Read the current rect straight from the store rather than depending on
     // it, so this stays a once-per-window-instance open (later geometry
@@ -117,7 +122,8 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
     const openRect = useWindowStore.getState().windows.find(w => w.id === windowId)?.rect;
     if (!openRect)
       return;
-    browserBridge.open(windowId, HOME_URL, webviewBounds(openRect), visibleRef.current).catch(logBridgeError("open"));
+    const home = searchEngineById(useSettingsStore.getState().browserSearchEngineId).homeUrl;
+    browserBridge.open(windowId, home, webviewBounds(openRect), visibleRef.current).catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));
     };
@@ -143,47 +149,66 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
     browserBridge.navigate(windowId, nextUrl).catch(logBridgeError("navigate"));
   }
 
+  /** Submitting the address bar: anything that isn't an address becomes a search. */
+  function submitAddress(): void {
+    const target = normalizeAddress(addressInput, engine);
+    if (target)
+      go(target);
+  }
+
+  function stop(): void {
+    browserBridge.stop(windowId).catch(logBridgeError("stop"));
+    // A stopped load may never reach the `Finished` edge that would otherwise
+    // clear this, so the click clears it itself (see browser.rs).
+    setLoading(false);
+  }
+
   return (
     <div className="flex h-full flex-col">
       <form
-        className="flex flex-none items-center gap-2 px-3 hairline-b"
+        className="flex flex-none items-center gap-1 px-2.5 text-ink-2 hairline-b"
         style={{ height: ADDRESS_BAR_HEIGHT }}
         onSubmit={(e) => {
           e.preventDefault();
-          go(addressInput);
+          submitAddress();
         }}
       >
-        <button
-          type="button"
-          aria-label="Back"
+        <ToolbarButton
+          label="Back"
           disabled={!canGoBack(history)}
-          className="grid size-6 flex-none place-items-center rounded-[6px] hover:bg-ph disabled:opacity-30"
           onClick={() => browserBridge.back(windowId).catch(logBridgeError("back"))}
         >
-          <ChevronLeft className="size-[calc(14px*var(--ui-scale))] opacity-70" />
-        </button>
-        <button
-          type="button"
-          aria-label="Forward"
+          <ChevronLeft className="size-[calc(15px*var(--ui-scale))]" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Forward"
           disabled={!canGoForward(history)}
-          className="grid size-6 flex-none place-items-center rounded-[6px] hover:bg-ph disabled:opacity-30"
           onClick={() => browserBridge.forward(windowId).catch(logBridgeError("forward"))}
         >
-          <ChevronRight className="size-[calc(14px*var(--ui-scale))] opacity-70" />
-        </button>
-        <button
-          type="button"
-          aria-label="Reload"
-          className="grid size-6 flex-none place-items-center rounded-[6px] hover:bg-ph"
-          onClick={() => go(url)}
-        >
-          <RotateCw className="size-[calc(14px*var(--ui-scale))] opacity-70" />
-        </button>
-        <input
+          <ChevronRight className="size-[calc(15px*var(--ui-scale))]" />
+        </ToolbarButton>
+        {loading
+          ? (
+              <ToolbarButton label="Stop" onClick={stop}>
+                <X className="size-[calc(14px*var(--ui-scale))]" />
+              </ToolbarButton>
+            )
+          : (
+              <ToolbarButton label="Reload" onClick={() => go(url)}>
+                <RotateCw className="size-[calc(13px*var(--ui-scale))]" />
+              </ToolbarButton>
+            )}
+        <ToolbarButton label={`Home — ${engine.name}`} onClick={() => go(engine.homeUrl)}>
+          <House className="size-[calc(14px*var(--ui-scale))]" />
+        </ToolbarButton>
+        <AddressField
           value={addressInput}
-          onChange={e => setAddressInput(e.target.value)}
-          placeholder="Enter an address"
-          className="min-w-0 flex-1 rounded-btn bg-ph px-[calc(10px*var(--ui-scale))] py-1 text-12 text-ink outline-none placeholder:text-ink-2"
+          loading={loading}
+          security={security}
+          onChange={setAddressInput}
+          // Escape abandons a mid-edit and puts the live URL back, so there's
+          // a way out of a half-typed address that doesn't involve retyping it.
+          onCancel={() => setAddressInput(url)}
         />
       </form>
       {/* The native child webview is layered over this region by the Rust
@@ -198,6 +223,80 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
       </BrowserEmptyState>
     </div>
   );
+}
+
+/** Square icon button in the prototype's language — the shape Documents' toolbar uses. */
+function ToolbarButton({ label, disabled, onClick, children }: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      className="grid size-6.5 flex-none place-items-center rounded-btn hover:bg-ph hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The address input, with the leading slot every browser puts there: load
+ * progress while a page is loading, connection security once it settles.
+ */
+function AddressField({ value, loading, security, onChange, onCancel }: {
+  value: string;
+  loading: boolean;
+  security: ConnectionSecurity;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="ml-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-btn bg-ph px-[calc(8px*var(--ui-scale))] focus-within:bg-ph-2">
+      <AddressIndicator loading={loading} security={security} />
+      <input
+        value={value}
+        aria-label="Address"
+        placeholder="Search or enter an address"
+        className="min-w-0 flex-1 bg-transparent py-1 text-12 text-ink outline-none placeholder:text-ink-2"
+        onChange={e => onChange(e.target.value)}
+        // Clicking into the bar selects the whole address, so replacing it is
+        // one keystroke rather than a manual select-all.
+        onFocus={e => e.target.select()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            onCancel();
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function AddressIndicator({ loading, security }: { loading: boolean; security: ConnectionSecurity }) {
+  if (loading) {
+    return (
+      <span
+        role="status"
+        aria-label="Loading"
+        // motion-safe: the spinner is decorative, and the security icon it
+        // replaces already carries the state for anyone who reduces motion.
+        className="size-3 flex-none rounded-full border-[1.5px] border-(--accent)/25 border-t-(--accent) motion-safe:animate-spin"
+      />
+    );
+  }
+  if (security === "secure")
+    return <Lock aria-label="Secure connection" className="size-3 flex-none opacity-55" />;
+  if (security === "insecure")
+    return <ShieldAlert aria-label="Not secure" className="size-3.5 flex-none text-accent-2" />;
+  return <Globe aria-label="" className="size-3.5 flex-none opacity-45" />;
 }
 
 /** Centered icon-over-text shell shared by the standby and web-unavailable states. */

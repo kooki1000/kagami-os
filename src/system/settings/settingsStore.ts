@@ -3,6 +3,7 @@ import type { UiScale } from "@/design/tokens";
 import type { ResolvedTheme } from "@/system/theme/themeStore";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { DEFAULT_SEARCH_ENGINE_ID } from "@/apps/browser/searchEngines";
 import { clamp01 } from "@/lib/math";
 import { useThemeStore } from "@/system/theme/themeStore";
 import {
@@ -46,6 +47,12 @@ interface SettingsStore {
   uiScale: UiScale;
   /** Player's (U12) volume, persisted across tracks/windows/sessions — 0–1. */
   playerVolume: number;
+  /**
+   * Browser's (U17) search engine — an id from `apps/browser/searchEngines.ts`.
+   * Doubles as the homepage: a new Browser window opens on the chosen
+   * engine's own page.
+   */
+  browserSearchEngineId: string;
   /**
    * "Don't show this again" (U16) — set once the welcome tour is dismissed
    * with that box checked, so boot stops re-launching it. Replaying it later
@@ -116,6 +123,7 @@ interface SettingsStore {
   setAutoEmptyTrash: (value: boolean) => void;
   setUiScale: (value: UiScale) => void;
   setPlayerVolume: (value: number) => void;
+  setBrowserSearchEngine: (id: string) => void;
   setTourDismissed: (value: boolean) => void;
   markWelcomeSeen: () => void;
   setFileAssociation: (mimeType: string, appId: string) => void;
@@ -205,6 +213,7 @@ export const useSettingsStore = create<SettingsStore>()(
       autoEmptyTrash: false,
       uiScale: "default",
       playerVolume: 0.8,
+      browserSearchEngineId: DEFAULT_SEARCH_ENGINE_ID,
       tourDismissed: false,
       welcomeSeen: false,
       fileAssociations: {},
@@ -237,6 +246,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setAutoEmptyTrash: value => set({ autoEmptyTrash: value }),
       setUiScale: value => set({ uiScale: value }),
       setPlayerVolume: value => set({ playerVolume: clamp01(value) }),
+      setBrowserSearchEngine: id => set({ browserSearchEngineId: id }),
       setTourDismissed: value => set({ tourDismissed: value }),
       markWelcomeSeen: () => set({ welcomeSeen: true }),
       setFileAssociation: (mimeType, appId) =>

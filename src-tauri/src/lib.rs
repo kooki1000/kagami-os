@@ -9,6 +9,7 @@ pub fn run() {
             browser::browser_navigate,
             browser::browser_back,
             browser::browser_forward,
+            browser::browser_stop,
             browser::browser_set_bounds,
             browser::browser_set_visible,
             browser::browser_close,
