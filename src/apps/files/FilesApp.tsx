@@ -26,6 +26,7 @@ import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@
 import { getApp } from "@/system/apps/registry";
 import { blobStore } from "@/system/fs/blobStore";
 import {
+  cachedFolderSizes,
   childrenOf,
   isSystemNode,
   pathOf,
@@ -46,7 +47,7 @@ import { sortForFolder, useViewPrefsStore, viewModeForFolder } from "@/system/se
 import { pathString, resolveFolderPath } from "./breadcrumbPath";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
-import { fileBytes, folderSizes } from "./fileMeta";
+import { fileBytes } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { gridColumnCount } from "./gridLayout";
@@ -62,6 +63,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   name: "Name",
   date: "Date Added",
   kind: "Kind",
+  size: "Size",
 };
 
 const VIEW_MODE_ICONS: Record<ViewMode, typeof LayoutGrid> = {
@@ -407,7 +409,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // One linear pass over the whole tree (review-backlog #5), reused by
   // every row in FilesView's list view instead of each row recursing/
   // rescanning `nodes` for its own folder size.
-  const sizes = useMemo(() => folderSizes(nodes), [nodes]);
+  // `cachedFolderSizes`, not a bare `folderSizes` in a `useMemo`: the "size"
+  // sort inside `childrenOf` needs the same rollup, and the shared per-commit
+  // cache means the two of them cost one pass rather than two.
+  const sizes = useMemo(() => cachedFolderSizes(nodes), [nodes]);
   // U14 "Recents": not a real folder, so its listing comes straight off the
   // ring buffer (most-recent-first) instead of `childrenOf` — sort doesn't
   // apply here, recency order *is* the point of the place.
@@ -480,6 +485,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
         break;
       case "files.sortKind":
         applySort("kind");
+        break;
+      case "files.sortSize":
+        applySort("size");
         break;
       case "files.sortReverse":
         toggleSortDir();

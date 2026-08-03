@@ -48,6 +48,7 @@ export const filesApp: AppManifest = {
         { label: "Sort by Name", appCommand: "files.sortName" },
         { label: "Sort by Date Added", appCommand: "files.sortDate" },
         { label: "Sort by Kind", appCommand: "files.sortKind" },
+        { label: "Sort by Size", appCommand: "files.sortSize" },
         { label: "Reverse Sort Order", appCommand: "files.sortReverse" },
       ],
     },

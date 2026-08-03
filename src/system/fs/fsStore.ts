@@ -38,7 +38,7 @@ export function logPersistError(error: unknown): void {
 
 export type NodeMap = Record<string, FsNode>;
 
-export type SortKey = "name" | "date" | "kind";
+export type SortKey = "name" | "date" | "kind" | "size";
 export type SortDir = "asc" | "desc";
 export interface SortSpec {
   key: SortKey;
@@ -64,13 +64,21 @@ function byName(a: FsNode, b: FsNode): number {
  * Compare two same-type siblings on the sort key alone (no tie-break).
  * Kind sorts by mime type — the store stays app-agnostic; the Files kind
  * labels are a presentation concern.
+ *
+ * `sizeOf` is supplied only for the "size" key, so the folder-rollup pass it
+ * needs is never computed for the three keys that don't.
  */
-function byKey(a: FsNode, b: FsNode, key: SortKey): number {
+function byKey(a: FsNode, b: FsNode, key: SortKey, sizeOf?: (node: FsNode) => number): number {
   switch (key) {
     case "date":
       return a.modifiedAt - b.modifiedAt;
     case "kind":
       return collator.compare(a.mimeType ?? "", b.mimeType ?? "");
+    case "size":
+      // Folders compare on their rolled-up subtree size — the same number the
+      // Size column and Get Info print — so sorting by size doesn't silently
+      // treat every folder as zero.
+      return (sizeOf?.(a) ?? 0) - (sizeOf?.(b) ?? 0);
     case "name":
       return byName(a, b);
   }
@@ -121,17 +129,130 @@ export function childrenOf(
     return cached;
 
   const ids = childIdsByParent(nodes).get(parentId) ?? [];
+  // Only the "size" key pays for the rollup pass, and `cachedFolderSizes`
+  // makes it once per `nodes` commit however many folders are being sorted.
+  const sizes = sort.key === "size" ? cachedFolderSizes(nodes) : undefined;
+  const sizeOf = sizes
+    ? (node: FsNode) => (node.type === "folder" ? (sizes.get(node.id) ?? 0) : fileBytes(node))
+    : undefined;
   const result = ids
     .map(id => nodes[id])
     .filter((n): n is FsNode => !!n)
     .sort((a, b) => {
       if (a.type !== b.type)
         return a.type === "folder" ? -1 : 1;
-      const primary = byKey(a, b, sort.key);
+      const primary = byKey(a, b, sort.key, sizeOf);
       return (sort.dir === "desc" ? -primary : primary) || byName(a, b);
     });
   perNodes.set(key, result);
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Node sizes (B8)
+//
+// Store-level, not app-level: `childrenOf`'s "size" sort needs them, and
+// keeping one implementation stops the sorted order and the size the Files
+// app prints from ever disagreeing. `fileMeta.ts` re-exports these for the
+// app's existing call sites.
+// ---------------------------------------------------------------------------
+
+const byteLength = new TextEncoder();
+
+/** A file's size in bytes: `contentRef.size` (already bytes, B1) or the inline string's UTF-8 byte length. Folders have no bytes of their own — see {@link folderSizes}. */
+export function fileBytes(node: FsNode): number {
+  if (node.contentRef)
+    return node.contentRef.size;
+  return node.content ? byteLength.encode(node.content).length : 0;
+}
+
+/**
+ * Every folder's size (B8) — the recursive byte sum of its children — in one
+ * linear pass over the whole node map, instead of each folder re-scanning
+ * `nodes` and recursing individually (the old `O(k · n)` `nodeSize` visibly
+ * stuttered the marquee and filter input at a few thousand nodes). Same
+ * traversal shape as `fsStore.ts`'s `collectSubtrees`: a shared
+ * `globallySeen` set means every node is visited once in total, which also
+ * makes a corrupt `parentId` cycle terminate instead of overflowing the
+ * stack.
+ */
+export function folderSizes(nodes: NodeMap): Map<string, number> {
+  const childIds = childIdsByParent(nodes);
+  const sizes = new Map<string, number>();
+  const globallySeen = new Set<string>();
+
+  for (const node of Object.values(nodes)) {
+    if (node.type !== "folder" || globallySeen.has(node.id))
+      continue;
+
+    // Iterative post-order: push each folder onto `toVisit`, record it into
+    // `finished` on first pop, and push its unvisited folder children.
+    // Reversing `finished` puts every child before its parent, so the
+    // summing pass below can trust a child's size is already in `sizes`.
+    const toVisit = [node.id];
+    globallySeen.add(node.id);
+    const finished: string[] = [];
+    while (toVisit.length > 0) {
+      const id = toVisit.pop()!;
+      finished.push(id);
+      for (const childId of childIds.get(id) ?? []) {
+        if (globallySeen.has(childId))
+          continue;
+        const child = nodes[childId];
+        if (child?.type === "folder") {
+          globallySeen.add(childId);
+          toVisit.push(childId);
+        }
+      }
+    }
+    finished.reverse();
+
+    for (const id of finished) {
+      let total = 0;
+      for (const childId of childIds.get(id) ?? []) {
+        const child = nodes[childId];
+        if (!child)
+          continue;
+        total += child.type === "folder" ? (sizes.get(childId) ?? 0) : fileBytes(child);
+      }
+      sizes.set(id, total);
+    }
+  }
+
+  return sizes;
+}
+
+/**
+ * Size in bytes (B8) for one node — files are O(1); folders delegate to
+ * {@link folderSizes}' single linear pass (still far cheaper than the old
+ * per-call recursion even uncached, since it's one pass over `nodes`
+ * regardless of which folder is asked for). Fine for a one-off lookup like
+ * the Get Info panel; a view rendering many rows should compute
+ * `folderSizes(nodes)` once (`useMemo`) and read the map directly instead of
+ * calling this per row.
+ */
+export function nodeSize(nodes: NodeMap, node: FsNode): number {
+  if (node.type === "folder")
+    return folderSizes(nodes).get(node.id) ?? 0;
+  return fileBytes(node);
+}
+
+/**
+ * `folderSizes`' result, cached per `nodes` identity — the same WeakMap idiom
+ * as `childrenOfCache` above, and for the same reason: a "sort by size"
+ * listing, the status bar's selection total and Get Info would each otherwise
+ * kick off their own full pass within a single commit.
+ */
+const folderSizesCache = new WeakMap<NodeMap, Map<string, number>>();
+
+/** {@link folderSizes}, memoized for the lifetime of a `nodes` commit. */
+export function cachedFolderSizes(nodes: NodeMap): Map<string, number> {
+  let cached = folderSizesCache.get(nodes);
+  if (!cached) {
+    cached = folderSizes(nodes);
+    folderSizesCache.set(nodes, cached);
+  }
+  return cached;
 }
 
 /** Path from the root down to (and including) the node. */
