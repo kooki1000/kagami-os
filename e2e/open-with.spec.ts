@@ -14,18 +14,16 @@ test.describe("Open with → Notes reuse and payload identity", () => {
     await page.locator("[data-node-name=\"Documents\"]").dblclick();
 
     await page.getByText("todo.md", { exact: true }).dblclick();
-    // Files' own Filter <input> is also an implicit textbox and stays
-    // mounted (in the still-open Files window) alongside Notes, so
-    // `getByRole("textbox")` alone is ambiguous — Notes' editor is the only
-    // <textarea> on the page.
-    const editor = page.locator("textarea");
+    // Since D9 the editor renders the markdown rather than showing it, so
+    // the assertion is on the heading's text, not on a "# To-do" source line.
+    const editor = page.locator(".notes-prose");
     await expect(editor).toBeVisible();
-    await expect(editor).toHaveValue(/^# To-do/);
+    await expect(editor.locator("h1")).toHaveText("To-do");
 
     // Refocus Files (still inside Documents) and open a second file.
     await openApp(page, "files");
     await page.getByText("ideas.md", { exact: true }).dblclick();
-    await expect(editor).toHaveValue(/^# Ideas/);
+    await expect(editor.locator("h1")).toHaveText("Ideas");
     // Exactly one Files window + one Notes window — a second Notes window
     // opening for ideas.md would push this to 3.
     await expect(page.locator("[data-window-control]")).toHaveCount(2);
@@ -33,7 +31,7 @@ test.describe("Open with → Notes reuse and payload identity", () => {
     // Re-open the first file — the same window re-selects it.
     await openApp(page, "files");
     await page.getByText("todo.md", { exact: true }).dblclick();
-    await expect(editor).toHaveValue(/^# To-do/);
+    await expect(editor.locator("h1")).toHaveText("To-do");
     await expect(page.locator("[data-window-control]")).toHaveCount(2);
   });
 });

@@ -41,8 +41,8 @@ test.describe("Files: Open With submenu (B11)", () => {
     // file is reflected in the editor content instead.
     const notesWindow = page.locator("[data-window-id]").last();
     await expect(notesWindow.locator("[data-window-title]")).toHaveText("Notes");
-    const editor = notesWindow.locator("textarea");
-    await expect(editor).toHaveValue(/^Hello from an E2E upload fixture\.\s*$/);
+    const editor = notesWindow.locator(".notes-prose");
+    await expect(editor).toHaveText("Hello from an E2E upload fixture.");
     await notesWindow.locator("[data-window-control] button[aria-label=\"close window\"]").click();
 
     // Plain double-click (no Open With) re-derives the same app, since
@@ -50,6 +50,6 @@ test.describe("Files: Open With submenu (B11)", () => {
     await page.getByText("sample.txt", { exact: true }).dblclick();
     const reopened = page.locator("[data-window-id]").last();
     await expect(reopened.locator("[data-window-title]")).toHaveText("Notes");
-    await expect(reopened.locator("textarea")).toHaveValue(/^Hello from an E2E upload fixture\.\s*$/);
+    await expect(reopened.locator(".notes-prose")).toHaveText("Hello from an E2E upload fixture.");
   });
 });

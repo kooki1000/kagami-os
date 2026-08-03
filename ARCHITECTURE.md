@@ -357,23 +357,46 @@ focused instance without the shell knowing app internals.
   autosave (flushed on note-switch and unmount) that migrates between
   `node.content` and the blob store as the byte size crosses
   `BLOB_INLINE_THRESHOLD` in either direction (`fsStore.setFileBlob`, the
-  mirror of `updateFileContent`), find-and-replace (`findReplace.ts`,
-  Cmd+F/Cmd+G), word/char count, a persisted font size, soft-wrap toggle, and
-  a focus mode that hides the sidebar/chrome. Blob-backed text over 5 MB
-  stays a read-only "too large" placeholder; at or under that it's read via
-  `blobStore.get(...).then(b => b.text())` and edited normally. Inline
-  rename, duplicate, reveal-in-Files, move-to-trash, and a couple of starter
-  templates (`noteTemplates.ts`) round out the context menu. A formatting
-  toolbar (`markdownFormat.ts`, pure selection-toggle logic for bold/italic/
-  underline wrap, heading cycling, and bullet/numbered lists) edits the raw
-  markdown text in place; a Preview toggle swaps the textarea for a
-  read-only rendered view (`NotePreview.tsx` over `markdownPreview.ts`'s
-  `parseMarkdown`). The renderer recognizes only that fixed vocabulary — plus
-  a literal `<u>`/`</u>` pair for underline, matched as a string rather than
-  parsed as a tag — so it never calls `dangerouslySetInnerHTML` and needed no
-  sandboxing to ship (ROADMAP.md §6 decision 8). Format-as-you-type editing
-  (no visible markdown markers, replacing the Preview toggle) is a tracked
-  follow-up, ROADMAP.md D9.
+  mirror of `updateFileContent`), find-and-replace (⌘F/⌘G), word/char count,
+  a persisted font size, and a focus mode that hides the sidebar/chrome.
+  Blob-backed text over 5 MB stays a read-only "too large" placeholder; at or
+  under that it's read via `blobStore.get(...).then(b => b.text())` and
+  edited normally. Inline rename, duplicate, reveal-in-Files, move-to-trash,
+  and a couple of starter templates (`noteTemplates.ts`) round out the
+  context menu.
+
+  **The editing surface is WYSIWYG (D9, `NoteEditor.tsx`)** — a Tiptap /
+  ProseMirror document, not a `<textarea>`. Three files carry the design:
+
+  - `editorSchema.ts` — the vocabulary, assembled one extension at a time
+    and **never from `StarterKit`**. A ProseMirror document can only hold
+    node types its schema declares, which is what makes hostile paste a
+    structural non-event rather than something to filter; it is also the
+    form ROADMAP.md §6 decision 8 now rests on (re-checked when D9 shipped;
+    that entry has the full argument, and it doubles as G1's owed renderer
+    audit). Adding a node here — a link, an image, an embed — changes that
+    argument and belongs in a PR that revisits it.
+  - `markdownDocument.ts` — markdown ↔ document, hand-written for exactly
+    the vocabulary above. `@tiptap/markdown` was rejected because it depends
+    on `marked`, a general CommonMark→HTML parser, i.e. precisely the
+    generic pipeline decision 8 keeps out. Round-tripping is idempotent, and
+    a newline inside a paragraph maps to `hardBreak` so existing notes come
+    back byte-for-byte instead of gaining blank lines on first save.
+  - `notesFind.ts` + `findHighlight.ts` — find as document _ranges_, drawn
+    as decorations. Every match is highlighted at once (a textarea could
+    only select one at a time, which is why find used to force the preview
+    closed); decorations never touch the document, so undo doesn't see a
+    search.
+
+  **Storage is unchanged**: notes are plain `.md` on disk, parsed on open
+  and serialized on save, so Files, search, templates and export are
+  untouched. Two things that are easy to get wrong and are commented in
+  place: `onUpdate` gates on `transaction.docChanged` (Tiptap emits a
+  stepless transaction at mount, which otherwise makes a note save itself
+  the moment it's opened), and toolbar buttons suppress `mousedown` so the
+  editor keeps the selection they're about to format. The editor chunk is
+  lazy-loaded with the app: ~9 kB gzip → ~113 kB.
+
 - **Viewer** (`src/apps/viewer/`) — multi-instance image viewer with
   zoom/fit/rotate; fit recomputes via a `ResizeObserver` on the window.
 

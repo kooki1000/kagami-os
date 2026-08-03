@@ -19,19 +19,17 @@ interface NotesPrefsStore {
   pinnedIds: string[];
   scopeMode: NotesScopeMode;
   sort: NotesSortSpec;
-  /** Editor font size in px, independent of (but still multiplied by) `--ui-scale` — see NotesApp.tsx. */
+  /** Editor font size in px, independent of (but still multiplied by) `--ui-scale` — see NoteEditor.tsx. */
   fontSize: number;
-  wordWrap: boolean;
   togglePinned: (id: string) => void;
   setScopeMode: (mode: NotesScopeMode) => void;
   setSort: (sort: NotesSortSpec) => void;
   stepFontSize: (delta: number) => void;
-  setWordWrap: (value: boolean) => void;
 }
 
 /**
  * Notes' sidebar preferences (U11) — pinning, scope, sort, and the editor's
- * font size/soft-wrap choice. Kept out of the fs store (small UI prefs, not
+ * font size. Kept out of the fs store (small UI prefs, not
  * document data) and persisted to localStorage, same shape as Files'
  * `viewPrefsStore` — `pinnedIds` mirrors `favouriteIds`'s plain-array pattern
  * so it needs no custom (de)serialization.
@@ -43,7 +41,6 @@ export const useNotesPrefsStore = create<NotesPrefsStore>()(
       scopeMode: "subtree",
       sort: DEFAULT_NOTES_SORT,
       fontSize: DEFAULT_NOTE_FONT_SIZE,
-      wordWrap: true,
       togglePinned: (id) => {
         const { pinnedIds } = get();
         set({
@@ -55,9 +52,22 @@ export const useNotesPrefsStore = create<NotesPrefsStore>()(
       setScopeMode: mode => set({ scopeMode: mode }),
       setSort: sort => set({ sort }),
       stepFontSize: delta => set({ fontSize: clampNoteFontSize(get().fontSize + delta) }),
-      setWordWrap: value => set({ wordWrap: value }),
     }),
-    { name: "kagami-notes-prefs", version: 2 },
+    {
+      name: "kagami-notes-prefs",
+      version: 3,
+      /**
+       * v2 → v3 drops `wordWrap`. D9's editor lays out rich text, so there
+       * is no no-wrap mode for the setting to mean anything about — leaving
+       * the key behind would just be state nothing reads.
+       */
+      migrate: (persisted) => {
+        if (persisted === null || typeof persisted !== "object")
+          return persisted as NotesPrefsStore;
+        const { wordWrap: _dropped, ...rest } = persisted as NotesPrefsStore & { wordWrap?: boolean };
+        return rest as NotesPrefsStore;
+      },
+    },
   ),
 );
 

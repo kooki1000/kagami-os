@@ -33,7 +33,7 @@ test.describe("Desktop icons (B7)", () => {
 
     const notesWindow = page.locator("[data-window-id]").last();
     await expect(notesWindow.locator("[data-window-title]")).toHaveText("Notes");
-    await expect(notesWindow.locator("textarea")).toHaveValue(/^Hello from an E2E upload fixture\.\s*$/);
+    await expect(notesWindow.locator(".notes-prose")).toHaveText("Hello from an E2E upload fixture.");
   });
 
   test("double-clicking a Desktop folder opens Files scoped to that folder", async ({ page }) => {

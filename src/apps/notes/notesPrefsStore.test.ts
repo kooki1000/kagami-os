@@ -16,7 +16,19 @@ afterEach(() => {
 describe("notesPrefsStore persistence", () => {
   it("declares a persist version so a future shape change can migrate", async () => {
     const { useNotesPrefsStore } = await import("./notesPrefsStore");
-    expect(useNotesPrefsStore.persist.getOptions().version).toBe(2);
+    expect(useNotesPrefsStore.persist.getOptions().version).toBe(3);
+  });
+
+  it("drops the v2 soft-wrap preference on migration", async () => {
+    localStorage.setItem("kagami-notes-prefs", JSON.stringify({
+      version: 2,
+      state: { pinnedIds: [], scopeMode: "subtree", fontSize: 15, wordWrap: false },
+    }));
+    const { useNotesPrefsStore } = await import("./notesPrefsStore");
+    // D9's editor has no no-wrap mode for the setting to describe; the rest
+    // of the preferences carry over untouched.
+    expect(useNotesPrefsStore.getState()).not.toHaveProperty("wordWrap");
+    expect(useNotesPrefsStore.getState().fontSize).toBe(15);
   });
 
   it("round-trips pinnedIds through localStorage", async () => {

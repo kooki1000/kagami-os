@@ -1,62 +1,29 @@
 import type { MouseEvent } from "react";
-import type { TextEdit } from "./markdownFormat";
 import type { NotesSortKey } from "./notesFilter";
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
-import type { FsNode } from "@/system/fs/types";
 import {
-  AArrowDown,
-  AArrowUp,
   ArrowUpDown,
-  Bold,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  EyeOff,
   FolderOpen,
-  Heading,
-  Italic,
-  List,
-  ListOrdered,
-  Maximize2,
-  Minimize2,
   NotebookPen,
   Pin,
   PinOff,
   Plus,
-  Replace,
   Search,
-  Underline,
-  WrapText,
-  X,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
-import { formatBytes, formatModified, nameStem } from "@/lib/format";
+import { Segmented } from "@/components/ui/Segmented";
+import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId, usePayloadFileId } from "@/system/apps/filePayload";
 import { launchApp } from "@/system/apps/launch";
-import { blobStore } from "@/system/fs/blobStore";
 import { isDescendantOf, useFsStore } from "@/system/fs/fsStore";
 import { isCommittableRename } from "@/system/fs/renameCommit";
-import { BLOB_INLINE_THRESHOLD, DOCUMENTS_ID, HOME_ID, TRASH_ID } from "@/system/fs/types";
+import { DOCUMENTS_ID, HOME_ID, TRASH_ID } from "@/system/fs/types";
 import { useWindowStore } from "@/system/windows/windowStore";
-import {
-  charCount,
-  findMatches,
-  replaceAllMatches,
-  replaceOne,
-  stepMatch,
-  wordCount,
-} from "./findReplace";
-import {
-  toggleBulletList,
-  toggleHeadingLine,
-  toggleInlineWrap,
-  toggleNumberList,
-} from "./markdownFormat";
-import { NotePreview } from "./NotePreview";
+import { NoteEditor } from "./NoteEditor";
 import {
   filterDocs,
   folderOptions,
@@ -67,443 +34,10 @@ import {
 import { useNotesPrefsStore } from "./notesPrefsStore";
 import { findTemplate, NOTE_TEMPLATES } from "./noteTemplates";
 
-const AUTOSAVE_MS = 600;
-
-/** Blob-backed text over this size stays read-only (ROADMAP.md §8's own step-15 metric). */
-const BLOB_TEXT_LIMIT = 5 * 1024 * 1024;
-
 const SORT_LABELS: Record<NotesSortKey, string> = {
   name: "Name",
   date: "Date Modified",
 };
-
-type BlobTextStatus = "none" | "loading" | "ready" | "toolarge" | "missing";
-
-/** The formatting toolbar's buttons — also looked up by `appCommand` for the Format menu's shortcuts (index.ts). */
-const FORMAT_ITEMS: {
-  command: string;
-  label: string;
-  title: string;
-  Icon: typeof Bold;
-  format: (text: string, selectionStart: number, selectionEnd: number) => TextEdit;
-}[] = [
-  { command: "notes.bold", label: "Bold", title: "Bold (⌘B)", Icon: Bold, format: (t, s, e) => toggleInlineWrap(t, s, e, "**", "**") },
-  { command: "notes.italic", label: "Italic", title: "Italic (⌘I)", Icon: Italic, format: (t, s, e) => toggleInlineWrap(t, s, e, "*", "*") },
-  { command: "notes.underline", label: "Underline", title: "Underline (⌘U)", Icon: Underline, format: (t, s, e) => toggleInlineWrap(t, s, e, "<u>", "</u>") },
-  { command: "notes.heading", label: "Heading", title: "Cycle heading level (⇧⌘H)", Icon: Heading, format: toggleHeadingLine },
-  { command: "notes.bulletList", label: "Bulleted list", title: "Bulleted list (⇧⌘L)", Icon: List, format: toggleBulletList },
-  { command: "notes.numberList", label: "Numbered list", title: "Numbered list (⇧⌘O)", Icon: ListOrdered, format: toggleNumberList },
-];
-
-/** Find/replace act on the textarea's DOM selection, which doesn't exist while Preview is showing. */
-const FIND_COMMANDS = new Set(["notes.find", "notes.findNext", "notes.findPrev"]);
-
-function NoteEditor({
-  doc,
-  windowId,
-  focusMode,
-  onToggleFocusMode,
-}: {
-  doc: FsNode;
-  windowId: string;
-  focusMode: boolean;
-  onToggleFocusMode: () => void;
-}) {
-  const updateFileContent = useFsStore(s => s.updateFileContent);
-  const setFileBlob = useFsStore(s => s.setFileBlob);
-  const nodes = useFsStore(s => s.nodes);
-  const fontSize = useNotesPrefsStore(s => s.fontSize);
-  const stepFontSize = useNotesPrefsStore(s => s.stepFontSize);
-  const wordWrap = useNotesPrefsStore(s => s.wordWrap);
-  const setWordWrap = useNotesPrefsStore(s => s.setWordWrap);
-
-  const hash = doc.contentRef?.hash;
-  const [blobStatus, setBlobStatus] = useState<BlobTextStatus>(() => {
-    if (!doc.contentRef)
-      return "none";
-    return doc.contentRef.size > BLOB_TEXT_LIMIT ? "toolarge" : "loading";
-  });
-  const [draft, setDraft] = useState(doc.content ?? "");
-  // What's actually persisted right now — compared against `draft` for the
-  // "Saved"/"Editing…" indicator. Not `doc.content`: a blob-backed file has
-  // no inline content to compare against, so this is set once the blob text
-  // loads and again after every successful save (either representation).
-  const [savedText, setSavedText] = useState<string | null>(doc.content ?? (doc.contentRef ? null : ""));
-
-  // Load blob-backed text once (review-backlog #11 / U11): gated on size so
-  // a multi-hundred-MB binary-ish file never gets slurped into a string.
-  useEffect(() => {
-    if (blobStatus !== "loading" || !hash)
-      return;
-    let cancelled = false;
-    void blobStore.get(hash).then(async (blob) => {
-      if (cancelled)
-        return;
-      if (!blob) {
-        setBlobStatus("missing");
-        return;
-      }
-      const text = await blob.text();
-      if (cancelled)
-        return;
-      setSavedText(text);
-      setDraft(text);
-      setBlobStatus("ready");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [blobStatus, hash]);
-
-  const editable = blobStatus === "none" || blobStatus === "ready";
-  const saved = draft === savedText;
-
-  /**
-   * Save `content`, migrating between `node.content` and the blob store as
-   * its byte size crosses `BLOB_INLINE_THRESHOLD` in either direction — the
-   * fix for review-backlog #11. `new Blob([content]).size` gives the same
-   * UTF-8 byte count `contentRef.size` already means everywhere else.
-   * `useCallback`'d (deps: only `doc.id`/`doc.mimeType`, stable for this
-   * doc.id-keyed mount) so both effects below can list it as a dependency
-   * instead of disabling exhaustive-deps.
-   */
-  const persist = useCallback(async (content: string): Promise<void> => {
-    const byteSize = new Blob([content]).size;
-    if (byteSize > BLOB_INLINE_THRESHOLD)
-      await setFileBlob(doc.id, new Blob([content], { type: doc.mimeType ?? "text/plain" }));
-    else
-      updateFileContent(doc.id, content);
-    setSavedText(content);
-  }, [doc.id, doc.mimeType, setFileBlob, updateFileContent]);
-
-  // Keep latest values readable from the unmount flush below. Synced in an
-  // effect (not during render) so refs stay outside the render phase, per
-  // react-hooks/refs.
-  const flushRef = useRef({ editable, saved, draft });
-  useLayoutEffect(() => {
-    flushRef.current = { editable, saved, draft };
-  });
-
-  useEffect(() => {
-    if (!editable || saved)
-      return;
-    const timer = window.setTimeout(() => {
-      void persist(draft);
-    }, AUTOSAVE_MS);
-    return () => window.clearTimeout(timer);
-  }, [editable, saved, draft, persist]);
-
-  // Flush pending edits when switching notes / closing the window.
-  useEffect(() => () => {
-    const flush = flushRef.current;
-    if (flush.editable && !flush.saved)
-      void persist(flush.draft);
-  }, [doc.id, persist]);
-
-  const folderName = doc.parentId ? nodes[doc.parentId]?.name : undefined;
-
-  /* ---------- find & replace (Cmd+F / Cmd+G) ---------- */
-
-  const [findOpen, setFindOpen] = useState(false);
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [findQuery, setFindQuery] = useState("");
-  const [replaceQuery, setReplaceQuery] = useState("");
-  const [matchIndex, setMatchIndex] = useState<number | null>(null);
-  const findInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const matches = useMemo(() => findMatches(draft, findQuery), [draft, findQuery]);
-
-  function openFind(): void {
-    setFindOpen(true);
-    requestAnimationFrame(() => findInputRef.current?.select());
-  }
-
-  function closeFind(): void {
-    setFindOpen(false);
-    setMatchIndex(null);
-    textareaRef.current?.focus();
-  }
-
-  function jump(direction: 1 | -1): void {
-    if (!findOpen)
-      setFindOpen(true);
-    setMatchIndex(stepMatch(matches.length, matchIndex, direction));
-  }
-
-  // Move the textarea's native selection to the current match — a plain
-  // `<textarea>` has no per-range highlight API, so "showing" a match means
-  // selecting it (same limitation any plain-textarea find bar accepts).
-  useEffect(() => {
-    if (matchIndex === null)
-      return;
-    const at = matches[matchIndex];
-    if (at === undefined)
-      return;
-    const el = textareaRef.current;
-    if (!el)
-      return;
-    el.focus();
-    el.setSelectionRange(at, at + findQuery.length);
-  }, [matchIndex, matches, findQuery.length]);
-
-  function doReplaceOne(): void {
-    if (matchIndex === null)
-      return;
-    setDraft(d => replaceOne(d, matches, matchIndex, findQuery.length, replaceQuery));
-    setMatchIndex(null);
-  }
-
-  function doReplaceAll(): void {
-    if (!findQuery)
-      return;
-    setDraft(d => replaceAllMatches(d, findQuery, replaceQuery));
-    setMatchIndex(null);
-  }
-
-  /* ---------- formatting toolbar (bold/italic/underline/heading/lists) ---------- */
-
-  const [previewMode, setPreviewMode] = useState(false);
-
-  // Restore the textarea's selection after a formatting edit, once the new
-  // `draft` has committed and re-rendered — same rAF-after-state-change
-  // pattern `openFind` above already uses for `findInputRef`.
-  function applyFormat(fn: (text: string, start: number, end: number) => TextEdit): void {
-    const el = textareaRef.current;
-    if (!el)
-      return;
-    const result = fn(draft, el.selectionStart, el.selectionEnd);
-    setDraft(result.text);
-    requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta)
-        return;
-      ta.focus();
-      ta.setSelectionRange(result.selectionStart, result.selectionEnd);
-    });
-  }
-
-  useAppCommand(windowId, (command) => {
-    if (!editable)
-      return;
-
-    const formatItem = FORMAT_ITEMS.find(item => item.command === command);
-    if (formatItem) {
-      applyFormat(formatItem.format);
-      return;
-    }
-
-    if (FIND_COMMANDS.has(command))
-      setPreviewMode(false);
-
-    switch (command) {
-      case "notes.find":
-        openFind();
-        break;
-      case "notes.findNext":
-        jump(1);
-        break;
-      case "notes.findPrev":
-        jump(-1);
-        break;
-      case "notes.togglePreview":
-        setPreviewMode(p => !p);
-        break;
-    }
-  });
-
-  if (blobStatus === "toolarge" || blobStatus === "missing" || blobStatus === "loading") {
-    return (
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-[34px] flex-none items-center gap-2 px-4 text-12 select-none hairline-b">
-          <span className="truncate font-semibold text-ink">{nameStem(doc.name)}</span>
-          {folderName && <span className="truncate text-ink-2">{folderName}</span>}
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-ink-2 select-none">
-          <NotebookPen className="size-7" strokeWidth={1.4} />
-          {blobStatus === "loading" && <span className="text-13">Loading…</span>}
-          {blobStatus === "missing" && <span className="text-13">This file's contents couldn't be found</span>}
-          {blobStatus === "toolarge" && doc.contentRef && (
-            <>
-              <span className="text-13">
-                This file is too large to edit in Notes (
-                {formatBytes(doc.contentRef.size)}
-                )
-              </span>
-              <span className="text-11.5 opacity-70">
-                Download it from Files to read the full contents.
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative flex min-w-0 flex-1 flex-col">
-      {focusMode && (
-        <button
-          type="button"
-          aria-label="Exit focus mode"
-          title="Exit focus mode"
-          className="absolute top-3 right-3 z-10 grid size-6 place-items-center rounded-full bg-ph/80 text-ink-2 hover:bg-ph"
-          onClick={onToggleFocusMode}
-        >
-          <Minimize2 className="size-3.5" />
-        </button>
-      )}
-
-      {!focusMode && (
-        <div className="flex h-[34px] flex-none items-center gap-2 px-4 text-12 select-none hairline-b">
-          <span className="truncate font-semibold text-ink">{nameStem(doc.name)}</span>
-          {folderName && <span className="truncate text-ink-2">{folderName}</span>}
-          <span className="ml-auto flex-none text-11 text-ink-2">
-            {saved ? "Saved" : "Editing…"}
-          </span>
-        </div>
-      )}
-
-      {!focusMode && (
-        <div className="flex h-[26px] flex-none items-center gap-1 px-4 text-ink-2 select-none hairline-b">
-          <button type="button" aria-label="Decrease font size" title="Decrease font size" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => stepFontSize(-1)}>
-            <AArrowDown className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Increase font size" title="Increase font size" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => stepFontSize(1)}>
-            <AArrowUp className="size-3.5" />
-          </button>
-          <span className="text-[calc(10.5px*var(--ui-scale))] tabular-nums opacity-70">
-            {fontSize}
-            px
-          </span>
-          <button
-            type="button"
-            aria-label="Toggle soft wrap"
-            title="Soft wrap"
-            className={`grid size-5 place-items-center rounded-[5px] hover:bg-ph ${wordWrap ? "text-accent" : ""}`}
-            onClick={() => setWordWrap(!wordWrap)}
-          >
-            <WrapText className="size-3.5" />
-          </button>
-          <button type="button" aria-label="Enter focus mode" title="Focus mode" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={onToggleFocusMode}>
-            <Maximize2 className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label={previewMode ? "Exit preview" : "Preview"}
-            title={previewMode ? "Exit preview" : "Preview"}
-            className={`grid size-5 place-items-center rounded-[5px] hover:bg-ph ${previewMode ? "text-accent" : ""}`}
-            onClick={() => setPreviewMode(p => !p)}
-          >
-            {previewMode ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          </button>
-          <span className="ml-auto text-[calc(10.5px*var(--ui-scale))] tabular-nums opacity-70">
-            {wordCount(draft)}
-            {" words · "}
-            {charCount(draft)}
-            {" chars"}
-          </span>
-        </div>
-      )}
-
-      {!previewMode && (
-        <>
-          {!focusMode && (
-            <div className="flex h-[26px] flex-none items-center gap-1 px-4 text-ink-2 select-none hairline-b">
-              {FORMAT_ITEMS.map(({ command, label, title, Icon, format }) => (
-                <button key={command} type="button" aria-label={label} title={title} className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => applyFormat(format)}>
-                  <Icon className="size-3.5" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {findOpen && editable && (
-            <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
-              <input
-                ref={findInputRef}
-                value={findQuery}
-                placeholder="Find"
-                className="w-32 rounded-[6px] bg-ph px-2 py-1 text-11.5 text-ink outline-none placeholder:text-ink-2"
-                onChange={(e) => {
-                  setFindQuery(e.target.value);
-                  setMatchIndex(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    jump(e.shiftKey ? -1 : 1);
-                  }
-                  else if (e.key === "Escape") {
-                    closeFind();
-                  }
-                }}
-              />
-              <span className="w-10 flex-none text-[calc(10.5px*var(--ui-scale))] text-ink-2 tabular-nums">
-                {matches.length ? `${(matchIndex ?? 0) + 1}/${matches.length}` : "0/0"}
-              </span>
-              <button type="button" aria-label="Previous match" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => jump(-1)}>
-                <ChevronUp className="size-3.5" />
-              </button>
-              <button type="button" aria-label="Next match" className="grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={() => jump(1)}>
-                <ChevronDown className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label="Toggle replace"
-                className={`grid size-5 place-items-center rounded-[5px] hover:bg-ph ${replaceOpen ? "text-accent" : ""}`}
-                onClick={() => setReplaceOpen(o => !o)}
-              >
-                <Replace className="size-3.5" />
-              </button>
-              <button type="button" aria-label="Close find" className="ml-auto grid size-5 place-items-center rounded-[5px] hover:bg-ph" onClick={closeFind}>
-                <X className="size-3.5" />
-              </button>
-            </div>
-          )}
-          {findOpen && editable && replaceOpen && (
-            <div className="flex flex-none items-center gap-1.5 px-3 py-1.5 hairline-b">
-              <input
-                value={replaceQuery}
-                placeholder="Replace"
-                className="w-32 rounded-[6px] bg-ph px-2 py-1 text-11.5 text-ink outline-none placeholder:text-ink-2"
-                onChange={e => setReplaceQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape")
-                    closeFind();
-                }}
-              />
-              <button type="button" className="rounded-btn bg-ph px-2 py-1 text-11 font-medium text-ink hover:bg-ph-2" onClick={doReplaceOne}>
-                Replace
-              </button>
-              <button type="button" className="rounded-btn bg-ph px-2 py-1 text-11 font-medium text-ink hover:bg-ph-2" onClick={doReplaceAll}>
-                Replace All
-              </button>
-            </div>
-          )}
-        </>
-      )}
-
-      {previewMode
-        ? (
-            <NotePreview text={draft} />
-          )
-        : (
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              placeholder="Start writing…"
-              wrap={wordWrap ? "soft" : "off"}
-              style={{ fontSize: `calc(${fontSize}px * var(--ui-scale))` }}
-              className={`min-h-0 w-full flex-1 resize-none bg-transparent p-5 font-mono leading-relaxed text-ink outline-none placeholder:text-ink-2 ${
-                wordWrap ? "" : "overflow-x-auto whitespace-pre"
-              }`}
-              onChange={e => setDraft(e.target.value)}
-            />
-          )}
-    </div>
-  );
-}
 
 export default function NotesApp({ windowId, payload }: AppWindowProps) {
   const nodes = useFsStore(s => s.nodes);
@@ -749,27 +283,16 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
               <FolderOpen className="size-3 flex-none" />
               <span className="truncate">{nodes[scopeFolderId]?.name ?? "Documents"}</span>
             </button>
-            <div className="flex flex-none gap-0.5 rounded-btn bg-ph p-0.5">
-              <button
-                type="button"
-                title="Just this folder"
-                className={`rounded-[5px] px-1.5 py-0.5 text-[calc(10px*var(--ui-scale))] font-medium ${
-                  scopeMode === "folder" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.12)]" : "text-ink-2"
-                }`}
-                onClick={() => setScopeMode("folder")}
-              >
-                Folder
-              </button>
-              <button
-                type="button"
-                title="This folder and its subfolders"
-                className={`rounded-[5px] px-1.5 py-0.5 text-[calc(10px*var(--ui-scale))] font-medium ${
-                  scopeMode === "subtree" ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.12)]" : "text-ink-2"
-                }`}
-                onClick={() => setScopeMode("subtree")}
-              >
-                +Sub
-              </button>
+            <div className="flex-none">
+              <Segmented
+                size="sm"
+                value={scopeMode}
+                onChange={setScopeMode}
+                options={[
+                  { value: "folder", label: "Folder", title: "Just this folder" },
+                  { value: "subtree", label: "+Sub", title: "This folder and its subfolders" },
+                ]}
+              />
             </div>
           </div>
 

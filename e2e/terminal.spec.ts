@@ -89,7 +89,7 @@ test.describe("Terminal engine v2 (D3)", () => {
 
     const notesWindow = page.locator("[data-window-focused=\"true\"]");
     await expect(notesWindow.locator("[data-window-title]")).toHaveText("Notes");
-    await expect(notesWindow.locator("textarea")).toHaveValue(/Try the Terminal/);
+    await expect(notesWindow.locator(".notes-prose")).toContainText("Try the Terminal");
   });
 
   test("Tab lists ambiguous candidates and cycles through them", async ({ page }) => {

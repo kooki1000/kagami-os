@@ -69,6 +69,10 @@
   --wall-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
   --wall-position: center, center, center, center, center, center;
 
+  /* Lift under the selected chip of a segmented control. Themed, because
+     the same black rgba that reads as a lift on a warm light surface reads
+     as a smudge under a light chip on a dark one. */
+  --shadow-chip: 0 1px 3px rgba(0, 0, 0, 0.14);
   --shadow-window: 0 8px 22px -8px rgba(0, 0, 0, 0.32);
   --shadow-window-focus: 0 30px 65px -18px rgba(0, 0, 0, 0.5), 0 6px 18px -8px rgba(0, 0, 0, 0.3);
   --shadow-deep: 0 22px 55px -16px rgba(28, 22, 14, 0.42);
@@ -104,6 +108,8 @@
   --ph-2: rgba(255, 251, 244, 0.13);
   --dot: rgba(255, 251, 244, 0.24);
   --tile: #2e2b26;
+
+  --shadow-chip: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(255, 251, 244, 0.06);
 
   --wall:
     repeating-linear-gradient(
@@ -304,6 +310,103 @@ body {
 }
 @utility animate-flyout-in {
   animation: flyout-in 0.16s ease-out both;
+}
+
+/* ---- Notes' WYSIWYG editor (D9).
+   Tailwind's reset strips list markers and heading sizes, and the editor's
+   content is ProseMirror-managed DOM rather than JSX, so it can't carry
+   utility classes per node — these rules are what the old NotePreview
+   component used to express in JSX, kept to the same values. ---- */
+.notes-prose > :first-child {
+  margin-top: 0;
+}
+.notes-prose h1,
+.notes-prose h2,
+.notes-prose h3 {
+  margin: calc(20px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+  font-weight: 600;
+  color: var(--text);
+}
+.notes-prose h1 {
+  font-size: calc(19px * var(--ui-scale));
+}
+.notes-prose h2 {
+  font-size: calc(16px * var(--ui-scale));
+}
+.notes-prose h3 {
+  font-size: calc(14px * var(--ui-scale));
+}
+.notes-prose p {
+  margin: 0 0 calc(12px * var(--ui-scale));
+}
+.notes-prose ul,
+.notes-prose ol {
+  margin: 0 0 calc(12px * var(--ui-scale));
+  padding-left: calc(20px * var(--ui-scale));
+}
+.notes-prose ul {
+  list-style: disc;
+}
+.notes-prose ol {
+  list-style: decimal;
+}
+.notes-prose li::marker {
+  color: var(--text-2);
+}
+.notes-prose li > p {
+  margin: 0;
+}
+.notes-prose li + li {
+  margin-top: calc(4px * var(--ui-scale));
+}
+
+/* Task lists: a real checkbox the user can click, where the old preview
+   could only render the state read-only. */
+.notes-prose ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+.notes-prose ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(6px * var(--ui-scale));
+}
+.notes-prose ul[data-type="taskList"] li > label {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-top: 0.28em;
+  user-select: none;
+}
+.notes-prose ul[data-type="taskList"] input[type="checkbox"] {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.notes-prose ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
+/* The placeholder is a decoration on the first empty paragraph, not a real
+   text node — so an empty note still serializes to an empty file. */
+.notes-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-2);
+  pointer-events: none;
+}
+
+/* Find matches. The active one takes the second accent so it reads as
+   "this one" against the rest, in the same duotone the window controls use. */
+.notes-find-match {
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--accent) 26%, transparent);
+}
+.notes-find-active {
+  background: color-mix(in oklab, var(--accent-2) 46%, transparent);
 }
 
 /* ---- terminal block cursor: a hard on/off blink (step-end), not a fade —
