@@ -36,7 +36,14 @@ export const browserApp: AppManifest = {
         { label: "Home", appCommand: "browser.home", shortcut: "⇧⌘H", dividerAfter: true },
         { label: "Zoom In", appCommand: "browser.zoomIn", shortcut: "⌘+" },
         { label: "Zoom Out", appCommand: "browser.zoomOut", shortcut: "⌘−" },
-        { label: "Actual Size", appCommand: "browser.zoomReset", shortcut: "⌘0" },
+        { label: "Actual Size", appCommand: "browser.zoomReset", shortcut: "⌘0", dividerAfter: true },
+        { label: "Show Bookmarks Bar", appCommand: "browser.toggleBookmarksBar", shortcut: "⇧⌘B" },
+      ],
+    },
+    {
+      title: "Bookmarks",
+      items: [
+        { label: "Bookmark This Page", appCommand: "browser.toggleBookmark", shortcut: "⌘D" },
       ],
     },
     {

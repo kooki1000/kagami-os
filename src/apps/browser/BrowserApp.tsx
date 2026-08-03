@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import type { BrowserBounds } from "./browserBridge";
 import type { BrowserPayload } from "./browserPayload";
+import type { Bookmark } from "./browserPrefsStore";
 import type { ConnectionSecurity } from "./browserUrl";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { WindowRect } from "@/system/windows/windowStore";
-import { ChevronLeft, ChevronRight, Globe, House, Lock, RotateCw, ShieldAlert, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Globe, House, Lock, RotateCw, ShieldAlert, Star, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 import { useAppCommand } from "@/system/appCommands";
 import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { isTauri } from "@/system/platform";
@@ -14,17 +16,22 @@ import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { browserBridge, onLoadState, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
 import { payloadUrl } from "./browserPayload";
-import { useBrowserPrefsStore, zoomForHost } from "./browserPrefsStore";
+import { isBookmarked, useBrowserPrefsStore, zoomForHost } from "./browserPrefsStore";
 import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
 import { DEFAULT_ZOOM, formatZoom, stepZoom } from "./browserZoom";
 import { searchEngineById } from "./searchEngines";
 
-// Address bar height. Kept as a constant (applied to the <form> via inline
-// style below) so it and the bounds math can't drift apart.
+// Chrome-strip heights. Kept as constants (applied via inline style below) so
+// they and the bounds math can't drift apart — the native child webview is
+// positioned by number, not by layout, so a strip that renders taller than
+// this arithmetic says would sit underneath it.
 const ADDRESS_BAR_HEIGHT = 40;
-// Everything stacked above the content region: the window's title bar plus
-// this app's address bar.
-const CHROME_HEIGHT = TITLE_BAR_HEIGHT + ADDRESS_BAR_HEIGHT;
+const BOOKMARKS_BAR_HEIGHT = 30;
+
+/** Everything stacked above the content region, which the webview starts below. */
+function chromeHeight(showBookmarksBar: boolean): number {
+  return TITLE_BAR_HEIGHT + ADDRESS_BAR_HEIGHT + (showBookmarksBar ? BOOKMARKS_BAR_HEIGHT : 0);
+}
 
 function logBridgeError(action: string): (error: unknown) => void {
   return error => console.error(`[kagami-browser] ${action} failed:`, error);
@@ -42,12 +49,12 @@ function logBridgeError(action: string): (error: unknown) => void {
  * once the transform settles. `rect` is transform-immune and is already the
  * exact re-sync signal (drag/resize/snap/maximize all mutate it).
  */
-function webviewBounds(rect: WindowRect): BrowserBounds {
+function webviewBounds(rect: WindowRect, chrome: number): BrowserBounds {
   return {
     x: rect.x,
-    y: rect.y + CHROME_HEIGHT,
+    y: rect.y + chrome,
     width: rect.width,
-    height: rect.height - CHROME_HEIGHT,
+    height: rect.height - chrome,
   };
 }
 
@@ -68,6 +75,10 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   const security = useMemo(() => connectionSecurity(url), [url]);
   const [addressInput, setAddressInput] = useState(url);
   const [loading, setLoading] = useState(false);
+  // The page's own title, kept so a bookmark can be saved under it. The window
+  // title carries the same string, but reading it back out of the store to
+  // bookmark a page would be a round trip through the shell for our own data.
+  const [pageTitle, setPageTitle] = useState("");
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
   const setWindowPayload = useWindowStore(s => s.setWindowPayload);
   // Drag/resize/snap/maximize all mutate a window's `rect` (a fresh object
@@ -79,6 +90,13 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   // it was left at across visits and windows (see browserPrefsStore.ts).
   const zoom = useBrowserPrefsStore(s => zoomForHost(s.zoomByHost, host));
   const setZoomForHost = useBrowserPrefsStore(s => s.setZoomForHost);
+  const bookmarks = useBrowserPrefsStore(s => s.bookmarks);
+  const toggleBookmark = useBrowserPrefsStore(s => s.toggleBookmark);
+  const showBookmarksBar = useBrowserPrefsStore(s => s.showBookmarksBar);
+  const setShowBookmarksBar = useBrowserPrefsStore(s => s.setShowBookmarksBar);
+  const removeBookmark = useBrowserPrefsStore(s => s.removeBookmark);
+  const saved = isBookmarked(bookmarks, url);
+  const chrome = chromeHeight(showBookmarksBar);
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
   const visible = focused && !overlayOpen;
   // Latest visibility, readable from the open effect without depending on it.
@@ -104,6 +122,7 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
       if (id !== windowId)
         return;
       setHistory(h => applyNavigation(h, navUrl));
+      setPageTitle(title);
       setWindowTitle(windowId, title || navUrl);
       // The window payload is the only place this URL outlives the child
       // webview, and it's what session restore serializes. Writing it here
@@ -140,7 +159,10 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
       return;
     const home = searchEngineById(useSettingsStore.getState().browserSearchEngineId).homeUrl;
     const openUrl = payloadUrl(openWindow.payload) ?? home;
-    browserBridge.open(windowId, openUrl, webviewBounds(openWindow.rect), visibleRef.current).catch(logBridgeError("open"));
+    const openChrome = chromeHeight(useBrowserPrefsStore.getState().showBookmarksBar);
+    browserBridge
+      .open(windowId, openUrl, webviewBounds(openWindow.rect, openChrome), visibleRef.current)
+      .catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));
     };
@@ -151,11 +173,13 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   // this avoids dropping a change that lands between the open render and the
   // effect's first run — during session restore that left a stale webview
   // visible over whichever window ended up focused.
+  // `chrome` is a dependency because showing or hiding the bookmarks bar moves
+  // the content region's top edge without touching the window's own geometry.
   useEffect(() => {
     if (!rect)
       return;
-    browserBridge.setBounds(windowId, webviewBounds(rect)).catch(logBridgeError("set_bounds"));
-  }, [windowId, rect]);
+    browserBridge.setBounds(windowId, webviewBounds(rect, chrome)).catch(logBridgeError("set_bounds"));
+  }, [windowId, rect, chrome]);
 
   useEffect(() => {
     browserBridge.setVisible(windowId, visible).catch(logBridgeError("set_visible"));
@@ -195,6 +219,12 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
         break;
       case "browser.zoomReset":
         setZoomForHost(host, DEFAULT_ZOOM);
+        break;
+      case "browser.toggleBookmark":
+        toggleBookmark({ url, title: pageTitle || host });
+        break;
+      case "browser.toggleBookmarksBar":
+        setShowBookmarksBar(!showBookmarksBar);
         break;
     }
   });
@@ -270,7 +300,23 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
             {formatZoom(zoom)}
           </button>
         )}
+        <ToolbarButton
+          label={saved ? "Remove bookmark" : "Bookmark this page"}
+          onClick={() => toggleBookmark({ url, title: pageTitle || host })}
+        >
+          <Star
+            className={`size-[calc(14px*var(--ui-scale))] ${saved ? "fill-(--accent-2) text-accent-2" : ""}`}
+          />
+        </ToolbarButton>
       </form>
+      {showBookmarksBar && (
+        <BookmarksBar
+          bookmarks={bookmarks}
+          currentUrl={url}
+          onOpen={go}
+          onRemove={removeBookmark}
+        />
+      )}
       {/* The native child webview is layered over this region by the Rust
           side while the window is focused. The OS webview paints on top, so
           this standby state shows through only while it's hidden (window in
@@ -281,6 +327,65 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
         <span className="font-mono text-13 text-ink">{host}</span>
         <span className="text-11.5 opacity-70">Select this window to keep browsing</span>
       </BrowserEmptyState>
+    </div>
+  );
+}
+
+/**
+ * The saved-pages strip under the address bar. Off by default: it costs
+ * content height, which the child webview pays for directly (see
+ * `chromeHeight`), so it appears only once asked for.
+ */
+function BookmarksBar({ bookmarks, currentUrl, onOpen, onRemove }: {
+  bookmarks: Bookmark[];
+  currentUrl: string;
+  onOpen: (url: string) => void;
+  onRemove: (url: string) => void;
+}) {
+  const [menu, setMenu] = useState<{ x: number; y: number; bookmark: Bookmark } | null>(null);
+
+  return (
+    <div
+      className="flex flex-none items-center gap-0.5 overflow-x-auto px-2 hairline-b"
+      style={{ height: BOOKMARKS_BAR_HEIGHT }}
+    >
+      {bookmarks.length === 0
+        ? (
+            <span className="px-1 text-11 text-ink-2 opacity-70 select-none">
+              Pages you bookmark with the star appear here
+            </span>
+          )
+        : bookmarks.map(bookmark => (
+            <button
+              key={bookmark.url}
+              type="button"
+              title={bookmark.url}
+              className={`max-w-[170px] flex-none truncate rounded-btn px-2 py-0.5 text-11.5 transition-colors ${
+                bookmark.url === currentUrl
+                  ? "bg-ph font-medium text-ink"
+                  : "text-ink-2 hover:bg-ph hover:text-ink"
+              }`}
+              onClick={() => onOpen(bookmark.url)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, bookmark });
+              }}
+            >
+              {bookmark.title}
+            </button>
+          ))}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          header={menu.bookmark.title}
+          entries={[
+            { label: "Open", run: () => onOpen(menu.bookmark.url) },
+            { label: "Remove Bookmark", danger: true, run: () => onRemove(menu.bookmark.url) },
+          ]}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
   );
 }
