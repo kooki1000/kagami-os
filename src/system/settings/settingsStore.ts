@@ -53,6 +53,15 @@ interface SettingsStore {
    * Welcome window directly and doesn't touch this flag.
    */
   tourDismissed: boolean;
+  /**
+   * (U16) Set the first time the welcome tour is launched at boot, so it
+   * greets each install exactly once. Boot used to infer "first run" from
+   * "session restore found nothing", which is also true after a `?fresh`
+   * boot or a cleared session — so a user who had already taken the tour got
+   * it again. Independent of {@link tourDismissed}, which is the explicit
+   * opt-out; either one suppresses the automatic launch.
+   */
+  welcomeSeen: boolean;
   // User-chosen default app per exact mime type (B11), overriding
   // openFile.ts's built-in mime-family table. Keyed on the full mime type
   // (e.g. "image/png"), not the family prefix, so a choice for PNGs doesn't
@@ -108,6 +117,7 @@ interface SettingsStore {
   setUiScale: (value: UiScale) => void;
   setPlayerVolume: (value: number) => void;
   setTourDismissed: (value: boolean) => void;
+  markWelcomeSeen: () => void;
   setFileAssociation: (mimeType: string, appId: string) => void;
   clearFileAssociation: (mimeType: string) => void;
 
@@ -196,6 +206,7 @@ export const useSettingsStore = create<SettingsStore>()(
       uiScale: "default",
       playerVolume: 0.8,
       tourDismissed: false,
+      welcomeSeen: false,
       fileAssociations: {},
 
       wallpaperFileId: { light: null, dark: null },
@@ -227,6 +238,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setUiScale: value => set({ uiScale: value }),
       setPlayerVolume: value => set({ playerVolume: clamp01(value) }),
       setTourDismissed: value => set({ tourDismissed: value }),
+      markWelcomeSeen: () => set({ welcomeSeen: true }),
       setFileAssociation: (mimeType, appId) =>
         set({ fileAssociations: { ...get().fileAssociations, [mimeType]: appId } }),
       clearFileAssociation: (mimeType) => {

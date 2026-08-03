@@ -10,7 +10,6 @@ import { WindowLayer } from "./components/shell/WindowLayer";
 import { uiScaleMultipliers } from "./design/tokens";
 import { launchApp } from "./system/apps/launch";
 import { useFsStore } from "./system/fs/fsStore";
-import { notify } from "./system/notifications/notificationStore";
 import { lookById, themeVariables } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
 import { ensureWallpaperUrl, useWallpaperUrl } from "./system/settings/wallpaperBlobUrl";
@@ -123,22 +122,23 @@ export default function App() {
       const restoreOnBoot = useSettingsStore.getState().restoreSessionOnBoot;
       const hadSession = (fresh || !restoreOnBoot) ? false : restoreSession();
 
-      // First-ever boot (no session was ever saved, even an empty one):
-      // greet with the Welcome tour. A session that restored to zero
-      // windows means the user closed everything on purpose — don't
-      // resurrect Welcome every time they do that. `tourDismissed` (U16's
-      // "don't show this again") is a second, independent gate — it can
-      // replay later from Settings › About regardless of either check here.
+      // First run, greeted exactly once: `welcomeSeen` is a recorded fact,
+      // where the old `!hadSession` check was an inference that also fired
+      // after a `?fresh` boot or a cleared session — re-greeting people who
+      // had already taken the tour. `tourDismissed` (U16's "don't show this
+      // again") stays a second, independent gate. Either way it can still be
+      // replayed on demand from Settings › About.
+      const settings = useSettingsStore.getState();
       if (
         useWindowStore.getState().windows.length === 0
         && !hadSession
-        && !useSettingsStore.getState().tourDismissed
+        && !settings.welcomeSeen
+        && !settings.tourDismissed
       ) {
+        // No accompanying toast: the window is the greeting, and firing both
+        // at once greeted the user twice for one event.
+        settings.markWelcomeSeen();
         launchApp("welcome");
-        notify({
-          title: "Welcome to Kagami OS",
-          body: "Open apps from the dock. Try ⌘W to close a window.",
-        });
       }
 
       // U9: apps the user has chosen to always launch at boot, in addition

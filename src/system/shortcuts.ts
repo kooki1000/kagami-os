@@ -55,15 +55,55 @@ export const WINDOW_CHORDS: ChordDescriptor[] = [
   { shortcut: "⌃`", description: "Cycle windows of the focused app" },
 ];
 
-/** Build the menu-style chord string ("⇧⌘N") for a keydown, or null. */
-function chordFromEvent(e: KeyboardEvent): string | null {
+/**
+ * `KeyboardEvent.key` → the glyph the menus print for it.
+ *
+ * Without this the dispatcher only ever matched ⌘+letter, so **every**
+ * non-letter shortcut any app declared was decorative: Documents' page nav and
+ * zoom, Viewer's zoom and prev/next, Player's prev/next and Terminal's font
+ * size — 13 menu items advertising chords that silently did nothing.
+ *
+ * Two normalizations matter for matching the strings the manifests actually
+ * contain: zoom-out is written with a real minus sign (U+2212), not a hyphen,
+ * and zoom-in is written `+` though the unshifted key is `=` on most layouts.
+ */
+const CHORD_GLYPHS: Record<string, string> = {
+  "ArrowUp": "↑",
+  "ArrowDown": "↓",
+  "ArrowLeft": "←",
+  "ArrowRight": "→",
+  "Backspace": "⌫",
+  "Delete": "⌦",
+  "Enter": "⏎",
+  "[": "[",
+  "]": "]",
+  "-": "−",
+  "_": "−",
+  "=": "+",
+  "+": "+",
+  "0": "0",
+};
+
+/**
+ * Build the menu-style chord string ("⇧⌘N", "⌘[") for a keydown, or null.
+ *
+ * ⇧ is recorded only for letters. For the symbol keys above, the printed
+ * glyph already encodes whichever physical combination produced it (`+` *is*
+ * shift-`=`), so folding ⇧ in as well would produce "⇧⌘+" and match nothing.
+ */
+export function chordFromEvent(e: KeyboardEvent): string | null {
   if (!(e.metaKey || e.ctrlKey) || e.altKey)
     return null;
+
+  const glyph = CHORD_GLYPHS[e.key];
+  if (glyph)
+    return `⌘${glyph}`;
+
   if (e.key.length !== 1)
     return null;
   const upper = e.key.toUpperCase();
   if (upper < "A" || upper > "Z")
-    return null; // letters only — symbol chords stay menu-only
+    return null;
   return `${e.shiftKey ? "⇧" : ""}⌘${upper}`;
 }
 

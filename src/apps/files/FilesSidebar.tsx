@@ -45,7 +45,15 @@ function sidebarRowTone(active: boolean): string {
 interface SidebarItemProps {
   id: string;
   label: string;
+  /** Static fallback glyph, used only when `node` isn't resolvable (a synthetic place, or before the fs store is ready). */
   icon: LucideIcon;
+  /**
+   * The place's real node, when it has one. Present so a place renders through
+   * `NodeGlyph` and therefore honors a custom icon glyph/tint — `fileMeta`'s
+   * system-folder defaults already reproduce `PLACES`' own icons, so this
+   * doesn't change the default appearance of anything.
+   */
+  node?: FsNode;
   trailing?: string;
   title?: string;
   active: boolean;
@@ -59,6 +67,7 @@ function SidebarItem({
   id,
   label,
   icon,
+  node,
   trailing,
   title,
   active,
@@ -89,7 +98,9 @@ function SidebarItem({
           onDropNode(id, nodeIds);
       }}
     >
-      <Icon className="size-[15px] opacity-80" strokeWidth={1.8} />
+      {node
+        ? <NodeGlyph node={node} className="size-[15px] flex-none opacity-80" strokeWidth={1.8} />
+        : <Icon className="size-[15px] opacity-80" strokeWidth={1.8} />}
       <span className="flex-1">{label}</span>
       {trailing && <span className="text-[calc(10.5px*var(--ui-scale))] opacity-60">{trailing}</span>}
     </button>
@@ -176,6 +187,7 @@ export function FilesSidebar({ cwd, trashCount, onNavigate, onOpenNode, onDropNo
           id={place.id}
           label={place.label}
           icon={place.icon}
+          node={nodes[place.id]}
           active={cwd === place.id}
           isDropTarget={dropTarget === place.id}
           {...shared}

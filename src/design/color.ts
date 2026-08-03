@@ -267,6 +267,49 @@ export function deriveAccentTone(baseHex: string): DerivedAccentTone {
   };
 }
 
+/** White, the label color every filled accent control draws in. */
+const ACCENT_LABEL = "#ffffff";
+/**
+ * How far down the OKLCH lightness ramp {@link deriveAccentStrong} may walk
+ * before giving up. Even a pure yellow accent clears AA long before this, so
+ * the floor only exists to bound the loop rather than to be reached.
+ */
+const ACCENT_STRONG_MIN_L = 0.18;
+/** Lightness decrement per step — fine enough that the result never overshoots visibly. */
+const ACCENT_STRONG_STEP_L = 0.005;
+
+/**
+ * The accent, darkened only as far as it must be for white text on top of it
+ * to clear WCAG AA (4.5:1) — the fill for accent-colored controls that carry a
+ * text label (primary buttons, the selected row in Player's playlist).
+ *
+ * Needed because `--accent` alone doesn't pass: shipped Lagoon is 3.44:1 in
+ * light and 2.43:1 in dark against white, so every primary button in the OS
+ * was failing AA. Hue is held fixed and only lightness moves (chroma follows
+ * only where `oklchToHex`'s gamut mapping has to pull it in), so this stays a
+ * derivation of the one user-picked accent per ROADMAP.md §6.5's guardrail —
+ * not a second hand-authored color. An accent already dark
+ * enough is returned untouched, which is why most custom accents see no shift
+ * at all.
+ *
+ * Deliberately **not** used for accent surfaces without text on them — the
+ * switch track, progress dots, focus rings, `text-accent` on a surface — which
+ * are governed by the `accentOnSurface` pair instead and must keep matching
+ * the accent exactly.
+ */
+export function deriveAccentStrong(accentHex: string): string {
+  if (contrastRatio(ACCENT_LABEL, accentHex) >= WCAG_AA_NORMAL_TEXT)
+    return accentHex;
+
+  const base = hexToOklch(accentHex);
+  for (let l = base.l - ACCENT_STRONG_STEP_L; l >= ACCENT_STRONG_MIN_L; l -= ACCENT_STRONG_STEP_L) {
+    const candidate = oklchToHex({ ...base, l });
+    if (contrastRatio(ACCENT_LABEL, candidate) >= WCAG_AA_NORMAL_TEXT)
+      return candidate;
+  }
+  return oklchToHex({ ...base, l: ACCENT_STRONG_MIN_L });
+}
+
 function normalizeHue(h: number): number {
   const wrapped = h % 360;
   return wrapped < 0 ? wrapped + 360 : wrapped;
@@ -388,28 +431,33 @@ export function deriveWallpaperTone(
 export interface AccentContrastResult {
   /** Contrast ratio of the accent against the app surface (e.g. window chrome). */
   accentOnSurface: number;
-  /** Contrast ratio of ink (text) drawn on top of the accent. */
-  inkOnAccent: number;
+  /** Contrast ratio of the label drawn on top of a filled accent control. */
+  labelOnAccent: number;
   /** Whether both ratios clear WCAG AA for normal text (4.5:1). */
   passes: boolean;
 }
 
 /**
  * Checks a candidate accent color against both contrast pairs the U2 picker
- * cares about: the accent sitting on the app surface, and ink (text) sitting
- * on top of the accent. Pure check only — the picker UI decides how to warn;
- * this never blocks anything.
+ * cares about: the accent sitting on the app surface, and the label sitting on
+ * top of a filled accent control. Pure check only — the picker UI decides how
+ * to warn; this never blocks anything.
+ *
+ * The second pair is measured against {@link deriveAccentStrong}'s output and
+ * white, because that is what the UI actually renders. It used to compare the
+ * theme's *ink* against the raw accent — a pair no control has ever drawn — so
+ * the picker could report a comfortable pass while every primary button on
+ * screen sat below AA.
  */
 export function checkAccentContrast(
   accentHex: string,
   surfaceHex: string,
-  inkHex: string,
 ): AccentContrastResult {
   const accentOnSurface = contrastRatio(accentHex, surfaceHex);
-  const inkOnAccent = contrastRatio(inkHex, accentHex);
+  const labelOnAccent = contrastRatio(ACCENT_LABEL, deriveAccentStrong(accentHex));
   return {
     accentOnSurface,
-    inkOnAccent,
-    passes: accentOnSurface >= WCAG_AA_NORMAL_TEXT && inkOnAccent >= WCAG_AA_NORMAL_TEXT,
+    labelOnAccent,
+    passes: accentOnSurface >= WCAG_AA_NORMAL_TEXT && labelOnAccent >= WCAG_AA_NORMAL_TEXT,
   };
 }

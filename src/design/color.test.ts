@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkAccentContrast,
   contrastRatio,
+  deriveAccentStrong,
   deriveAccentTone,
   deriveWallpaperTone,
   hexToOklch,
@@ -11,9 +12,14 @@ import {
   rgbToHex,
   WCAG_AA_NORMAL_TEXT,
 } from "./color";
+import { lagoon } from "./tokens";
 
 /** Max per-channel RGB delta allowed after a hex -> OKLCH -> hex round trip. */
 const ROUND_TRIP_TOLERANCE = 2;
+
+/** Lagoon's shipped accents (tokens.ts) — the calibration target throughout. */
+const LAGOON_LIGHT_ACCENT = "#0f9b8e";
+const LAGOON_DARK_ACCENT = "#2fb9ab";
 
 function maxChannelDelta(hexA: string, hexB: string): number {
   const a = hexToRgb(hexA);
@@ -161,40 +167,115 @@ describe("deriveAccentTone", () => {
   });
 });
 
+describe("deriveAccentStrong", () => {
+  const white = "#ffffff";
+
+  it("darkens Lagoon's light accent until white text clears AA", () => {
+    // The whole reason the token exists: #0f9b8e + white is only 3.44:1.
+    expect(contrastRatio(white, LAGOON_LIGHT_ACCENT)).toBeLessThan(WCAG_AA_NORMAL_TEXT);
+    expect(contrastRatio(white, deriveAccentStrong(LAGOON_LIGHT_ACCENT)))
+      .toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  });
+
+  it("darkens Lagoon's dark accent too — it was the worse of the two at 2.43:1", () => {
+    expect(contrastRatio(white, deriveAccentStrong(LAGOON_DARK_ACCENT)))
+      .toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  });
+
+  it("returns an already-dark-enough accent untouched", () => {
+    // #1f4b7a is well past AA against white, so there's nothing to correct.
+    expect(deriveAccentStrong("#1f4b7a")).toBe("#1f4b7a");
+  });
+
+  it("holds hue and chroma fixed, moving only lightness", () => {
+    // The ROADMAP §6.5 guardrail: derived from the one picked accent, never a
+    // second authored color.
+    const base = hexToOklch(LAGOON_LIGHT_ACCENT);
+    const strong = hexToOklch(deriveAccentStrong(LAGOON_LIGHT_ACCENT));
+    // Hue is the thing that must hold; the ~0.5° wobble is 8-bit hex
+    // quantization on the OKLCH round trip, not a hue shift.
+    expect(Math.abs(strong.h - base.h)).toBeLessThan(1);
+    expect(strong.l).toBeLessThan(base.l);
+    // Chroma is never *raised*, but `oklchToHex`'s gamut mapping
+    // (`resolveInGamutLinearRgb`) does pull it in a little when the darker
+    // lightness can't hold the original chroma in sRGB — ~9% here. That's the
+    // existing, deliberate behavior, not a second color decision.
+    expect(strong.c).toBeLessThanOrEqual(base.c);
+    expect(strong.c).toBeGreaterThan(base.c * 0.85);
+  });
+
+  it("stops as soon as it clears, rather than bottoming out", () => {
+    const strong = deriveAccentStrong(LAGOON_LIGHT_ACCENT);
+    // Comfortably above the floor, and not wildly over-corrected.
+    expect(contrastRatio(white, strong)).toBeLessThan(WCAG_AA_NORMAL_TEXT + 0.5);
+  });
+
+  it("matches the static fallbacks in tokens.ts (and so global.css)", () => {
+    // Those two files carry the pre-hydration paint value; Settings writes the
+    // derived one inline at runtime. This pins them together so a change to
+    // the derivation can't silently leave the stylesheet behind.
+    expect(deriveAccentStrong(lagoon.light.accent)).toBe(lagoon.light.accentStrong);
+    expect(deriveAccentStrong(lagoon.dark.accent)).toBe(lagoon.dark.accentStrong);
+    expect(deriveAccentStrong(lagoon.light.accent2)).toBe(lagoon.light.accent2Strong);
+    expect(deriveAccentStrong(lagoon.dark.accent2)).toBe(lagoon.dark.accent2Strong);
+  });
+
+  it("clears AA for every hue around the wheel, including yellow", () => {
+    for (let h = 0; h < 360; h += 30) {
+      const accent = oklchToHex({ l: 0.8, c: 0.15, h });
+      expect(contrastRatio(white, deriveAccentStrong(accent)))
+        .toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+    }
+  });
+});
+
 describe("checkAccentContrast", () => {
   const surfaceLight = "#faf8f4"; // Lagoon light surface (tokens.ts)
-  const inkLight = "#2b2925"; // Lagoon light text (tokens.ts)
 
   it("passes when both pairs clear WCAG AA (4.5:1)", () => {
     // #4479ad sits at ~18% relative luminance, the classic "roughly equal
     // contrast against pure black and pure white" band (~4.58:1 each way).
-    const result = checkAccentContrast("#4479ad", "#ffffff", "#000000");
+    const result = checkAccentContrast("#4479ad", "#ffffff");
     expect(result.accentOnSurface).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-    expect(result.inkOnAccent).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+    expect(result.labelOnAccent).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
     expect(result.passes).toBe(true);
   });
 
   it("fails when the accent is too close to the surface color", () => {
-    // Near-identical to the light surface: low contrast against surface,
-    // even though ink-on-accent alone would clear AA.
-    const result = checkAccentContrast("#f7f5f0", surfaceLight, inkLight);
+    // Near-identical to the light surface. The label pair still passes, since
+    // `deriveAccentStrong` corrects it — surface contrast is the real problem.
+    const result = checkAccentContrast("#f7f5f0", surfaceLight);
     expect(result.accentOnSurface).toBeLessThan(WCAG_AA_NORMAL_TEXT);
-    expect(result.inkOnAccent).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+    expect(result.labelOnAccent).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
     expect(result.passes).toBe(false);
   });
 
-  it("fails when ink is too close to the accent, even if accent-on-surface passes", () => {
-    const result = checkAccentContrast("#4479ad", "#000000", "#3a6690");
-    expect(result.accentOnSurface).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-    expect(result.inkOnAccent).toBeLessThan(WCAG_AA_NORMAL_TEXT);
-    expect(result.passes).toBe(false);
+  it("measures the label pair the UI actually renders, not ink on the raw accent", () => {
+    // Regression: the old check compared the theme's ink against `--accent`, a
+    // pair no control ever drew, and so reported a pass while Lagoon's own
+    // buttons sat at 3.44:1. It now measures white on `--accent-strong`.
+    const result = checkAccentContrast(LAGOON_LIGHT_ACCENT, surfaceLight);
+    expect(result.labelOnAccent)
+      .toBeCloseTo(contrastRatio("#ffffff", deriveAccentStrong(LAGOON_LIGHT_ACCENT)), 5);
+    expect(result.labelOnAccent).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
   });
 
-  it("fails when both pairs are low-contrast (deliberately awful pairing)", () => {
-    const result = checkAccentContrast("#f0e6d8", surfaceLight, "#fefefe");
-    expect(result.accentOnSurface).toBeLessThan(WCAG_AA_NORMAL_TEXT);
-    expect(result.inkOnAccent).toBeLessThan(WCAG_AA_NORMAL_TEXT);
-    expect(result.passes).toBe(false);
+  it("clears the label pair for the shipped Lagoon accent in both themes", () => {
+    expect(checkAccentContrast(LAGOON_LIGHT_ACCENT, surfaceLight).labelOnAccent)
+      .toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+    expect(checkAccentContrast(LAGOON_DARK_ACCENT, "#201e1a").labelOnAccent)
+      .toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  });
+
+  it("still reports Lagoon light's accent-on-surface shortfall (3.25:1), which is a separate problem", () => {
+    // `text-accent` on `--surface` is a property of the Lagoon accent itself,
+    // not of any control — correcting it would mean changing the palette, so
+    // the checker is expected to keep flagging it rather than hide it.
+    expect(checkAccentContrast(LAGOON_LIGHT_ACCENT, surfaceLight).accentOnSurface)
+      .toBeLessThan(WCAG_AA_NORMAL_TEXT);
+    // Dark theme has no such problem — 6.85:1.
+    expect(checkAccentContrast(LAGOON_DARK_ACCENT, "#201e1a").accentOnSurface)
+      .toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
   });
 });
 

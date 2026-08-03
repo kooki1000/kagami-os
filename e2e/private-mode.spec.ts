@@ -36,10 +36,13 @@ test.describe("private mode (no IndexedDB)", () => {
     await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();
     await createFolder(page, "Ephemeral");
 
-    // Reload with IndexedDB still blocked: the folder above was never
-    // written to durable storage, so the fresh in-memory store comes back
-    // empty rather than the OS hanging or crashing on the missing backend.
-    await page.reload();
+    // Reboot with IndexedDB still blocked (the init script above re-applies on
+    // every navigation): the folder was never written to durable storage, so
+    // the fresh in-memory store comes back empty rather than the OS hanging or
+    // crashing on the missing backend. `boot()` does the navigating — an extra
+    // `page.reload()` first would start a boot that `boot()` then immediately
+    // navigates away from, aborting its in-flight lazy chunks mid-fetch and
+    // logging a service-worker error the assertion below would catch.
     await boot(page);
     await openApp(page, "files");
     await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();

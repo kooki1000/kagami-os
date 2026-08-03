@@ -1,6 +1,6 @@
 import type { WallpaperTone } from "@/design/color";
 import type { ResolvedTheme } from "@/system/theme/themeStore";
-import { deriveAccentTone, deriveWallpaperTone } from "@/design/color";
+import { deriveAccentStrong, deriveAccentTone, deriveWallpaperTone } from "@/design/color";
 import { findByIdOr } from "@/lib/collections";
 import { wallpaperStyleVars } from "./wallpaperStyles";
 
@@ -244,6 +244,11 @@ export function themeVariables(
   const vars: Record<string, string> = {
     "--accent": tone.accent,
     "--accent-2": tone.accent2,
+    // Derived, never authored: the fills for accent controls with a text
+    // label, dark enough that white on them clears WCAG AA. Each equals its
+    // plain counterpart whenever that already passes. See `deriveAccentStrong`.
+    "--accent-strong": deriveAccentStrong(tone.accent),
+    "--accent-2-strong": deriveAccentStrong(tone.accent2),
     "--ctl1": controls.close,
     "--ctl2": controls.minimize,
     "--ctl3": controls.zoom,

@@ -430,8 +430,8 @@ function DropMenu({
               item.disabled
                 ? "text-ink-2 opacity-50"
                 : i === highlighted
-                  ? "bg-accent text-white"
-                  : "text-ink hover:bg-accent hover:text-white"
+                  ? "bg-accent-strong text-white"
+                  : "text-ink hover:bg-accent-strong hover:text-white"
             }`}
             onPointerEnter={() => {
               if (!item.disabled)

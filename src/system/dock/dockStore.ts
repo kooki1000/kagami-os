@@ -48,6 +48,23 @@ export function reconcilePinned(
   };
 }
 
+/**
+ * v1 → v2 migration: strip the Welcome tile from a persisted dock. Welcome
+ * shipped as a default pin and no longer is (see `welcome/index.ts`), and
+ * {@link reconcilePinned} only ever adds, so nothing else would ever remove
+ * it. Leaves `knownDefaults` alone — "welcome was offered once" stays true,
+ * and it isn't a current default any more, so it can't be backfilled either.
+ * Pure and exported for testing, like `reconcilePinned`.
+ */
+export function dropWelcomePin(persisted: unknown): unknown {
+  if (persisted === null || typeof persisted !== "object")
+    return persisted;
+  const saved = persisted as Partial<DockStore>;
+  if (!Array.isArray(saved.pinnedIds))
+    return persisted;
+  return { ...saved, pinnedIds: saved.pinnedIds.filter(id => id !== "welcome") };
+}
+
 export const useDockStore = create<DockStore>()(
   persist(
     (set, get) => ({
@@ -67,7 +84,13 @@ export const useDockStore = create<DockStore>()(
     }),
     {
       name: "kagami-dock",
-      version: 1,
+      version: 2,
+      // v1 → v2: Welcome stopped being a default pin. `reconcilePinned` only
+      // ever *adds* — by design, so a deliberate unpin is never resurrected —
+      // which means an install that already has "welcome" in `pinnedIds` would
+      // keep the tile forever. Drop it once here; `migrate` runs before
+      // `merge`, so `reconcilePinned` below then sees the cleaned list.
+      migrate: persisted => dropWelcomePin(persisted),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<DockStore>;
         const state = { ...current, ...saved };

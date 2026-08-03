@@ -865,7 +865,7 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
               <span className="text-13">Create your first note</span>
               <button
                 type="button"
-                className="mt-1 rounded-btn bg-accent px-3 py-1 text-12 font-medium text-white"
+                className="mt-1 rounded-btn bg-accent-strong px-3 py-1 text-12 font-medium text-white"
                 onClick={() => newNote()}
               >
                 New Note

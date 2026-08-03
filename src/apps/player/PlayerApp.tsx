@@ -281,7 +281,7 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
               key={track.id}
               type="button"
               className={`block w-full truncate rounded-btn px-2 py-1 text-left text-12 ${
-                track.id === activeId ? "bg-accent text-white" : "text-ink hover:bg-ph"
+                track.id === activeId ? "bg-accent-strong text-white" : "text-ink hover:bg-ph"
               }`}
               onClick={() => setActiveId(track.id)}
             >

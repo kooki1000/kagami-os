@@ -5,6 +5,8 @@ import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { lastStepIndex, nextStepIndex, prevStepIndex, tourSteps } from "./tourSteps";
 
+const DISMISS_LABEL = "Don't show this tour again";
+
 export default function WelcomeApp({ windowId }: AppWindowProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const tourDismissed = useSettingsStore(s => s.tourDismissed);
@@ -38,7 +40,7 @@ export default function WelcomeApp({ windowId }: AppWindowProps) {
         {step.action && (
           <button
             type="button"
-            className="mt-5 rounded-btn bg-accent px-[calc(14px*var(--ui-scale))] py-[calc(8px*var(--ui-scale))] text-12.5 font-semibold text-white"
+            className="mt-5 rounded-btn bg-accent-strong px-[calc(14px*var(--ui-scale))] py-[calc(8px*var(--ui-scale))] text-12.5 font-semibold text-white"
             onClick={step.action}
           >
             {step.actionLabel}
@@ -47,15 +49,18 @@ export default function WelcomeApp({ windowId }: AppWindowProps) {
       </div>
 
       <div className="flex items-center justify-between gap-3 px-8 py-5 hairline-t">
-        <label className="flex items-center gap-2 text-11.5 text-ink-2">
+        {/* A `<label>` can't name a `role="switch"` button, so `Switch` carries
+            its own `aria-label` — which must match the visible text verbatim
+            (WCAG 2.5.3), not paraphrase it as this pair used to. */}
+        <span className="flex items-center gap-2 text-11.5 text-ink-2">
           <Switch
             checked={tourDismissed}
             onChange={setTourDismissed}
-            label="Don't show this tour again"
+            label={DISMISS_LABEL}
             size="sm"
           />
-          Don't show this again
-        </label>
+          {DISMISS_LABEL}
+        </span>
 
         <div className="flex items-center gap-1.5" role="tablist" aria-label="Tour progress">
           {tourSteps.map((s, i) => (

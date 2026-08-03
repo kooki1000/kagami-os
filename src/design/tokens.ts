@@ -12,6 +12,9 @@ export const lagoon = {
   light: {
     accent: "#0f9b8e",
     accent2: "#f2765b",
+    /** `accent` darkened until white on it clears WCAG AA — see design/color.ts's `deriveAccentStrong`. */
+    accentStrong: "#008478",
+    accent2Strong: "#c85037",
     surface: "#faf8f4",
     surface2: "#efece4",
     text: "#2b2925",
@@ -21,6 +24,8 @@ export const lagoon = {
   dark: {
     accent: "#2fb9ab",
     accent2: "#ff8368",
+    accentStrong: "#008479",
+    accent2Strong: "#c75138",
     surface: "#201e1a",
     surface2: "#2a2823",
     text: "#efece5",
