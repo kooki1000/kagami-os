@@ -5,10 +5,13 @@
 //! Kagami render arbitrary third-party sites, which `frame-ancestors`/CORS
 //! forbid embedding as an iframe in the main webview. `add_child`/multiwebview
 //! is behind Tauri's `unstable` cargo feature (see `Cargo.toml`) and has no
-//! z-order control relative to the main window's own DOM content — by design
-//! the frontend only shows this webview while its window is focused,
-//! unminimized, and no shell overlay (menu, search, notification center) is
-//! open, so it never needs to render "behind" anything.
+//! z-order control relative to the main window's own DOM content, so it can
+//! never render "behind" anything. The frontend decides when it may be shown:
+//! whenever nothing the shell stacks above it covers its content region and
+//! no overlay (menu, search, notification center) is open — see
+//! `browserVisibility.ts`. That is deliberately *not* "while the window is
+//! focused", which is what it used to be and blanked the page in background
+//! windows nothing was covering.
 //!
 //! Call ordering for a given id is the frontend's job (a per-id queue in
 //! `browserBridge.ts`); each command here is still idempotent against a

@@ -23,6 +23,7 @@ import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./brow
 import { payloadUrl } from "./browserPayload";
 import { isBookmarked, useBrowserPrefsStore, zoomForHost } from "./browserPrefsStore";
 import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
+import { isContentOccluded } from "./browserVisibility";
 import { DEFAULT_ZOOM, formatZoom, stepZoom } from "./browserZoom";
 import { saveDownload } from "./downloads";
 import { searchEngineById } from "./searchEngines";
@@ -106,7 +107,7 @@ async function receiveDownload(event: BrowserDownloadFinished): Promise<void> {
 }
 
 /** The desktop-only chrome + native child webview (N4). */
-function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
+function NativeBrowser({ windowId, payload }: AppWindowProps) {
   // The chosen search engine doubles as the homepage (U17) — a new window
   // opens on it, and the Home button goes back to it.
   const engine = searchEngineById(useSettingsStore(s => s.browserSearchEngineId));
@@ -148,7 +149,13 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   const [find, setFind] = useState<{ query: string; missed: boolean } | null>(null);
   const chrome = chromeHeight({ bookmarksBar: showBookmarksBar, findBar: find !== null });
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
-  const visible = focused && !overlayOpen;
+  // Whether anything the shell stacks above this window covers the page, which
+  // is the real constraint — not whether this window is focused. Selected as a
+  // boolean rather than by subscribing to `windows`, so dragging an unrelated
+  // window re-renders this one only when the answer actually flips.
+  const occluded = useWindowStore(s =>
+    !rect || isContentOccluded(webviewBounds(rect, chrome), s.windows, windowId));
+  const visible = !occluded && !overlayOpen;
   // Latest visibility, readable from the open effect without depending on it.
   // Kept fresh by a deps-less effect (runs every commit, before the effects
   // below it in declaration order) rather than a render-time write, which
@@ -419,14 +426,15 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
         />
       )}
       {/* The native child webview is layered over this region by the Rust
-          side while the window is focused. The OS webview paints on top, so
-          this standby state shows through only while it's hidden (window in
-          the background, or a shell overlay open) — no black gap, and a cue
-          that the page is paused rather than broken. */}
+          side whenever nothing covers it (see browserVisibility.ts). The OS
+          webview paints on top, so this standby state shows through only
+          while it's hidden — another window over this one, or a shell overlay
+          open — giving a cue that the page is paused rather than broken
+          instead of a black gap. */}
       <BrowserEmptyState className="min-h-0 flex-1">
         <Globe className="size-7 opacity-80" strokeWidth={1.4} />
         <span className="font-mono text-13 text-ink">{host}</span>
-        <span className="text-11.5 opacity-70">Select this window to keep browsing</span>
+        <span className="text-11.5 opacity-70">Bring this window forward to keep browsing</span>
       </BrowserEmptyState>
     </div>
   );

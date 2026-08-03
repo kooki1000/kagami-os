@@ -17,6 +17,8 @@ export function isOverlayOpen(): boolean {
  * as a `useSyncExternalStore` source. The Browser app (N4) uses this to hide
  * its native child webview while a menu/search/notification overlay is
  * open, since a native webview can't be z-ordered behind shell DOM content.
+ * Overlays are the half of that test this registry answers; the other half —
+ * whether another *window* covers the page — is `browserVisibility.ts`.
  */
 export function subscribeOverlayOpen(listener: () => void): () => void {
   listeners.add(listener);

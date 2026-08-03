@@ -28,6 +28,22 @@ whole feature set:
    registering an overlay hides the child webview, which is why the bookmarks
    bar's right-click `ContextMenu` works as an ordinary portal.
 
+   The same rule governs when the page is shown at all. It is _not_ "while the
+   window is focused" — that was the original approximation, and it blanked
+   the page in background windows nothing was covering, which is the ordinary
+   two-windows-side-by-side case. `browserVisibility.ts` asks the narrower
+   question the constraint actually poses: does any non-minimized window
+   stacked above this one overlap the content region? Two things are left out
+   of that test on purpose, both documented there — window drop shadows (a
+   shadow crossing the page gets clipped; blanking a page to protect a shadow
+   is the wrong trade) and the dock and menu bar (a focused Browser window
+   already paints over both, so counting them would make an unfocused window
+   hide where a focused one doesn't).
+
+   What remains unavoidable: a window overlapping by a single pixel hides the
+   whole page, because occlusion isn't rectangular in general and a native
+   view can't be partially clipped to an arbitrary shape.
+
 2. **The page's content is not ours to walk.** Find can't query the DOM,
    highlight matches, or count them; it drives the page's own `window.find`.
 
