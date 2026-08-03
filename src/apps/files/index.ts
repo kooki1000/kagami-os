@@ -19,7 +19,12 @@ export const filesApp: AppManifest = {
         { label: "New Folder", appCommand: "files.newFolder", shortcut: "⇧⌘N", dividerAfter: true },
         { label: "Upload Files…", appCommand: "files.uploadFiles" },
         { label: "Upload Folder…", appCommand: "files.uploadFolder", dividerAfter: true },
-        { label: "Get Info", appCommand: "files.getInfo", shortcut: "⌘I", dividerAfter: true },
+        { label: "Get Info", appCommand: "files.getInfo", shortcut: "⌘I" },
+        { label: "Quick Look", appCommand: "files.quickLook", shortcut: "⌘Y" },
+        { label: "Rename", appCommand: "files.rename", shortcut: "F2" },
+        { label: "Duplicate", appCommand: "files.duplicate", shortcut: "⌘D" },
+        { label: "Customize Icon…", appCommand: "files.customizeIcon" },
+        { label: "Move to Trash", appCommand: "files.trash", shortcut: "⌘⌫", dividerAfter: true },
         { label: "Close Window", command: "window.close", shortcut: "⌘W" },
       ],
     },
@@ -37,7 +42,9 @@ export const filesApp: AppManifest = {
       items: [
         { label: "As Icons", appCommand: "files.viewGrid" },
         { label: "As List", appCommand: "files.viewList" },
-        { label: "As Columns", appCommand: "files.viewDetail", dividerAfter: true },
+        // "As Details", not "As Columns": this is a sortable-header detail
+        // table, not a Miller-column browser, and the old label promised one.
+        { label: "As Details", appCommand: "files.viewDetail", dividerAfter: true },
         { label: "Sort by Name", appCommand: "files.sortName" },
         { label: "Sort by Date Added", appCommand: "files.sortDate" },
         { label: "Sort by Kind", appCommand: "files.sortKind" },
@@ -47,8 +54,13 @@ export const filesApp: AppManifest = {
     {
       title: "Go",
       items: [
+        { label: "Back", appCommand: "files.back", shortcut: "⌘[" },
+        { label: "Forward", appCommand: "files.forward", shortcut: "⌘]" },
+        { label: "Enclosing Folder", appCommand: "files.goUp", shortcut: "⌘↑", dividerAfter: true },
         { label: "Home", appCommand: "files.goHome" },
+        { label: "Desktop", appCommand: "files.goDesktop" },
         { label: "Documents", appCommand: "files.goDocuments" },
+        { label: "Downloads", appCommand: "files.goDownloads" },
         { label: "Pictures", appCommand: "files.goPictures", dividerAfter: true },
         { label: "Trash", appCommand: "files.goTrash" },
       ],
