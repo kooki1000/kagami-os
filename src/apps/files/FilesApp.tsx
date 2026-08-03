@@ -48,6 +48,7 @@ import { fileBytes, folderSizes } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { gridColumnCount } from "./gridLayout";
+import { IconPickerPanel } from "./IconPickerPanel";
 import { NodeInfoPanel } from "./NodeInfoPanel";
 import { isVirtualPlace, RECENTS_ID } from "./places";
 import { QuickLookOverlay } from "./QuickLookOverlay";
@@ -111,6 +112,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const deleteForever = useFsStore(s => s.deleteForever);
 
   const setLabel = useFsStore(s => s.setLabel);
+  const setIcon = useFsStore(s => s.setIcon);
 
   const sortByFolder = useViewPrefsStore(s => s.sortByFolder);
   const setSortPref = useViewPrefsStore(s => s.setSort);
@@ -142,6 +144,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [infoNode, setInfoNode] = useState<FsNode | null>(null);
+  // Ids, not node snapshots: the panel edits a whole selection, and re-deriving
+  // from `nodes` each render keeps it correct if one is renamed or deleted
+  // while it's open (same reason `liveInfoNode` exists below).
+  const [iconPickerIds, setIconPickerIds] = useState<string[] | null>(null);
   // U14 Quick Look (Space key).
   const [quickLookNode, setQuickLookNode] = useState<FsNode | null>(null);
   // U14 editable breadcrumb — click-to-edit-as-text-path.
@@ -411,6 +417,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // renames/moves elsewhere, and closes itself (not rendering) if the node
   // is deleted out from under it.
   const liveInfoNode = infoNode ? (nodes[infoNode.id] ?? null) : null;
+  const iconPickerTargets = iconPickerIds
+    ? iconPickerIds.map(id => nodes[id]).filter((n): n is FsNode => Boolean(n))
+    : [];
 
   useAppCommand(windowId, (command) => {
     switch (command) {
@@ -638,7 +647,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       // focus trap and Escape/Space handling (#6) — while either is open,
       // this handler is a complete no-op rather than letting
       // Delete/F2/arrows/type-ahead act on the hidden list.
-      if (liveInfoNode || quickLookNode)
+      if (liveInfoNode || quickLookNode || iconPickerTargets.length > 0)
         return;
       switch (e.key) {
         case " ": {
@@ -791,6 +800,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             run: () => targets.forEach(t => setLabel(t.id, l.id)),
           })),
         ],
+      },
+      // The glyph/tint picker is a panel rather than a second submenu — see
+      // IconPickerPanel's own note on why 28 glyphs can't be a flyout.
+      {
+        label: multi ? `Customize Icon for ${targets.length} Items…` : "Customize Icon…",
+        run: () => setIconPickerIds(targets.map(t => t.id)),
         dividerAfter: true,
       },
       ...(multi
@@ -863,6 +878,14 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             ? pathOf(nodes, liveInfoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}
           onClose={() => setInfoNode(null)}
+        />
+      )}
+      {iconPickerTargets.length > 0 && (
+        <IconPickerPanel
+          node={iconPickerTargets[0]}
+          targets={iconPickerTargets}
+          onApply={(glyph, tint) => iconPickerTargets.forEach(t => setIcon(t.id, glyph, tint))}
+          onClose={() => setIconPickerIds(null)}
         />
       )}
       {quickLookNode && nodes[quickLookNode.id] && (
