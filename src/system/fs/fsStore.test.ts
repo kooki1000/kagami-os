@@ -299,6 +299,53 @@ describe("setLabel (U14 color labels)", () => {
   });
 });
 
+describe("setIcon (custom node icons)", () => {
+  it("sets a glyph and a tint together", () => {
+    api().setIcon("note", "star", "blue");
+    expect(get("note").iconGlyph).toBe("star");
+    expect(get("note").iconTint).toBe("blue");
+  });
+
+  it("allows a glyph with no tint, and a tint with no glyph", () => {
+    api().setIcon("note", "rocket", undefined);
+    expect(get("note").iconGlyph).toBe("rocket");
+    expect(get("note").iconTint).toBeUndefined();
+
+    api().setIcon("note", undefined, "green");
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBe("green");
+  });
+
+  it("clears both when given undefined twice — the picker's Reset", () => {
+    api().setIcon("note", "star", "blue");
+    api().setIcon("note", undefined, undefined);
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBeUndefined();
+  });
+
+  it("rejects the whole call on an unknown glyph, rather than applying half of it", () => {
+    api().setIcon("note", "spaceship", "blue");
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBeUndefined();
+  });
+
+  it("rejects the whole call on an unknown tint", () => {
+    api().setIcon("note", "star", "chartreuse");
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBeUndefined();
+  });
+
+  it("does not bump modifiedAt — an icon is metadata, not a content change", () => {
+    const before = get("note").modifiedAt;
+    api().setIcon("note", "star", "blue");
+    expect(get("note").modifiedAt).toBe(before);
+  });
+
+  it("no-ops on a missing node", () => {
+    expect(() => api().setIcon("does-not-exist", "star", "blue")).not.toThrow();
+  });
+});
+
 describe("move", () => {
   it("moves a node into another folder", () => {
     expect(api().move("note", "reports")).toBe(true);

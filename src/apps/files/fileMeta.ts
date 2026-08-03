@@ -1,8 +1,18 @@
 import type { LucideIcon } from "lucide-react";
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { FsNode } from "@/system/fs/types";
-import { File, FileText, Film, Folder, Image, Music } from "lucide-react";
+import { Download, File, FileText, Film, Folder, House, Image, Monitor, Music, NotebookText, Trash2 } from "lucide-react";
 import { childIdsByParent } from "@/system/fs/fsStore";
+import { nodeIconById } from "@/system/fs/nodeIcons";
+import { nodeLabelById } from "@/system/fs/nodeLabels";
+import {
+  DESKTOP_ID,
+  DOCUMENTS_ID,
+  DOWNLOADS_ID,
+  HOME_ID,
+  PICTURES_ID,
+  TRASH_ID,
+} from "@/system/fs/types";
 
 export function isImageNode(node: FsNode): boolean {
   return node.type === "file" && (node.mimeType?.startsWith("image/") ?? false);
@@ -16,9 +26,34 @@ export function isVideoNode(node: FsNode): boolean {
   return node.type === "file" && (node.mimeType?.startsWith("video/") ?? false);
 }
 
+/**
+ * Default glyphs for the seeded system folders, so Home/Documents/Pictures &c.
+ * are told apart in the content pane the way they always have been in the
+ * sidebar — which drew its own bespoke icons while every folder here rendered
+ * an identical `Folder`. A user-set `iconGlyph` still wins over these.
+ */
+const SYSTEM_FOLDER_ICONS: Record<string, LucideIcon> = {
+  [HOME_ID]: House,
+  [DESKTOP_ID]: Monitor,
+  [DOCUMENTS_ID]: NotebookText,
+  [DOWNLOADS_ID]: Download,
+  [PICTURES_ID]: Image,
+  [TRASH_ID]: Trash2,
+};
+
+/**
+ * The glyph to draw for a node, most specific first: an explicit user choice,
+ * then a system folder's own identity, then the mime-derived default.
+ *
+ * An `iconGlyph` naming a glyph this build no longer ships resolves to
+ * `undefined` and falls through — a persisted node can never render nothing.
+ */
 export function nodeIcon(node: FsNode): LucideIcon {
+  const chosen = nodeIconById(node.iconGlyph);
+  if (chosen)
+    return chosen;
   if (node.type === "folder")
-    return Folder;
+    return SYSTEM_FOLDER_ICONS[node.id] ?? Folder;
   if (isImageNode(node))
     return Image;
   if (isVideoNode(node))
@@ -28,6 +63,14 @@ export function nodeIcon(node: FsNode): LucideIcon {
   if (node.mimeType?.startsWith("text/"))
     return FileText;
   return File;
+}
+
+/**
+ * The CSS color for a node's glyph, or `undefined` to leave the caller's own
+ * class (`text-accent` for folders, `text-ink-2` for files) in charge.
+ */
+export function nodeIconColor(node: FsNode): string | undefined {
+  return nodeLabelById(node.iconTint)?.hex;
 }
 
 const KIND_LABELS: Record<string, string> = {

@@ -8,6 +8,7 @@ import { hashBlob } from "./blobHash";
 import { migrateInlineBlobs } from "./blobMigration";
 import { blobStore } from "./blobStore";
 import { createIdbAdapter } from "./idbAdapter";
+import { isValidNodeIcon } from "./nodeIcons";
 import { isValidNodeLabel } from "./nodeLabels";
 import { createSeedNodes } from "./seed";
 import { createTauriAdapter } from "./tauriAdapter";
@@ -295,6 +296,13 @@ export interface FsStore {
   rename: (id: string, name: string) => void;
   /** Set (or, with `undefined`, clear) a node's color label (U14). No-op on an invalid label id or a missing node. */
   setLabel: (id: string, label: string | undefined) => void;
+  /**
+   * Set (or, with both `undefined`, clear) a node's custom icon. Glyph and
+   * tint are set together so the picker's "Reset" is one commit rather than
+   * two, but either may be `undefined` on its own — a tinted default glyph
+   * and an untinted custom glyph are both valid.
+   */
+  setIcon: (id: string, iconGlyph: string | undefined, iconTint: string | undefined) => void;
   /** Returns false when the move is invalid (into itself, a descendant, or a non-folder). */
   move: (id: string, newParentId: string) => boolean;
   /**
@@ -511,6 +519,24 @@ export const useFsStore = create<FsStore>()((set, get) => {
       // deliberately leaves `modifiedAt` untouched so labeling a file
       // doesn't reorder a "date modified" sort.
       commit([{ ...node, label }]);
+    },
+
+    setIcon(id, iconGlyph, iconTint) {
+      const node = get().nodes[id];
+      if (!node)
+        return;
+      // Reject the whole call on bad input rather than silently dropping half
+      // of it — same guard shape as `setLabel`'s.
+      if (iconGlyph !== undefined && !isValidNodeIcon(iconGlyph))
+        return;
+      if (iconTint !== undefined && !isValidNodeLabel(iconTint))
+        return;
+      if ((node.iconGlyph ?? undefined) === iconGlyph && (node.iconTint ?? undefined) === iconTint)
+        return;
+      // Appearance is metadata, not content: like `setLabel`, this leaves
+      // `modifiedAt` alone so restyling an icon doesn't reorder a
+      // "date modified" sort.
+      commit([{ ...node, iconGlyph, iconTint }]);
     },
 
     move(id, newParentId) {
