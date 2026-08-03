@@ -52,9 +52,11 @@ export function canReadFsNode(granted: readonly Capability[], targetId: string, 
 
 /**
  * Central capability gate the bridge dispatcher calls before running any
- * method. `window.setTitle` needs no capability — it's basic window
- * chrome, available to every sandboxed app exactly like `CommandId`
- * shell commands are for every app.
+ * method. `window.setTitle` and `ui.setState` need no capability — both are
+ * basic window chrome, available to every sandboxed app exactly like
+ * `CommandId` shell commands are for every app. Neither can reach anything
+ * outside the frame's own window: one sets that window's title, the other
+ * hands its own view state to its own host component.
  */
 export function isMethodAuthorized(
   granted: readonly Capability[],
@@ -68,6 +70,7 @@ export function isMethodAuthorized(
     case "notifications.notify":
       return hasCapability(granted, "notifications");
     case "window.setTitle":
+    case "ui.setState":
       return true;
     default:
       return false;

@@ -10,12 +10,25 @@ import type { SandboxEvent, SandboxMethod, SandboxResponse } from "./types";
 export interface SandboxClient {
   call: (method: SandboxMethod, params?: unknown) => Promise<SandboxResponse>;
   onAppCommand: (handler: (command: string) => void) => void;
+  /**
+   * Design tokens pushed by the shell, on frame load and whenever the theme
+   * changes. Apply them as CSS custom properties and the frame follows the
+   * user's appearance — see `SandboxEvent`'s note on why it can't just
+   * inherit them.
+   */
+  onTheme: (handler: (vars: Record<string, string>) => void) => void;
 }
 
 export function createSandboxClient(idPrefix: string): SandboxClient {
   let nextRequestId = 0;
   const pending = new Map<string, (response: SandboxResponse) => void>();
   let appCommandHandler: ((command: string) => void) | undefined;
+  let themeHandler: ((vars: Record<string, string>) => void) | undefined;
+  // The shell posts the theme once on load, which can land before the app
+  // bundle has registered its handler — keep the last one so a late
+  // subscriber still gets it rather than rendering unthemed until the user
+  // happens to switch appearance.
+  let lastTheme: Record<string, string> | undefined;
 
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent)
@@ -31,8 +44,16 @@ export function createSandboxClient(idPrefix: string): SandboxClient {
       }
       return;
     }
-    if (data.kind === "kagami.sandbox.event" && data.type === "appCommand")
+    if (data.kind !== "kagami.sandbox.event")
+      return;
+    if (data.type === "appCommand") {
       appCommandHandler?.(data.command);
+      return;
+    }
+    if (data.type === "theme") {
+      lastTheme = data.vars;
+      themeHandler?.(data.vars);
+    }
   });
 
   return {
@@ -45,6 +66,11 @@ export function createSandboxClient(idPrefix: string): SandboxClient {
     },
     onAppCommand(handler) {
       appCommandHandler = handler;
+    },
+    onTheme(handler) {
+      themeHandler = handler;
+      if (lastTheme)
+        handler(lastTheme);
     },
   };
 }

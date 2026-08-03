@@ -11,7 +11,8 @@ import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { getDocument, GlobalWorkerOptions, VerbosityLevel } from "pdfjs-dist";
 import pdfWorkerSource from "pdfjs-dist/build/pdf.worker.min.mjs?raw";
 import { createSandboxClient } from "@/system/sandbox/client";
-import { BASE_SCALE, clampPage, clampScale, fitWidthScale, formatPageInfo, ZOOM_STEP } from "./pageNav";
+import { PAGE_MARGIN_PX } from "./entryHtml";
+import { BASE_SCALE, clampPage, clampScale, fitWidthScale, parseGoToPageCommand, ZOOM_STEP } from "./pageNav";
 
 // pdf.js always tries a real background Worker first, and this frame's
 // opaque origin (`allow-scripts`, no `allow-same-origin` — the point of the
@@ -34,23 +35,18 @@ const PDF_VERBOSITY = VerbosityLevel.ERRORS;
 
 const bridge = createSandboxClient("documents");
 bridge.onAppCommand(handleAppCommand);
+// The host pushes `--surface-2` (see `entryHtml.ts`'s stylesheet note on why
+// the backdrop can't just be transparent or inherited); applying it to :root
+// is all the theming this frame needs.
+bridge.onTheme((vars) => {
+  for (const [name, value] of Object.entries(vars))
+    document.documentElement.style.setProperty(name, value);
+});
 
 // --- DOM --------------------------------------------------------------
 
 function el<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
-}
-
-/** Shared by the transient status line and the persistent page-info badge: both hide themselves when set to empty text. */
-function setVisibleText(target: HTMLElement, text: string) {
-  target.hidden = text.length === 0;
-  target.textContent = text;
-}
-
-function setStatus(text: string, { loading = false } = {}) {
-  el("status").hidden = text.length === 0;
-  el("spinner").hidden = !loading;
-  setVisibleText(el("status-text"), text);
 }
 
 // --- Document state -----------------------------------------------------
@@ -59,6 +55,30 @@ let pdfDocument: PDFDocumentProxy | null = null;
 let currentPage = 1;
 let scale = BASE_SCALE;
 let renderTask: RenderTask | null = null;
+
+/**
+ * The frame's whole outward-facing UI. There is no status line, spinner or
+ * page badge in here any more: the host renders all of that in React with the
+ * shell's tokens (see `entryHtml.ts`'s note on why), and this reports the
+ * state it should render. Mirrors `DocumentsViewerState` in `DocumentsApp.tsx`
+ * — the bridge deliberately treats the payload as opaque, so these two are
+ * the only places that know its shape.
+ */
+type ViewerStatus = "empty" | "loading" | "ready" | "error";
+
+function report(status: ViewerStatus, message?: string) {
+  const canvas = el<HTMLCanvasElement>("page");
+  canvas.hidden = status !== "ready";
+  void bridge.call("ui.setState", {
+    state: {
+      status,
+      message: message ?? "",
+      page: currentPage,
+      pageCount: pdfDocument?.numPages ?? 0,
+      scale,
+    },
+  });
+}
 
 async function renderCurrentPage() {
   if (!pdfDocument)
@@ -73,7 +93,7 @@ async function renderCurrentPage() {
     page = await pdfDocument.getPage(currentPage);
   }
   catch (error) {
-    setStatus(`Couldn't open page ${currentPage}: ${error instanceof Error ? error.message : "unknown error"}`);
+    report("error", `Couldn't open page ${currentPage}: ${error instanceof Error ? error.message : "unknown error"}`);
     return;
   }
 
@@ -97,12 +117,11 @@ async function renderCurrentPage() {
     // superseded frame; only surface genuine render errors.
     const isCancellation = error && typeof error === "object" && "name" in error && error.name === "RenderingCancelledException";
     if (!isCancellation)
-      setStatus(`Couldn't render page ${currentPage}: ${error instanceof Error ? error.message : "unknown error"}`);
+      report("error", `Couldn't render page ${currentPage}: ${error instanceof Error ? error.message : "unknown error"}`);
     return;
   }
 
-  setStatus("");
-  setVisibleText(el("pageinfo"), formatPageInfo(currentPage, pdfDocument.numPages, scale));
+  report("ready");
 }
 
 function goToPage(pageNumber: number) {
@@ -125,12 +144,19 @@ async function zoomToFitWidth() {
     return;
   const page = await pdfDocument.getPage(currentPage);
   const unscaledWidth = page.getViewport({ scale: 1 }).width;
-  // 32px matches #page's horizontal margin in entryHtml.ts's stylesheet.
-  const available = document.body.clientWidth - 32;
+  // The canvas's own horizontal margin, both sides — shared with the
+  // stylesheet that sets it rather than re-guessed as a literal here.
+  const available = document.body.clientWidth - PAGE_MARGIN_PX * 2;
   setScale(fitWidthScale(unscaledWidth, available));
 }
 
 function handleAppCommand(command: string) {
+  // The one command carrying an argument — the host toolbar's page field.
+  const requestedPage = parseGoToPageCommand(command);
+  if (requestedPage !== null) {
+    goToPage(requestedPage);
+    return;
+  }
   switch (command) {
     case "documents.zoomIn":
       setScale(scale * ZOOM_STEP);
@@ -155,14 +181,14 @@ function handleAppCommand(command: string) {
 async function boot() {
   const fileId = document.body.dataset.fileId;
   if (!fileId) {
-    setStatus("No document open.");
+    report("empty");
     return;
   }
 
-  setStatus("Loading…", { loading: true });
+  report("loading");
   const response = await bridge.call("fs.read", { id: fileId });
   if (!response.ok) {
-    setStatus(`Couldn't open this file: ${response.error.message}`);
+    report("error", `Couldn't open this file: ${response.error.message}`);
     return;
   }
 
@@ -172,7 +198,7 @@ async function boot() {
     pdfDocument = await getDocument({ data: bytes, verbosity: PDF_VERBOSITY }).promise;
   }
   catch (error) {
-    setStatus(`Couldn't open "${name}": ${error instanceof Error ? error.message : "unknown error"}`);
+    report("error", `Couldn't open "${name}": ${error instanceof Error ? error.message : "unknown error"}`);
     return;
   }
 

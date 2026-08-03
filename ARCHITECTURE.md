@@ -549,7 +549,22 @@ local-first with no server.
 
 Steps 13–15 and step 16a (the capability sandbox — `src/system/sandbox/`, an
 `<iframe sandbox="allow-scripts">` + capability-checked postMessage bridge)
-are done; step 16b is underway, with D6 (PDF viewing, `src/apps/documents/`)
+are done. The bridge's vocabulary grew twice in 2026-08 for the same reason:
+a sandboxed app whose chrome is drawn by the _shell_ rather than hand-rolled
+in the frame. `ui.setState` (frame → shell) reports the frame's own view
+state so a host component can render a real toolbar — the payload stays
+opaque to the bridge, and the host that asked for it narrows the shape. The
+`theme` event (shell → frame) pushes named design tokens, because a `srcdoc`
+document inherits no custom properties **and** an opaque-origin iframe cannot
+be made transparent (its canvas paints opaque whatever the embedded document
+sets) — so a frame rendering any surface has no other way to follow the
+user's appearance. Neither needs a capability: like `window.setTitle`, they
+only reach the frame's own window. `SandboxedAppHost` watches `<html>` with a
+`MutationObserver` rather than subscribing to the theme store, since a look,
+a custom accent or a material level all rewrite the tokens without flipping
+light/dark.
+
+Step 16b is underway, with D6 (PDF viewing, `src/apps/documents/`)
 shipped 2026-08-01 as the sandbox's first real (non-demo) consumer, and D7
 (small utilities — Calculator, Clock, Paint; `src/apps/calculator/`,
 `src/apps/clock/`, `src/apps/paint/`) shipped 2026-08-02, needing no sandbox.

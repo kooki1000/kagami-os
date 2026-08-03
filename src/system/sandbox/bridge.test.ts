@@ -145,3 +145,40 @@ describe("dispatchSandboxRequest — window.setTitle", () => {
     expect(response.error.code).toBe("invalid_request");
   });
 });
+
+describe("ui.setState", () => {
+  it("forwards a plain-object state to the host and needs no capability", async () => {
+    const seen: Array<[string, Record<string, unknown>]> = [];
+    const response = await dispatchSandboxRequest(
+      { kind: "kagami.sandbox.request", id: "r1", method: "ui.setState", params: { state: { page: 3 } } },
+      // Deliberately no capabilities: chrome for one's own window is free,
+      // exactly like window.setTitle.
+      { appId: "documents", windowId: "w1", capabilities: [] },
+      makeDeps({ setAppState: (id, state) => seen.push([id, state]) }),
+    );
+    expect(response.ok).toBe(true);
+    expect(seen).toEqual([["w1", { page: 3 }]]);
+  });
+
+  it("rejects a non-object state rather than passing it on", async () => {
+    for (const state of ["nope", 42, null, ["a"]]) {
+      const response = await dispatchSandboxRequest(
+        { kind: "kagami.sandbox.request", id: "r2", method: "ui.setState", params: { state } },
+        { appId: "documents", windowId: "w1", capabilities: [] },
+        makeDeps(),
+      );
+      expect(response.ok).toBe(false);
+      if (!response.ok)
+        expect(response.error.code).toBe("invalid_request");
+    }
+  });
+
+  it("succeeds as a no-op when the host isn't listening", async () => {
+    const response = await dispatchSandboxRequest(
+      { kind: "kagami.sandbox.request", id: "r3", method: "ui.setState", params: { state: {} } },
+      { appId: "sandboxDemo", windowId: "w1", capabilities: [] },
+      makeDeps(),
+    );
+    expect(response.ok).toBe(true);
+  });
+});

@@ -9,6 +9,23 @@
  * markup data doesn't need script-src at all. `fileId` is always an
  * internal fs-store id, never raw user input, but it's escaped anyway on
  * general principle before landing in an HTML attribute.
+ *
+ * **This document deliberately holds no chrome.** It used to carry a whole
+ * stylesheet — page background, status line, spinner, a fixed page-info pill
+ * — every value hardcoded to the *light* theme, because CSS custom properties
+ * don't cross a `srcdoc` boundary and the frame had no way to read
+ * `--surface`. The result was a viewer that was visibly wrong in dark mode
+ * and could never be fixed from in here.
+ *
+ * So the chrome moved out to `DocumentsApp.tsx`, where it's React using the
+ * shell's own tokens, and the frame reports its view state outward over
+ * `ui.setState` instead of drawing it. The one surface left in here — the
+ * backdrop the page sits on — takes its color from a token the host pushes
+ * in over the sandbox theme event, since a transparent iframe turned out not
+ * to be achievable (see the stylesheet comment).
+ *
+ * Note for editors: the markup below is a JS template literal, so it must
+ * contain no backticks. Keep prose inside it plain.
  */
 function escapeHtmlAttribute(value: string): string {
   return value
@@ -18,6 +35,12 @@ function escapeHtmlAttribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+/** Horizontal breathing room around the page canvas; `sandboxEntry`'s fit-width math subtracts the same total. */
+export const PAGE_MARGIN_PX = 16;
+
+/** Lagoon light's `--surface-2`, painted for the frame or two before the host's first theme event lands. */
+const BACKDROP_FALLBACK = "#efece4";
+
 export function buildDocumentsEntryHtml(fileId: string | null): string {
   const fileIdAttr = fileId ? ` data-file-id="${escapeHtmlAttribute(fileId)}"` : "";
   return `<!doctype html>
@@ -25,64 +48,38 @@ export function buildDocumentsEntryHtml(fileId: string | null): string {
 <head>
 <meta charset="utf-8" />
 <style>
-  html, body { height: 100%; margin: 0; }
+  /* The frame paints its own backdrop from --surface-2, which the host pushes
+     in over the sandbox theme event and sandboxEntry applies to :root. It
+     cannot inherit the value (a srcdoc document gets no custom properties
+     from its embedder), and it cannot simply be transparent either: an
+     opaque-origin iframe's canvas is painted opaque whatever the embedded
+     document sets, which is what left a white slab around the page in dark
+     mode. */
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--surface-2, ${BACKDROP_FALLBACK});
+  }
   body {
-    font: 13px/1.5 system-ui, sans-serif;
-    color: #2b2925;
-    background: #efece4;
     display: flex;
     flex-direction: column;
     align-items: center;
     overflow: auto;
   }
-  #status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    color: #75706a;
-  }
-  #status[hidden] { display: none; }
-  #spinner {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid rgba(15, 155, 142, .25);
-    border-top-color: #0f9b8e;
-    animation: spin .7s linear infinite;
-  }
-  #spinner[hidden] { display: none; }
-  @keyframes spin { to { transform: rotate(360deg); } }
   #page {
-    margin: 16px;
-    box-shadow: 0 1px 4px rgba(30, 25, 18, .18);
+    margin: ${PAGE_MARGIN_PX}px;
+    /* Paper is legitimately white - it is the document, not chrome. The drop
+       shadow is the one concession to depth, and reads on either theme. */
     background: #fff;
-    max-width: calc(100% - 32px);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .28);
+    max-width: calc(100% - ${PAGE_MARGIN_PX * 2}px);
     height: auto;
   }
-  #pageinfo {
-    position: fixed;
-    /* Top, not bottom: the shell's dock always sits at the bottom of the
-       screen and would otherwise cover this for any window near it. */
-    right: 12px;
-    top: 12px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(43, 41, 37, .78);
-    color: #efece5;
-    font-size: 11px;
-    letter-spacing: .01em;
-  }
-  #pageinfo[hidden] { display: none; }
+  #page[hidden] { display: none; }
 </style>
 </head>
 <body${fileIdAttr}>
-  <div id="status" role="status">
-    <span id="spinner" hidden></span>
-    <span id="status-text"></span>
-  </div>
-  <canvas id="page"></canvas>
-  <div id="pageinfo" hidden></div>
+  <canvas id="page" hidden></canvas>
   <script src="/sandbox/documents.js"></script>
 </body>
 </html>`;

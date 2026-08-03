@@ -30,5 +30,34 @@ export function fitWidthScale(unscaledWidth: number, availableWidth: number): nu
 }
 
 export function formatPageInfo(pageNumber: number, numPages: number, scale: number): string {
-  return `Page ${pageNumber} of ${numPages} · ${Math.round((scale / BASE_SCALE) * 100)}%`;
+  return `Page ${pageNumber} of ${numPages} · ${zoomPercent(scale)}%`;
+}
+
+/** The scale as a whole-number percentage, where `BASE_SCALE` is 100%. */
+export function zoomPercent(scale: number): number {
+  return Math.round((scale / BASE_SCALE) * 100);
+}
+
+/**
+ * The one `appCommand` in this app that carries an argument: the toolbar's
+ * page field needs "go to page N", where everything else is relative.
+ *
+ * `appCommand` is an opaque per-app string vocabulary (`system/appCommands.ts`
+ * routes whatever the app defines), so encoding the argument in it needs no
+ * protocol change — but it does need exactly one encoder and one decoder, or
+ * the two ends drift. Both live here, next to the rest of the pure page math.
+ */
+export const GO_TO_PAGE_COMMAND = "documents.goToPage";
+
+export function goToPageCommand(pageNumber: number): string {
+  return `${GO_TO_PAGE_COMMAND}:${pageNumber}`;
+}
+
+/** The page number in a `documents.goToPage:<n>` command, or `null` for anything else. */
+export function parseGoToPageCommand(command: string): number | null {
+  const prefix = `${GO_TO_PAGE_COMMAND}:`;
+  if (!command.startsWith(prefix))
+    return null;
+  const pageNumber = Number(command.slice(prefix.length));
+  return Number.isInteger(pageNumber) && pageNumber > 0 ? pageNumber : null;
 }

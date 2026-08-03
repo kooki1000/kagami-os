@@ -1,6 +1,6 @@
 import type { SandboxResponse } from "./types";
 import type { AppWindowProps } from "@/system/apps/types";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useAppCommand } from "@/system/appCommands";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
@@ -8,7 +8,7 @@ import { fileSystem } from "@/system/fs/provider";
 import { notify } from "@/system/notifications/notificationStore";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { dispatchSandboxRequest } from "./bridge";
-import { buildAppCommandEvent, parseSandboxRequest } from "./rpc";
+import { buildAppCommandEvent, buildThemeEvent, parseSandboxRequest } from "./rpc";
 
 export interface SandboxedAppHostProps extends AppWindowProps {
   /**
@@ -22,6 +22,20 @@ export interface SandboxedAppHostProps extends AppWindowProps {
    */
   entryHtml: string;
   capabilities: string[];
+  /**
+   * Receives whatever the frame reports through `ui.setState` — how an app
+   * that draws its chrome in React (Documents' toolbar) learns which page it
+   * is on. Omit it and the method still succeeds and does nothing, which is
+   * what every frame that draws its own UI wants.
+   */
+  onAppState?: (state: Record<string, unknown>) => void;
+  /**
+   * CSS custom-property names to resolve off the shell's root and push to the
+   * frame (e.g. `["--surface-2"]`). Re-sent whenever the resolved theme
+   * changes, so a frame that paints any surface follows the user's
+   * appearance — see `SandboxEvent`'s note on why it can't inherit them.
+   */
+  themeVars?: readonly string[];
 }
 
 /**
@@ -47,8 +61,14 @@ function postResponse(target: Window, response: SandboxResponse) {
  * (`Window.tsx`, menu/appCommand routing) needs to know an app is
  * sandboxed at all.
  */
-export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: SandboxedAppHostProps) {
+export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onAppState, themeVars }: SandboxedAppHostProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Same ref-sync reason as `contextRef` below: a caller that doesn't
+  // memoize its handler must not force the message listener to re-attach.
+  const onAppStateRef = useRef(onAppState);
+  useLayoutEffect(() => {
+    onAppStateRef.current = onAppState;
+  });
 
   // Kept fresh via an effect rather than closed over directly, so a caller
   // that doesn't memoize `capabilities` can't force the message listener
@@ -81,6 +101,7 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: S
           getNodes: () => useFsStore.getState().nodes,
           notify,
           setWindowTitle: (id, title) => useWindowStore.getState().setWindowTitle(id, title),
+          setAppState: (_id, state) => onAppStateRef.current?.(state),
         },
       ).then((response) => {
         // The frame (and its window) may be gone by the time this
@@ -94,6 +115,34 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: S
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
+  const themeKey = themeVars?.join(",") ?? "";
+  const postTheme = useCallback(() => {
+    const frameWindow = iframeRef.current?.contentWindow;
+    if (!frameWindow || !themeKey)
+      return;
+    const root = getComputedStyle(document.documentElement);
+    const vars: Record<string, string> = {};
+    for (const name of themeKey.split(","))
+      vars[name] = root.getPropertyValue(name).trim();
+    frameWindow.postMessage(buildThemeEvent(vars), "*");
+  }, [themeKey]);
+
+  // Watching the element the tokens are actually written to, rather than
+  // subscribing to the theme store: `App` writes the whole appearance inline
+  // on `<html>`, and plenty of things rewrite it without flipping light/dark
+  // — a different look, a custom accent, a material level. Keying off
+  // `resolved` would miss every one of those. Re-sent on `load` too, since a
+  // frame that just navigated has no listener attached yet (and the client
+  // replays the last value it saw, so neither ordering leaves it unthemed).
+  useEffect(() => {
+    if (!themeKey)
+      return;
+    postTheme();
+    const observer = new MutationObserver(postTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme"] });
+    return () => observer.disconnect();
+  }, [postTheme, themeKey]);
+
   useAppCommand(windowId, (command) => {
     const frameWindow = iframeRef.current?.contentWindow;
     frameWindow?.postMessage(buildAppCommandEvent(command), "*");
@@ -105,6 +154,7 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities }: S
       sandbox="allow-scripts"
       srcDoc={entryHtml}
       title={appId}
+      onLoad={postTheme}
       className="size-full border-0"
     />
   );
