@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { applyReadlineKey } from "./readline";
 
-/** "ls Doc|uments" — a caret marked inline, so the cases read as what you'd type. */
+/**
+ * "ls Doc|uments" — a caret marked inline, so the cases read as what you'd
+ * type. Split rather than `replace("|", "")`: that strips only the first
+ * marker, so a case with two would silently test something other than what
+ * it appears to say (and reads to CodeQL as an incomplete sanitizer).
+ */
 function line(marked: string) {
-  return { value: marked.replace("|", ""), caret: marked.indexOf("|") };
+  const [before, after, ...extra] = marked.split("|");
+  if (after === undefined || extra.length > 0)
+    throw new Error(`expected exactly one caret marker in "${marked}"`);
+  return { value: before + after, caret: before.length };
 }
 
 function apply(key: string, marked: string): string | null {
