@@ -92,6 +92,65 @@ test.describe("Terminal engine v2 (D3)", () => {
     await expect(notesWindow.locator("textarea")).toHaveValue(/Try the Terminal/);
   });
 
+  test("Tab lists ambiguous candidates and cycles through them", async ({ page }) => {
+    await boot(page);
+    await openApp(page, "terminal");
+
+    const input = page.locator("input");
+    await input.fill("cd Documents");
+    await input.press("Enter");
+
+    // Nothing typed after `cat`, so every entry is a candidate: the first
+    // Tab can't extend anything and lists them instead of dumping a line
+    // into the scrollback, and each Tab after that inserts the next one.
+    await input.fill("cat ");
+    await input.press("Tab");
+    await expect(input).toHaveValue("cat ");
+
+    await input.press("Tab");
+    const first = await input.inputValue();
+    expect(first).not.toBe("cat ");
+
+    await input.press("Tab");
+    const second = await input.inputValue();
+    expect(second).not.toBe(first);
+
+    // ⇧Tab walks back to where it was.
+    await input.press("Shift+Tab");
+    await expect(input).toHaveValue(first);
+  });
+
+  test("⌃L clears the scrollback and ⌃C abandons the line", async ({ page }) => {
+    await boot(page);
+    await openApp(page, "terminal");
+
+    const input = page.locator("input");
+    await input.fill("echo marker");
+    await input.press("Enter");
+    await expect(page.getByText("marker", { exact: true })).toBeVisible();
+
+    await input.press("Control+l");
+    await expect(page.getByText("marker", { exact: true })).toHaveCount(0);
+
+    // ⌃C leaves the abandoned line on screen without running it.
+    await input.fill("echo never");
+    await input.press("Control+c");
+    await expect(input).toHaveValue("");
+    await expect(page.getByText("echo never^C")).toBeVisible();
+    await expect(page.getByText("never", { exact: true })).toHaveCount(0);
+  });
+
+  test("exit closes the terminal window", async ({ page }) => {
+    await boot(page);
+    await openApp(page, "terminal");
+    await expect(page.locator("[data-window-id]")).toHaveCount(1);
+
+    const input = page.locator("input");
+    await input.fill("exit");
+    await input.press("Enter");
+    await expect(page.locator("[data-window-id]")).toHaveCount(0);
+  });
+
   test("Tab completes a unique command name and a unique path segment", async ({ page }) => {
     await boot(page);
     await openApp(page, "terminal");

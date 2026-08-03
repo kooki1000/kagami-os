@@ -8,7 +8,8 @@ import { openFile } from "@/system/apps/openFile";
 import { pathOf, useFsStore } from "@/system/fs/fsStore";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
 import { useWindowStore } from "@/system/windows/windowStore";
-import { completeToken, resolveCompletion, runCommand, statusOf } from "./shell";
+import { applyReadlineKey } from "./readline";
+import { completeToken, completionTarget, quoteToken, resolveCompletion, runCommand, statusOf } from "./shell";
 import { DEFAULT_FONT_SIZE, findHistoryMatch, useTerminalStore } from "./terminalStore";
 
 const USER = "kagami";
@@ -45,13 +46,24 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatchIndex, setSearchMatchIndex] = useState<number | null>(null);
 
+  /**
+   * The Tab-completion menu: the candidates for the token being completed,
+   * which of them is currently inserted (-1 = none yet), and the line that
+   * insertion produced — anything else in the input means the user has kept
+   * typing and the candidates are stale.
+   */
+  const [cycle, setCycle] = useState<{ head: string; matches: string[]; active: number; line: string } | null>(null);
+
   const history = useTerminalStore(s => s.history);
   const fontSize = useTerminalStore(s => s.fontSize);
+  const aliases = useTerminalStore(s => s.aliases);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Exit status of the last line, for the next one's `$?`. A ref, not state: nothing renders it. */
   const statusRef = useRef(0);
+  /** Where to put the caret after a readline edit re-renders the input. */
+  const pendingCaretRef = useRef<number | null>(null);
 
   const nodes = useFsStore(s => s.nodes);
   // Root exists once the store is ready; fall back to root if cwd vanished.
@@ -66,7 +78,15 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     const el = scrollRef.current;
     if (el)
       el.scrollTop = el.scrollHeight;
-  }, [entries]);
+  }, [entries, cycle]);
+
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null)
+      return;
+    pendingCaretRef.current = null;
+    inputRef.current?.setSelectionRange(caret, caret);
+  }, [input]);
 
   const prompt = useMemo(
     () => (ready ? promptPath(nodes, safeCwd) : "~"),
@@ -143,6 +163,17 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       terminalState.setFontSize(DEFAULT_FONT_SIZE);
   });
 
+  /** ⌃C: abandon the line without running it, leaving it on screen the way a real shell does. */
+  function abortLine(): void {
+    setEntries(prev => [
+      ...prev,
+      { id: ++lineCounter, kind: "input", text: `${prompt} $ ${input}^C` },
+    ]);
+    setInput("");
+    setHistoryPos(null);
+    setCycle(null);
+  }
+
   /** Exit ⌃R search back to a blank prompt, discarding the query/match. */
   function exitSearch(): void {
     setIsSearching(false);
@@ -188,6 +219,38 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       return;
     }
 
+    if (e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === "l") {
+        e.preventDefault();
+        setEntries([]);
+        setCycle(null);
+        return;
+      }
+      if (e.key === "c") {
+        e.preventDefault();
+        abortLine();
+        return;
+      }
+      const edited = applyReadlineKey(e.key, {
+        value: input,
+        caret: e.currentTarget.selectionStart ?? input.length,
+      });
+      if (edited) {
+        e.preventDefault();
+        setCycle(null);
+        if (edited.value === input) {
+          // ⌃A/⌃E only move the caret. React won't re-render for an
+          // unchanged value, so the effect below never fires — move it now.
+          e.currentTarget.setSelectionRange(edited.caret, edited.caret);
+        }
+        else {
+          pendingCaretRef.current = edited.caret;
+          setInput(edited.value);
+        }
+        return;
+      }
+    }
+
     if (e.key === "Enter") {
       submit(input);
       setInput("");
@@ -216,19 +279,48 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     }
     else if (e.key === "Tab") {
       e.preventDefault();
-      const tokens = input.split(/\s+/);
-      const matches = completeToken(nodes, safeCwd, tokens);
-      const completion = resolveCompletion(matches, tokens.at(-1) ?? "");
-      if (!completion)
-        return;
-      if (completion.kind === "replace") {
-        tokens[tokens.length - 1] = completion.text;
-        setInput(tokens.join(" "));
-      }
-      else {
-        appendLines([{ kind: "system", text: completion.matches.join("  ") }]);
-      }
+      completeAtCaret(e.shiftKey ? -1 : 1);
     }
+    else if (e.key === "Escape") {
+      setCycle(null);
+    }
+  }
+
+  /**
+   * Tab. The first press extends the token as far as the candidates agree;
+   * once it can't extend any further, the candidates are listed and each
+   * further press steps through them (⇧Tab backwards) — a menu-completion
+   * cycle, rather than the old single dump of a `system` line into the
+   * scrollback that then scrolled away.
+   */
+  function completeAtCaret(direction: 1 | -1): void {
+    // Still on the line the current cycle produced? Then step it. Anything
+    // typed in between invalidates the candidates and recomputes.
+    if (cycle && cycle.line === input) {
+      const next = (cycle.active + direction + cycle.matches.length) % cycle.matches.length;
+      const line = cycle.head + quoteToken(cycle.matches[next]);
+      setCycle({ ...cycle, active: next, line });
+      setInput(line);
+      return;
+    }
+
+    const target = completionTarget(input);
+    const matches = completeToken(nodes, safeCwd, target, Object.keys(aliases));
+    const completion = resolveCompletion(matches, target.partial);
+    if (!completion) {
+      setCycle(null);
+      return;
+    }
+
+    if (completion.kind === "replace") {
+      const line = target.head + quoteToken(completion.text);
+      setInput(line);
+      // A single match is settled; a shared prefix leaves the rest to cycle
+      // through, so the strip stays up with nothing selected yet.
+      setCycle(matches.length > 1 ? { head: target.head, matches, active: -1, line } : null);
+      return;
+    }
+    setCycle({ head: target.head, matches: completion.matches, active: -1, line: input });
   }
 
   function onInputChange(e: ChangeEvent<HTMLInputElement>): void {
@@ -238,6 +330,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       setSearchMatchIndex(value === "" ? null : findHistoryMatch(history, value));
       return;
     }
+    setCycle(null);
     setInput(value);
   }
 
@@ -262,6 +355,18 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
             {entry.text}
           </div>
         ))}
+        {cycle && (
+          <div className="flex flex-wrap gap-x-[calc(10px*var(--ui-scale))] pb-1 text-ink-2">
+            {cycle.matches.map((match, i) => (
+              <span
+                key={match}
+                className={i === cycle.active ? "rounded-[4px] bg-accent-strong px-1 text-white" : undefined}
+              >
+                {match}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-[calc(6px*var(--ui-scale))]">
           <span className="flex-none whitespace-pre text-accent">
             {isSearching ? `(reverse-i-search)\`${searchQuery}':` : `${prompt} $`}

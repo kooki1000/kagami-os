@@ -3,7 +3,7 @@ import type { FsNode } from "@/system/fs/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { indexNodes, useFsStore } from "@/system/fs/fsStore";
 import { DOCUMENTS_ID, HOME_ID, ROOT_ID, TRASH_ID } from "@/system/fs/types";
-import { completeToken, expandAlias, resolveCompletion, resolvePath, runCommand, splitSequence, statusOf } from "./shell";
+import { completeToken, completionTarget, expandAlias, quoteToken, resolveCompletion, resolvePath, runCommand, splitSequence, statusOf } from "./shell";
 
 let openedNodes: FsNode[] = [];
 let openPathResult = true;
@@ -320,20 +320,58 @@ describe("redirects and quoting (T5)", () => {
 });
 
 describe("completeToken", () => {
+  function complete(partial: string, index: number, aliases?: string[]) {
+    return completeToken(useFsStore.getState().nodes, HOME_ID, { partial, index }, aliases);
+  }
+
   it("completes builtin command names for the first token", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["mk"])).toEqual(["mkdir"]);
+    expect(complete("mk", 0)).toEqual(["mkdir"]);
+  });
+
+  it("completes the user's own aliases alongside the builtins", () => {
+    expect(complete("l", 0, ["ll"])).toEqual(["ll", "ls"]);
   });
 
   it("completes a path argument against the resolved directory's children", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cd", "doc"])).toEqual(["Documents/"]);
+    expect(complete("doc", 1)).toEqual(["Documents/"]);
   });
 
   it("resolves a directory prefix before completing the leaf", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cat", "Documents/rep"])).toEqual(["Documents/Reports/"]);
+    expect(complete("Documents/rep", 1)).toEqual(["Documents/Reports/"]);
   });
 
   it("returns nothing for an unresolvable parent path", () => {
-    expect(completeToken(useFsStore.getState().nodes, HOME_ID, ["cd", "nope/x"])).toEqual([]);
+    expect(complete("nope/x", 1)).toEqual([]);
+  });
+});
+
+describe("completionTarget", () => {
+  it("splits the line around the token being typed", () => {
+    expect(completionTarget("cd Doc")).toEqual({ head: "cd ", partial: "Doc", index: 1 });
+  });
+
+  it("treats trailing whitespace as the start of a new, empty token", () => {
+    expect(completionTarget("cd ")).toEqual({ head: "cd ", partial: "", index: 1 });
+    expect(completionTarget("")).toEqual({ head: "", partial: "", index: 0 });
+  });
+
+  it("keeps a quoted span together and hands back its unquoted text", () => {
+    // The REPL's old split(/\s+/) saw `\"My` here and completed against a
+    // directory that doesn't exist.
+    expect(completionTarget("cd \"My Folder/Su")).toEqual({
+      head: "cd ",
+      partial: "My Folder/Su",
+      index: 1,
+    });
+  });
+
+  it("counts a quoted argument as one token when locating the next", () => {
+    expect(completionTarget("cp \"My Folder\" de")).toEqual({ head: "cp \"My Folder\" ", partial: "de", index: 2 });
+  });
+
+  it("quoteToken only quotes what would otherwise re-tokenize", () => {
+    expect(quoteToken("Documents/")).toBe("Documents/");
+    expect(quoteToken("My Folder/")).toBe("\"My Folder/\"");
   });
 });
 

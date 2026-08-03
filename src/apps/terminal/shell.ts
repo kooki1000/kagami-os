@@ -1193,20 +1193,92 @@ export function runCommand(input: string, ctx: ShellContext): ShellResult {
   };
 }
 
+/** Where each token of `input` starts and ends, with a quoted span counting as one token. */
+function tokenSpans(input: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
+  let start = -1;
+  let quote: string | null = null;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote)
+        quote = null;
+      continue;
+    }
+    if (ch === "\"" || ch === "'") {
+      if (start === -1)
+        start = i;
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (start !== -1) {
+        spans.push({ start, end: i });
+        start = -1;
+      }
+      continue;
+    }
+    if (start === -1)
+      start = i;
+  }
+  if (start !== -1)
+    spans.push({ start, end: input.length });
+  return spans;
+}
+
+export interface CompletionTarget {
+  /** Everything before the token being completed — put back verbatim around the result. */
+  head: string;
+  /** The token being completed, unquoted. */
+  partial: string;
+  /** Its position on the line; 0 is the command itself. */
+  index: number;
+}
+
+/**
+ * The token Tab should complete. Quote-aware, which the REPL's old
+ * `split(/\s+/)` was not: `cd "My Folder/Su` is one token there, so
+ * completion resolves inside "My Folder" instead of against a phantom
+ * directory called `"My`.
+ */
+export function completionTarget(input: string): CompletionTarget {
+  const spans = tokenSpans(input);
+  const last = spans.at(-1);
+  // Trailing whitespace (or an empty line) means a *new*, empty token —
+  // "ls " completes the first argument, not the command `ls` again.
+  if (!last || last.end < input.length)
+    return { head: input, partial: "", index: spans.length };
+  return { head: input.slice(0, last.start), partial: unquote(input.slice(last.start)), index: spans.length - 1 };
+}
+
+/**
+ * Wrap a completion in quotes when putting it back on the line unquoted
+ * would re-tokenize it into two arguments.
+ */
+export function quoteToken(token: string): string {
+  return /[\s"']/.test(token) ? `"${token}"` : token;
+}
+
 /**
  * Tab-completion candidates for the token currently being typed: the first
- * token completes against builtin command names, any later token completes
- * as a path relative to `cwd` (folders keep their existing `dir/` prefix).
+ * token completes against builtin command names (and the user's own
+ * aliases), any later token completes as a path relative to `cwd` (folders
+ * keep their existing `dir/` prefix).
  */
 export function completeToken(
   nodes: Record<string, FsNode>,
   cwd: string,
-  tokens: string[],
+  target: Pick<CompletionTarget, "partial" | "index">,
+  aliases: string[] = [],
 ): string[] {
-  const partial = tokens.at(-1) ?? "";
+  const { partial, index } = target;
 
-  if (tokens.length <= 1)
-    return COMMAND_NAMES.filter(name => name.startsWith(partial));
+  if (index === 0) {
+    return [...COMMAND_NAMES, ...aliases]
+      .filter(name => name.startsWith(partial))
+      .sort();
+  }
 
   const { dir, leaf } = splitPath(partial);
   const parentId = resolveParentDir(nodes, cwd, dir);
