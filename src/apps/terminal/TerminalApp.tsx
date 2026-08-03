@@ -1,5 +1,6 @@
 import type { ChangeEvent, KeyboardEvent } from "react";
 import type { ShellContext, ShellLine } from "./shell";
+import type { PromptStyle, TerminalFontId } from "./terminalStore";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +11,7 @@ import { HOME_ID, ROOT_ID } from "@/system/fs/types";
 import { useWindowStore } from "@/system/windows/windowStore";
 import { applyReadlineKey } from "./readline";
 import { completeToken, completionTarget, quoteToken, resolveCompletion, runCommand, statusOf } from "./shell";
-import { DEFAULT_FONT_SIZE, findHistoryMatch, useTerminalStore } from "./terminalStore";
+import { DEFAULT_FONT_SIZE, findHistoryMatch, fontStack, useTerminalStore } from "./terminalStore";
 
 const USER = "kagami";
 
@@ -30,12 +31,17 @@ interface HistoryEntry extends ShellLine {
   prompt?: string;
 }
 
-/** The prompt, in the look's duotone: path on the accent, the marker dimmed. */
-function Prompt({ path }: { path: string }) {
+/**
+ * The prompt, in the look's duotone — user on the second accent, path on
+ * the first, marker dimmed. Which segments appear is the user's
+ * `promptStyle`; the marker is always there, so the line is never bare.
+ */
+function Prompt({ path, style }: { path: string; style: PromptStyle }) {
   return (
     <>
-      <span className="text-accent">{path}</span>
-      <span className="text-ink-2">{" $ "}</span>
+      {style === "full" && <span className="text-accent-2">{`${USER} `}</span>}
+      {style !== "minimal" && <span className="text-accent">{path}</span>}
+      <span className="text-ink-2">{style === "minimal" ? "$ " : " $ "}</span>
     </>
   );
 }
@@ -108,6 +114,8 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
   const history = useTerminalStore(s => s.history);
   const fontSize = useTerminalStore(s => s.fontSize);
   const aliases = useTerminalStore(s => s.aliases);
+  const fontFamily = useTerminalStore(s => s.fontFamily);
+  const promptStyle = useTerminalStore(s => s.promptStyle);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -224,6 +232,12 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       terminalState.decreaseFontSize();
     else if (command === "terminal.fontReset")
       terminalState.setFontSize(DEFAULT_FONT_SIZE);
+    // "terminal.font:<id>" / "terminal.prompt:<style>" — one command per
+    // choice, since menu items are static data with no state to bind to.
+    else if (command.startsWith("terminal.font:"))
+      terminalState.setFontFamily(command.slice("terminal.font:".length) as TerminalFontId);
+    else if (command.startsWith("terminal.prompt:"))
+      terminalState.setPromptStyle(command.slice("terminal.prompt:".length) as PromptStyle);
   });
 
   /** ⌃C: abandon the line without running it, leaving it on screen the way a real shell does. */
@@ -403,13 +417,16 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
   return (
     <div
       className="flex h-full flex-col bg-(--surface) font-mono leading-relaxed"
-      style={{ fontSize: `calc(${fontSize}px * var(--ui-scale))` }}
+      style={{
+        fontSize: `calc(${fontSize}px * var(--ui-scale))`,
+        fontFamily: fontStack(fontFamily),
+      }}
       onClick={() => inputRef.current?.focus()}
     >
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-[calc(14px*var(--ui-scale))] py-3">
         {entries.map(entry => (
           <div key={entry.id} className={`wrap-break-word whitespace-pre-wrap ${lineClass(entry)}`}>
-            {entry.prompt !== undefined && <Prompt path={entry.prompt} />}
+            {entry.prompt !== undefined && <Prompt path={entry.prompt} style={promptStyle} />}
             {entry.text}
           </div>
         ))}
@@ -429,7 +446,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
           <span className="flex-none whitespace-pre">
             {isSearching
               ? <span className="text-accent-2">{`(reverse-i-search)\`${searchQuery}':`}</span>
-              : <Prompt path={prompt} />}
+              : <Prompt path={prompt} style={promptStyle} />}
           </span>
           <span className="relative min-w-0 flex-1">
             <input

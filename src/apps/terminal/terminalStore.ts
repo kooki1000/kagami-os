@@ -73,11 +73,51 @@ export function findHistoryMatch(
   return null;
 }
 
+/**
+ * Type faces the terminal offers. JetBrains Mono is the design's own mono
+ * (`--font-mono`) and stays the default; the other two are there because a
+ * terminal is the one place a user reasonably has a personal preference,
+ * and both are already on the machine — no new font is downloaded.
+ */
+export const FONT_FAMILIES = [
+  { id: "kagami", label: "JetBrains Mono", stack: "var(--font-mono)" },
+  { id: "system", label: "System Mono", stack: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" },
+  { id: "courier", label: "Courier", stack: "\"Courier New\", Courier, monospace" },
+] as const;
+
+export type TerminalFontId = typeof FONT_FAMILIES[number]["id"];
+
+export const DEFAULT_FONT_FAMILY: TerminalFontId = "kagami";
+
+/**
+ * How much of the prompt to show: the user and path ("kagami ~/Documents $"),
+ * the path alone, or nothing but the marker. The block cursor's `ch`
+ * arithmetic doesn't care which — the prompt is a separate flex item.
+ */
+export type PromptStyle = "full" | "short" | "minimal";
+
+export const DEFAULT_PROMPT_STYLE: PromptStyle = "short";
+
+export const PROMPT_STYLES: { id: PromptStyle; label: string }[] = [
+  { id: "full", label: "User and Path" },
+  { id: "short", label: "Path Only" },
+  { id: "minimal", label: "Marker Only" },
+];
+
+/** The CSS font stack for a stored id, falling back to the default for anything unrecognised. */
+export function fontStack(id: string): string {
+  return (FONT_FAMILIES.find(f => f.id === id) ?? FONT_FAMILIES[0]).stack;
+}
+
 interface TerminalStore {
   /** Submitted command lines, oldest first, capped to `HISTORY_LIMIT`. */
   history: string[];
   /** Terminal text size in px, before the `--ui-scale` density multiplier. */
   fontSize: number;
+  /** Which of `FONT_FAMILIES` to render in. */
+  fontFamily: TerminalFontId;
+  /** How much of the prompt to draw before the `$`. */
+  promptStyle: PromptStyle;
   /** Alias name -> command string, fed into `ShellContext.aliases`. */
   aliases: Record<string, string>;
   addHistory: (command: string) => void;
@@ -85,6 +125,8 @@ interface TerminalStore {
   setFontSize: (size: number) => void;
   increaseFontSize: () => void;
   decreaseFontSize: () => void;
+  setFontFamily: (id: TerminalFontId) => void;
+  setPromptStyle: (style: PromptStyle) => void;
   setAlias: (name: string, expansion: string) => void;
   removeAlias: (name: string) => void;
 }
@@ -94,6 +136,8 @@ export const useTerminalStore = create<TerminalStore>()(
     (set, get) => ({
       history: [],
       fontSize: DEFAULT_FONT_SIZE,
+      fontFamily: DEFAULT_FONT_FAMILY,
+      promptStyle: DEFAULT_PROMPT_STYLE,
       aliases: {},
 
       addHistory: command =>
@@ -107,6 +151,10 @@ export const useTerminalStore = create<TerminalStore>()(
 
       decreaseFontSize: () => set({ fontSize: stepFontSize(get().fontSize, -1) }),
 
+      setFontFamily: id => set({ fontFamily: id }),
+
+      setPromptStyle: style => set({ promptStyle: style }),
+
       setAlias: (name, expansion) =>
         set(state => ({ aliases: { ...state.aliases, [name]: expansion } })),
 
@@ -115,6 +163,36 @@ export const useTerminalStore = create<TerminalStore>()(
         set({ aliases: rest });
       },
     }),
-    { name: "kagami-terminal", version: 1 },
+    {
+      name: "kagami-terminal",
+      version: 2,
+      /**
+       * v1 → v2 adds the appearance prefs. zustand would merge the missing
+       * keys from the initial state anyway; the migration is explicit so a
+       * corrupted stored value (hand-edited, or from a build where the ids
+       * differed) is replaced rather than rendered as a broken font stack.
+       *
+       * v1 is the only shape this build knows how to carry forward —
+       * anything else (a downgrade, a mangled file) starts clean rather
+       * than being adopted blindly.
+       */
+      migrate: (persisted, version) => {
+        const defaults: Partial<TerminalStore> = {
+          history: [],
+          fontSize: DEFAULT_FONT_SIZE,
+          fontFamily: DEFAULT_FONT_FAMILY,
+          promptStyle: DEFAULT_PROMPT_STYLE,
+          aliases: {},
+        };
+        const saved = persisted as Partial<TerminalStore> | null;
+        if (version !== 1 || saved === null || typeof saved !== "object")
+          return defaults as TerminalStore;
+        return {
+          ...saved,
+          fontFamily: FONT_FAMILIES.some(f => f.id === saved.fontFamily) ? saved.fontFamily : DEFAULT_FONT_FAMILY,
+          promptStyle: PROMPT_STYLES.some(p => p.id === saved.promptStyle) ? saved.promptStyle : DEFAULT_PROMPT_STYLE,
+        } as TerminalStore;
+      },
+    },
   ),
 );
