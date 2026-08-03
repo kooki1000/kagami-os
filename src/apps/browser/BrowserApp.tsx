@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { BrowserBounds } from "./browserBridge";
+import type { BrowserPayload } from "./browserPayload";
 import type { ConnectionSecurity } from "./browserUrl";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { WindowRect } from "@/system/windows/windowStore";
@@ -11,6 +12,7 @@ import { useSettingsStore } from "@/system/settings/settingsStore";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { browserBridge, onLoadState, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
+import { payloadUrl } from "./browserPayload";
 import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
 import { searchEngineById } from "./searchEngines";
 
@@ -47,13 +49,15 @@ function webviewBounds(rect: WindowRect): BrowserBounds {
 }
 
 /** The desktop-only chrome + native child webview (N4). */
-function NativeBrowser({ windowId, focused }: AppWindowProps) {
+function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   // The chosen search engine doubles as the homepage (U17) — a new window
   // opens on it, and the Home button goes back to it.
   const engine = searchEngineById(useSettingsStore(s => s.browserSearchEngineId));
   // `history` is rebuilt from the webview's own `nav-changed` events (see
-  // browserHistory.ts) rather than tracked optimistically from `go()`.
-  const [history, setHistory] = useState(() => initialHistory(engine.homeUrl));
+  // browserHistory.ts) rather than tracked optimistically from `go()`. It
+  // starts on the page a restored session (C1) left this window on, or the
+  // homepage for a fresh one.
+  const [history, setHistory] = useState(() => initialHistory(payloadUrl(payload) ?? engine.homeUrl));
   const url = history.entries[history.index];
   // Parsed per navigation, not per render — `rect` re-renders this on every
   // drag/resize frame, and neither line changes anywhere near that often.
@@ -62,6 +66,7 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   const [addressInput, setAddressInput] = useState(url);
   const [loading, setLoading] = useState(false);
   const setWindowTitle = useWindowStore(s => s.setWindowTitle);
+  const setWindowPayload = useWindowStore(s => s.setWindowPayload);
   // Drag/resize/snap/maximize all mutate a window's `rect` (a fresh object
   // only when geometry actually changes — see windowStore.ts), so it's the
   // exact signal for re-syncing the webview's bounds — no ResizeObserver
@@ -93,8 +98,14 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
         return;
       setHistory(h => applyNavigation(h, navUrl));
       setWindowTitle(windowId, title || navUrl);
+      // The window payload is the only place this URL outlives the child
+      // webview, and it's what session restore serializes. Writing it here
+      // (rather than in `go`) also captures navigation the app never asked
+      // for — a link click, a redirect. Replacing `payload` leaves `rect`'s
+      // identity alone, so the bounds-sync effect below doesn't re-fire.
+      setWindowPayload(windowId, { url: navUrl } satisfies BrowserPayload);
     });
-  }, [windowId, setWindowTitle]);
+  }, [windowId, setWindowTitle, setWindowPayload]);
 
   // Loading is driven purely by the webview's own page-load edges rather than
   // set optimistically when we ask it to navigate: a request that never starts
@@ -111,19 +122,18 @@ function NativeBrowser({ windowId, focused }: AppWindowProps) {
   // mount-time bounds/visibility already baked in so the sync effects below
   // only need to handle *changes*, not mount. Closed on unmount, which
   // covers both closing the window and minimizing it (WindowLayer unmounts
-  // minimized windows rather than just hiding them). Opens with the homepage
-  // read straight from the store (not the `url` state) so this only depends
-  // on `windowId` and runs exactly once per window instance; later navigation
-  // goes through the `navigate` command instead of recreating the webview.
+  // minimized windows rather than just hiding them). Every value it opens
+  // with is read straight from the store rather than taken as a dependency,
+  // so this stays exactly one open per window instance; later navigation goes
+  // through the `navigate` command instead of recreating the webview, and
+  // later geometry changes are the bounds-sync effect's job.
   useEffect(() => {
-    // Read the current rect straight from the store rather than depending on
-    // it, so this stays a once-per-window-instance open (later geometry
-    // changes are the bounds-sync effect's job).
-    const openRect = useWindowStore.getState().windows.find(w => w.id === windowId)?.rect;
-    if (!openRect)
+    const openWindow = useWindowStore.getState().windows.find(w => w.id === windowId);
+    if (!openWindow)
       return;
     const home = searchEngineById(useSettingsStore.getState().browserSearchEngineId).homeUrl;
-    browserBridge.open(windowId, home, webviewBounds(openRect), visibleRef.current).catch(logBridgeError("open"));
+    const openUrl = payloadUrl(openWindow.payload) ?? home;
+    browserBridge.open(windowId, openUrl, webviewBounds(openWindow.rect), visibleRef.current).catch(logBridgeError("open"));
     return () => {
       browserBridge.close(windowId).catch(logBridgeError("close"));
     };

@@ -110,6 +110,20 @@ export function normalizeAddress(input: string, engine: SearchEngine): string | 
 }
 
 /**
+ * Narrows an untrusted value to a URL the Browser is allowed to open, or
+ * `null`. Used on anything that didn't come from the webview itself — a
+ * restored session payload is JSON from localStorage, which a user (or
+ * anything else with page-origin access) can edit, and `javascript:` reaching
+ * `browser_navigate` would run against the child webview's current origin.
+ */
+export function navigableUrl(value: unknown): string | null {
+  if (typeof value !== "string")
+    return null;
+  const parsed = parseAbsolute(value);
+  return parsed && NAVIGABLE_SCHEMES.has(parsed.protocol) ? parsed.href : null;
+}
+
+/**
  * Bare host for the standby state and the window title, falling back to the
  * raw string for anything that isn't a parseable absolute URL.
  */

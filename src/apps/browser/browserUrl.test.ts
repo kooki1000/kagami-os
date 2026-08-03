@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
+import { connectionSecurity, hostnameOf, navigableUrl, normalizeAddress } from "./browserUrl";
 import { searchEngineById } from "./searchEngines";
 
 const google = searchEngineById("google");
@@ -96,6 +96,25 @@ describe("normalizeAddress — schemes that must not be navigated to", () => {
 
   it("searches for an unparseable but scheme-shaped input", () => {
     expect(normalizeAddress("https://", google)?.startsWith("https://www.google.com/search")).toBe(true);
+  });
+});
+
+describe("navigableUrl", () => {
+  it("accepts the schemes the Browser may open", () => {
+    expect(navigableUrl("https://example.com/a")).toBe("https://example.com/a");
+    expect(navigableUrl("http://example.com/")).toBe("http://example.com/");
+    expect(navigableUrl("about:blank")).toBe("about:blank");
+  });
+
+  it("rejects schemes that would execute against the current origin", () => {
+    expect(navigableUrl("javascript:alert(1)")).toBeNull();
+    expect(navigableUrl("data:text/html,<h1>hi</h1>")).toBeNull();
+  });
+
+  it("rejects anything that isn't an absolute URL string", () => {
+    expect(navigableUrl("example.com")).toBeNull();
+    expect(navigableUrl(undefined)).toBeNull();
+    expect(navigableUrl(123)).toBeNull();
   });
 });
 
