@@ -339,7 +339,7 @@ export function Desktop() {
                     </div>
                     <span
                       className={`max-w-full truncate rounded-[4px] px-1 text-11 text-white [text-shadow:0_1px_2px_rgba(0,0,0,.6)] ${
-                        selectedId === node.id ? "bg-accent" : ""
+                        selectedId === node.id ? "bg-accent-strong" : ""
                       }`}
                     >
                       {node.name}

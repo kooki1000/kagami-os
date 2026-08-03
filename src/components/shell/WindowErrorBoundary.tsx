@@ -67,7 +67,7 @@ export class WindowErrorBoundary extends Component<Props, State> {
         <div className="mt-1 flex gap-2">
           <button
             type="button"
-            className="rounded-btn bg-accent px-3 py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-white"
+            className="rounded-btn bg-accent-strong px-3 py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-white"
             onClick={this.reload}
           >
             Reload app

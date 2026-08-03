@@ -164,7 +164,7 @@ export default function CalculatorApp({ windowId, focused }: AppWindowProps) {
           </div>
           <button
             type="button"
-            className="h-10 flex-none rounded-btn bg-accent text-[calc(15px*var(--ui-scale))] font-semibold text-white hover:opacity-90"
+            className="h-10 flex-none rounded-btn bg-accent-strong text-[calc(15px*var(--ui-scale))] font-semibold text-white hover:opacity-90"
             onClick={() => setState(evaluate)}
           >
             =

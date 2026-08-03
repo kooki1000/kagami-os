@@ -75,7 +75,7 @@ function EntryRow({ entry, onClose }: {
       ? "text-ink-2 opacity-50"
       : entry.danger
         ? "text-accent-2 hover:bg-accent-2 hover:text-white"
-        : "text-ink hover:bg-accent hover:text-white"
+        : "text-ink hover:bg-accent-strong hover:text-white"
   }`;
 
   return (

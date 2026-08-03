@@ -42,7 +42,7 @@ function useTicker(active: boolean, intervalMs: number): number {
 
 // Secondary/primary pair matches WindowErrorBoundary.tsx's "Close window"/"Reload app" buttons.
 const actionButtonClass = "rounded-btn bg-ph px-3 py-[calc(6px*var(--ui-scale))] text-12 font-medium text-ink enabled:hover:bg-surface-2 disabled:opacity-35";
-const primaryButtonClass = "rounded-btn bg-accent px-4 py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-white disabled:opacity-35";
+const primaryButtonClass = "rounded-btn bg-accent-strong px-4 py-[calc(6px*var(--ui-scale))] text-12 font-semibold text-white disabled:opacity-35";
 
 export default function ClockApp(_props: AppWindowProps) {
   const [tab, setTab] = useState<Tab>("clock");

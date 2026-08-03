@@ -199,7 +199,7 @@ function PreviewGroup<T extends string>({
             >
               {option.preview}
               {selected && (
-                <span className="absolute right-1 bottom-1 flex size-[calc(14px*var(--ui-scale))] items-center justify-center rounded-full bg-accent">
+                <span className="absolute right-1 bottom-1 flex size-[calc(14px*var(--ui-scale))] items-center justify-center rounded-full bg-accent-strong">
                   <Check className="size-[calc(9px*var(--ui-scale))] text-white" strokeWidth={3.5} />
                 </span>
               )}
@@ -290,13 +290,13 @@ const ANIMATION_SPEED_OPTIONS: SegmentOption<number>[] = [
 ];
 
 /**
- * WCAG surface/ink hex per theme, for U2's contrast warning —
- * `checkAccentContrast` needs literal hex, not a live `--surface`/`--text`
- * CSS var, so these are transcribed from `global.css`'s `:root`/`[data-theme
- * ='dark']` blocks. Keep in sync if those tokens ever change.
+ * WCAG surface hex per theme, for U2's contrast warning —
+ * `checkAccentContrast` needs literal hex, not a live `--surface` CSS var, so
+ * these are transcribed from `global.css`'s `:root`/`[data-theme='dark']`
+ * blocks. Keep in sync if those tokens ever change. (The second pair the check
+ * reports is white-on-`--accent-strong`, which it derives itself.)
  */
 const SURFACE_HEX: Record<ResolvedTheme, string> = { light: "#faf8f4", dark: "#201e1a" };
-const INK_HEX: Record<ResolvedTheme, string> = { light: "#2b2925", dark: "#efece5" };
 
 /**
  * U2's picker: a native color input (styled as a round swatch) plus a
@@ -313,7 +313,7 @@ function CustomAccentPicker() {
 
   const swatchHex = resolveAccentTone(lookById(lookId), resolvedTheme, customAccentHex).accent;
   const contrast = customAccentHex
-    ? checkAccentContrast(customAccentHex, SURFACE_HEX[resolvedTheme], INK_HEX[resolvedTheme])
+    ? checkAccentContrast(customAccentHex, SURFACE_HEX[resolvedTheme])
     : null;
 
   return (
@@ -1069,7 +1069,7 @@ function BackupSection() {
           type="button"
           disabled={importing}
           className={`rounded-btn px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-11.5 font-medium disabled:opacity-50 ${
-            pendingImport ? "bg-accent-2 text-white" : "bg-ph text-ink hover:bg-ph-2"
+            pendingImport ? "bg-accent-2-strong text-white" : "bg-ph text-ink hover:bg-ph-2"
           }`}
           onClick={() => {
             if (pendingImport)

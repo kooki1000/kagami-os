@@ -13,6 +13,13 @@
   /* accent + window-control triad (Lagoon) */
   --accent: #0f9b8e;
   --accent-2: #f2765b;
+  /* Fill for accent controls carrying a white text label — the accent
+     darkened until white on it clears WCAG AA (4.5:1); --accent itself is
+     3.44:1 here. Derived at runtime by deriveAccentStrong() and written
+     inline by Settings; this static value only covers the pre-hydration
+     paint, and must stay in sync with design/tokens.ts. */
+  --accent-strong: #008478;
+  --accent-2-strong: #c85037;
   --ctl1: #f2765b; /* close */
   --ctl2: #17b0a1; /* minimize */
   --ctl3: #0c8074; /* zoom */
@@ -80,6 +87,10 @@
 
   --accent: #2fb9ab;
   --accent-2: #ff8368;
+  /* Both themes land on nearly the same value: --accent-strong is anchored to
+     a fixed white-contrast target, so the two teals converge once corrected. */
+  --accent-strong: #008479;
+  --accent-2-strong: #c75138;
 
   --surface: #201e1a;
   --surface-2: #2a2823;
@@ -128,6 +139,8 @@
   --color-hairline: var(--border);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-2-strong: var(--accent-2-strong);
   --color-ph: var(--ph);
   --color-ph-2: var(--ph-2);
   --color-tile: var(--tile);

@@ -23,7 +23,7 @@ export function NotificationGlyph({ notification }: { notification: KagamiNotifi
   return (
     <span
       className={`grid size-8 flex-none place-items-center rounded-[9px] text-white ${
-        danger ? "bg-accent-2" : "bg-accent"
+        danger ? "bg-accent-2-strong" : "bg-accent-strong"
       }`}
     >
       <Icon size={16} strokeWidth={2} />

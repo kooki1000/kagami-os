@@ -949,7 +949,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                 type="button"
                 className={`rounded-btn px-2 py-1 text-11.5 font-medium ${
                   confirmEmpty
-                    ? "bg-accent-2 text-white"
+                    ? "bg-accent-2-strong text-white"
                     : "bg-ph text-ink hover:bg-ph-2"
                 }`}
                 onClick={() => {

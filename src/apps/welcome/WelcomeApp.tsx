@@ -40,7 +40,7 @@ export default function WelcomeApp({ windowId }: AppWindowProps) {
         {step.action && (
           <button
             type="button"
-            className="mt-5 rounded-btn bg-accent px-[calc(14px*var(--ui-scale))] py-[calc(8px*var(--ui-scale))] text-12.5 font-semibold text-white"
+            className="mt-5 rounded-btn bg-accent-strong px-[calc(14px*var(--ui-scale))] py-[calc(8px*var(--ui-scale))] text-12.5 font-semibold text-white"
             onClick={step.action}
           >
             {step.actionLabel}

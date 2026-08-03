@@ -113,7 +113,7 @@ export function SearchOverlay() {
                 type="button"
                 key={result.node.id}
                 className={`flex w-full items-center gap-[calc(10px*var(--ui-scale))] rounded-[11px] px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-left ${
-                  i === highlighted ? "bg-accent text-white" : "hover:bg-ph"
+                  i === highlighted ? "bg-accent-strong text-white" : "hover:bg-ph"
                 }`}
                 onPointerEnter={() => setHighlighted(i)}
                 onClick={() => openResult(i)}
