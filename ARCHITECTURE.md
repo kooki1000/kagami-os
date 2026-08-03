@@ -262,8 +262,8 @@ reload, localStorage-backed:
 ## Virtual file system (`src/system/fs/`)
 
 A tree of `FsNode`s (`{ id, parentId, name, type, mimeType?, content?,
-createdAt, modifiedAt, trashedFrom? }`) held in `useFsStore` (Zustand),
-with two seams around it:
+createdAt, modifiedAt, trashedFrom?, label?, iconGlyph?, iconTint? }`) held
+in `useFsStore` (Zustand), with two seams around it:
 
 - **`StorageAdapter`** (persistence seam): `loadAll` / `putMany` /
   `removeMany`. The web implementation is raw IndexedDB (`idbAdapter.ts`)
@@ -291,6 +291,28 @@ Restore) and only trashed items can be deleted permanently; sibling name
 collisions auto-suffix (`name 2`); moves into a node's own descendants are
 rejected. First run seeds Home/Desktop/Documents/Downloads/Pictures plus
 sample markdown, text, and original SVG artwork.
+
+**Node appearance** is three optional fields with one rule between them:
+`label` (a colour dot beside the name), `iconGlyph` and `iconTint`. All are
+validated against _closed vocabularies_ — `nodeLabels.ts`'s seven swatches
+and `nodeIcons.ts`'s curated Lucide set — before the store will persist
+them, so a node can only ever name something the app actually ships, and an
+id dropped by a later build falls back to the mime-derived default rather
+than rendering nothing. Tint reuses the _label_ palette deliberately, so the
+two can't drift apart. Resolution lives in `apps/files/fileMeta.ts`
+(`nodeIcon`: explicit choice → system-folder identity → mime default) and is
+rendered in exactly one place, `NodeGlyph` — which is why a custom icon
+reaches the grid, list, Quick Look, Get Info, the sidebar and the Desktop
+without any of them knowing about it. Setting appearance never bumps
+`modifiedAt`: it is metadata, not content, so restyling an icon must not
+reorder a date sort.
+
+**Node sizes** (`fileBytes` / `folderSizes` / `cachedFolderSizes`) live in
+the store rather than the Files app, because `childrenOf`'s "size" sort needs
+them — one implementation means the sorted order and the size the UI prints
+cannot disagree. `cachedFolderSizes` memoizes the rollup per `nodes`
+identity with the same `WeakMap` idiom as `childrenOfCache`, so the sort and
+the status bar share one pass; only the "size" key builds it at all.
 
 The Files app (`src/apps/files/`) is the reference consumer: grid/list
 views, breadcrumbs + back/forward history, name filtering, inline rename,
@@ -418,7 +440,15 @@ IndexedDB fs adapter, since these are small UI prefs, not documents.
   `App`) — instead of a separate keymap, a global keydown builds the same
   chord string apps already display on menu items ("⌘W", "⇧⌘N") and runs the
   matching item on the focused app (command or appCommand). Shell fallbacks
-  (⌘W/⌘M/⌘Q) apply when a window is focused; symbol chords stay menu-only.
+  (⌘W/⌘M/⌘Q) apply when a window is focused. `chordFromEvent` handles
+  ⌘+letter _and_ the symbol/arrow keys the menus print (`⌘[`, `⌘]`, `⌘↑`,
+  `⌘⌫`, and the zoom trio `⌘+`/`⌘−`/`⌘0`) — it once matched letters only,
+  which quietly made every non-letter shortcut in every manifest decorative.
+  Two normalizations keep it matching what the manifests actually contain:
+  zoom-out is written with U+2212 MINUS SIGN, and zoom-in as `+` though the
+  unshifted key is `=`. `shortcuts.test.ts` asserts every declared shortcut
+  in every manifest is a chord the dispatcher can produce, so a menu can't
+  advertise a dead one again.
   `⌘K` (global search, B9) is the one chord that isn't gated on a focused
   window — it opens `SearchOverlay` from anywhere, including an empty
   desktop. Menu-item shortcut labels render through `formatShortcut`

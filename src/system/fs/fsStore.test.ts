@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useNotificationStore } from "@/system/notifications/notificationStore";
 import { blobStore } from "./blobStore";
 import {
+  cachedFolderSizes,
   childIdsByParent,
   childrenOf,
   expiredTrashIds,
@@ -296,6 +297,113 @@ describe("setLabel (U14 color labels)", () => {
 
   it("no-ops on a missing node", () => {
     expect(() => api().setLabel("does-not-exist", "red")).not.toThrow();
+  });
+});
+
+describe("childrenOf sorted by size", () => {
+  function sizeOrder(parentId: string, dir: "asc" | "desc" = "asc"): string[] {
+    return childrenOf(api().nodes, parentId, { key: "size", dir }).map(n => n.name);
+  }
+
+  it("orders files by their byte length", () => {
+    const folder = api().createFolder(HOME_ID, "Sized");
+    api().createFile(folder.id, "small.txt", "a");
+    api().createFile(folder.id, "big.txt", "a".repeat(500));
+    api().createFile(folder.id, "medium.txt", "a".repeat(50));
+    expect(sizeOrder(folder.id)).toEqual(["small.txt", "medium.txt", "big.txt"]);
+    expect(sizeOrder(folder.id, "desc")).toEqual(["big.txt", "medium.txt", "small.txt"]);
+  });
+
+  it("orders folders by their rolled-up subtree size, not as zero", () => {
+    const root = api().createFolder(HOME_ID, "Roots");
+    const light = api().createFolder(root.id, "Light");
+    const heavy = api().createFolder(root.id, "Heavy");
+    api().createFile(light.id, "a.txt", "x".repeat(10));
+    api().createFile(heavy.id, "b.txt", "x".repeat(900));
+    expect(sizeOrder(root.id)).toEqual(["Light", "Heavy"]);
+    expect(sizeOrder(root.id, "desc")).toEqual(["Heavy", "Light"]);
+  });
+
+  it("keeps folders ahead of files regardless of size or direction", () => {
+    const folder = api().createFolder(HOME_ID, "Mixed");
+    api().createFolder(folder.id, "Empty");
+    api().createFile(folder.id, "huge.txt", "x".repeat(5000));
+    expect(sizeOrder(folder.id)).toEqual(["Empty", "huge.txt"]);
+    expect(sizeOrder(folder.id, "desc")).toEqual(["Empty", "huge.txt"]);
+  });
+
+  it("breaks size ties by name ascending, like every other key", () => {
+    const folder = api().createFolder(HOME_ID, "Ties");
+    api().createFile(folder.id, "b.txt", "xx");
+    api().createFile(folder.id, "a.txt", "xx");
+    expect(sizeOrder(folder.id)).toEqual(["a.txt", "b.txt"]);
+    expect(sizeOrder(folder.id, "desc")).toEqual(["a.txt", "b.txt"]);
+  });
+});
+
+describe("cachedFolderSizes", () => {
+  it("returns the same map instance within one nodes commit", () => {
+    const nodes = api().nodes;
+    expect(cachedFolderSizes(nodes)).toBe(cachedFolderSizes(nodes));
+  });
+
+  it("recomputes after a commit replaces the node map", () => {
+    const before = cachedFolderSizes(api().nodes);
+    api().createFile(HOME_ID, "new.txt", "hello");
+    expect(cachedFolderSizes(api().nodes)).not.toBe(before);
+  });
+
+  it("agrees with what the size sort uses for a folder", () => {
+    const folder = api().createFolder(HOME_ID, "Rollup");
+    api().createFile(folder.id, "a.txt", "x".repeat(42));
+    expect(cachedFolderSizes(api().nodes).get(folder.id)).toBe(42);
+  });
+});
+
+describe("setIcon (custom node icons)", () => {
+  it("sets a glyph and a tint together", () => {
+    api().setIcon("note", "star", "blue");
+    expect(get("note").iconGlyph).toBe("star");
+    expect(get("note").iconTint).toBe("blue");
+  });
+
+  it("allows a glyph with no tint, and a tint with no glyph", () => {
+    api().setIcon("note", "rocket", undefined);
+    expect(get("note").iconGlyph).toBe("rocket");
+    expect(get("note").iconTint).toBeUndefined();
+
+    api().setIcon("note", undefined, "green");
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBe("green");
+  });
+
+  it("clears both when given undefined twice — the picker's Reset", () => {
+    api().setIcon("note", "star", "blue");
+    api().setIcon("note", undefined, undefined);
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBeUndefined();
+  });
+
+  it("rejects the whole call on an unknown glyph, rather than applying half of it", () => {
+    api().setIcon("note", "spaceship", "blue");
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBeUndefined();
+  });
+
+  it("rejects the whole call on an unknown tint", () => {
+    api().setIcon("note", "star", "chartreuse");
+    expect(get("note").iconGlyph).toBeUndefined();
+    expect(get("note").iconTint).toBeUndefined();
+  });
+
+  it("does not bump modifiedAt — an icon is metadata, not a content change", () => {
+    const before = get("note").modifiedAt;
+    api().setIcon("note", "star", "blue");
+    expect(get("note").modifiedAt).toBe(before);
+  });
+
+  it("no-ops on a missing node", () => {
+    expect(() => api().setIcon("does-not-exist", "star", "blue")).not.toThrow();
   });
 });
 

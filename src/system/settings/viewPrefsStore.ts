@@ -10,6 +10,15 @@ interface ViewPrefsStore {
   /** Sort choice per folder id; absent folders fall back to DEFAULT_SORT. */
   sortByFolder: Record<string, SortSpec>;
   setSort: (folderId: string, sort: SortSpec) => void;
+  /**
+   * View mode per folder id (icons/list/details), absent folders falling back
+   * to {@link DEFAULT_VIEW_MODE}. Per folder rather than global, and persisted,
+   * because a folder of images wants icons while a folder of documents wants
+   * details — and re-choosing on every visit is the papercut. Values are kept
+   * as plain strings so this store doesn't depend on the Files app's types.
+   */
+  viewByFolder: Record<string, string>;
+  setViewMode: (folderId: string, mode: string) => void;
   /** U14: user-pinned favourite node ids, most-recently-pinned last (sidebar renders them in this order). */
   favouriteIds: string[];
   toggleFavourite: (id: string) => void;
@@ -33,6 +42,11 @@ export const useViewPrefsStore = create<ViewPrefsStore>()(
       setSort: (folderId, sort) =>
         set(state => ({
           sortByFolder: { ...state.sortByFolder, [folderId]: sort },
+        })),
+      viewByFolder: {},
+      setViewMode: (folderId, mode) =>
+        set(state => ({
+          viewByFolder: { ...state.viewByFolder, [folderId]: mode },
         })),
       favouriteIds: [],
       toggleFavourite: (id) => {
@@ -61,19 +75,28 @@ export function sortForFolder(
   return sortByFolder[folderId] ?? DEFAULT_SORT;
 }
 
+/** The view mode saved for a folder, or the default when none is saved. */
+export function viewModeForFolder(
+  viewByFolder: Record<string, string>,
+  folderId: string,
+  fallback: string,
+): string {
+  return viewByFolder[folderId] ?? fallback;
+}
+
 /**
  * `sortByFolder` with any key whose folder no longer exists dropped. Pure —
  * unit-tested without the stores. Exported for testing; `pruneSortByFolder`
  * below is the store-wired caller.
  */
-export function withoutStaleFolders(
-  sortByFolder: Record<string, SortSpec>,
+export function withoutStaleFolders<T>(
+  byFolder: Record<string, T>,
   liveIds: ReadonlySet<string>,
-): Record<string, SortSpec> {
-  const next: Record<string, SortSpec> = {};
-  for (const [folderId, sort] of Object.entries(sortByFolder)) {
+): Record<string, T> {
+  const next: Record<string, T> = {};
+  for (const [folderId, value] of Object.entries(byFolder)) {
     if (liveIds.has(folderId))
-      next[folderId] = sort;
+      next[folderId] = value;
   }
   return next;
 }
@@ -108,13 +131,16 @@ export function pushRecent(recentIds: string[], id: string, max: number): string
  * all three in one pass.
  */
 function prunePersistedRefs(liveIds: Set<string>): void {
-  const { sortByFolder, favouriteIds, recentIds } = useViewPrefsStore.getState();
+  const { sortByFolder, viewByFolder, favouriteIds, recentIds } = useViewPrefsStore.getState();
   const prunedSort = withoutStaleFolders(sortByFolder, liveIds);
+  const prunedView = withoutStaleFolders(viewByFolder, liveIds);
   const prunedFavourites = withoutStaleIds(favouriteIds, liveIds);
   const prunedRecents = withoutStaleIds(recentIds, liveIds);
   const patch: Partial<ViewPrefsStore> = {};
   if (Object.keys(prunedSort).length !== Object.keys(sortByFolder).length)
     patch.sortByFolder = prunedSort;
+  if (Object.keys(prunedView).length !== Object.keys(viewByFolder).length)
+    patch.viewByFolder = prunedView;
   if (prunedFavourites !== favouriteIds)
     patch.favouriteIds = prunedFavourites;
   if (prunedRecents !== recentIds)

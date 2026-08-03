@@ -26,6 +26,7 @@ import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@
 import { getApp } from "@/system/apps/registry";
 import { blobStore } from "@/system/fs/blobStore";
 import {
+  cachedFolderSizes,
   childrenOf,
   isSystemNode,
   pathOf,
@@ -34,20 +35,23 @@ import {
 import { NODE_LABELS } from "@/system/fs/nodeLabels";
 import { isCommittableRename } from "@/system/fs/renameCommit";
 import {
+  DESKTOP_ID,
   DOCUMENTS_ID,
+  DOWNLOADS_ID,
   HOME_ID,
   PICTURES_ID,
   TRASH_ID,
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
-import { sortForFolder, useViewPrefsStore } from "@/system/settings/viewPrefsStore";
+import { sortForFolder, useViewPrefsStore, viewModeForFolder } from "@/system/settings/viewPrefsStore";
 import { pathString, resolveFolderPath } from "./breadcrumbPath";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
-import { fileBytes, folderSizes } from "./fileMeta";
+import { fileBytes } from "./fileMeta";
 import { FilesSidebar } from "./FilesSidebar";
 import { FilesView } from "./FilesView";
 import { gridColumnCount } from "./gridLayout";
+import { IconPickerPanel } from "./IconPickerPanel";
 import { NodeInfoPanel } from "./NodeInfoPanel";
 import { isVirtualPlace, RECENTS_ID } from "./places";
 import { QuickLookOverlay } from "./QuickLookOverlay";
@@ -59,6 +63,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   name: "Name",
   date: "Date Added",
   kind: "Kind",
+  size: "Size",
 };
 
 const VIEW_MODE_ICONS: Record<ViewMode, typeof LayoutGrid> = {
@@ -66,6 +71,18 @@ const VIEW_MODE_ICONS: Record<ViewMode, typeof LayoutGrid> = {
   list: List,
   detail: Columns3,
 };
+
+const DEFAULT_VIEW_MODE: ViewMode = "grid";
+
+/**
+ * Narrow a persisted view-mode string. `viewPrefsStore` stores it as a plain
+ * `string` so it needn't depend on this app's types, which means a value
+ * written by a different build (or a hand-edited localStorage) can be anything
+ * — fall back rather than rendering an unknown mode.
+ */
+function asViewMode(value: string): ViewMode {
+  return value in VIEW_MODE_ICONS ? (value as ViewMode) : DEFAULT_VIEW_MODE;
+}
 
 /** Letters typed further apart than this start a fresh type-ahead search (B6) rather than extending the previous one. */
 const TYPE_AHEAD_RESET_MS = 800;
@@ -111,6 +128,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const deleteForever = useFsStore(s => s.deleteForever);
 
   const setLabel = useFsStore(s => s.setLabel);
+  const setIcon = useFsStore(s => s.setIcon);
 
   const sortByFolder = useViewPrefsStore(s => s.sortByFolder);
   const setSortPref = useViewPrefsStore(s => s.setSort);
@@ -130,7 +148,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
 
   const [history, setHistory] = useState<string[]>(() => [payloadFolderId(payload) ?? HOME_ID]);
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [view, setView] = useState<ViewMode>("grid");
+  // View mode is persisted per folder (like sort), not held in component
+  // state: a folder of images wants icons while a folder of documents wants
+  // details, and re-choosing on every visit was the papercut.
+  const viewByFolder = useViewPrefsStore(s => s.viewByFolder);
+  const setViewPref = useViewPrefsStore(s => s.setViewMode);
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [anchorId, setAnchorId] = useState<string | null>(null);
@@ -142,6 +164,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [infoNode, setInfoNode] = useState<FsNode | null>(null);
+  // Ids, not node snapshots: the panel edits a whole selection, and re-deriving
+  // from `nodes` each render keeps it correct if one is renamed or deleted
+  // while it's open (same reason `liveInfoNode` exists below).
+  const [iconPickerIds, setIconPickerIds] = useState<string[] | null>(null);
   // U14 Quick Look (Space key).
   const [quickLookNode, setQuickLookNode] = useState<FsNode | null>(null);
   // U14 editable breadcrumb — click-to-edit-as-text-path.
@@ -165,6 +191,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   }, []);
 
   const cwd = history[historyIndex] ?? HOME_ID;
+  const view = asViewMode(viewModeForFolder(viewByFolder, cwd, DEFAULT_VIEW_MODE));
+  const setView = useCallback(
+    (mode: ViewMode) => setViewPref(cwd, mode),
+    [cwd, setViewPref],
+  );
   const inTrash = cwd === TRASH_ID;
   // U14 "Recents": a synthetic place, not a real folder — gates the same
   // folder-only affordances (New Folder, upload, drop-to-move) `inTrash`
@@ -378,7 +409,10 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   // One linear pass over the whole tree (review-backlog #5), reused by
   // every row in FilesView's list view instead of each row recursing/
   // rescanning `nodes` for its own folder size.
-  const sizes = useMemo(() => folderSizes(nodes), [nodes]);
+  // `cachedFolderSizes`, not a bare `folderSizes` in a `useMemo`: the "size"
+  // sort inside `childrenOf` needs the same rollup, and the shared per-commit
+  // cache means the two of them cost one pass rather than two.
+  const sizes = useMemo(() => cachedFolderSizes(nodes), [nodes]);
   // U14 "Recents": not a real folder, so its listing comes straight off the
   // ring buffer (most-recent-first) instead of `childrenOf` — sort doesn't
   // apply here, recency order *is* the point of the place.
@@ -406,11 +440,22 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     () => (clipboardMode === "cut" ? new Set(clipboardIds) : new Set<string>()),
     [clipboardMode, clipboardIds],
   );
+  // Total bytes of the selection, for the status bar. Folders use the same
+  // rolled-up `sizes` map Get Info reads, so a selected folder counts its
+  // whole subtree rather than zero.
+  const selectionBytes = useMemo(
+    () => nodesForIds(nodes, [...selectedIds])
+      .reduce((sum, n) => sum + (n.type === "folder" ? (sizes.get(n.id) ?? 0) : fileBytes(n)), 0),
+    [nodes, selectedIds, sizes],
+  );
   // `infoNode` holds the snapshot captured when "Get Info" was invoked;
   // re-derive the live node from `nodes` each render so the panel reflects
   // renames/moves elsewhere, and closes itself (not rendering) if the node
   // is deleted out from under it.
   const liveInfoNode = infoNode ? (nodes[infoNode.id] ?? null) : null;
+  const iconPickerTargets = iconPickerIds
+    ? iconPickerIds.map(id => nodes[id]).filter((n): n is FsNode => Boolean(n))
+    : [];
 
   useAppCommand(windowId, (command) => {
     switch (command) {
@@ -440,6 +485,9 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
         break;
       case "files.sortKind":
         applySort("kind");
+        break;
+      case "files.sortSize":
+        applySort("size");
         break;
       case "files.sortReverse":
         toggleSortDir();
@@ -476,8 +524,65 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           setInfoNode(target);
         break;
       }
+      case "files.quickLook": {
+        const target = primaryTarget();
+        if (target)
+          setQuickLookNode(target);
+        break;
+      }
+      case "files.rename": {
+        const target = primaryTarget();
+        if (target && !isSystemNode(target.id))
+          setRenamingId(target.id);
+        break;
+      }
+      case "files.customizeIcon": {
+        const ids = selectedIds.size > 0 ? [...selectedIds] : [];
+        if (ids.length > 0)
+          setIconPickerIds(ids);
+        break;
+      }
+      case "files.duplicate":
+        duplicateSelection();
+        break;
+      case "files.trash":
+        if (selectedIds.size > 0)
+          trashManyWithUndo([...selectedIds]);
+        break;
+      case "files.goDesktop":
+        navigate(DESKTOP_ID);
+        break;
+      case "files.goDownloads":
+        navigate(DOWNLOADS_ID);
+        break;
+      case "files.goUp": {
+        // "Enclosing Folder": the virtual places have no parent to rise to.
+        const parentId = isVirtualPlace(cwd) ? null : nodes[cwd]?.parentId;
+        if (parentId)
+          navigate(parentId);
+        break;
+      }
+      case "files.back":
+        goBack();
+        break;
+      case "files.forward":
+        goForward();
+        break;
     }
   });
+
+  /**
+   * "Duplicate" — copies each selected item beside itself. Reuses the store's
+   * `duplicate` (the same deep-copy the clipboard's paste uses, so blob-backed
+   * files share bytes rather than doubling them) targeted at the item's own
+   * parent.
+   */
+  function duplicateSelection(): void {
+    for (const target of nodesForIds(nodes, [...selectedIds])) {
+      if (target.parentId)
+        duplicate(target.id, target.parentId);
+    }
+  }
 
   // Click-selection for one item (B4): plain click replaces, ⌘/⌃ toggles, ⇧
   // extends from the anchor. Also the entry point for keyboard nav (B6) —
@@ -638,7 +743,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
       // focus trap and Escape/Space handling (#6) — while either is open,
       // this handler is a complete no-op rather than letting
       // Delete/F2/arrows/type-ahead act on the hidden list.
-      if (liveInfoNode || quickLookNode)
+      if (liveInfoNode || quickLookNode || iconPickerTargets.length > 0)
         return;
       switch (e.key) {
         case " ": {
@@ -791,13 +896,20 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             run: () => targets.forEach(t => setLabel(t.id, l.id)),
           })),
         ],
+      },
+      // The glyph/tint picker is a panel rather than a second submenu — see
+      // IconPickerPanel's own note on why 28 glyphs can't be a flyout.
+      {
+        label: multi ? `Customize Icon for ${targets.length} Items…` : "Customize Icon…",
+        run: () => setIconPickerIds(targets.map(t => t.id)),
         dividerAfter: true,
       },
       ...(multi
         ? []
         : [
             { label: "Get Info", run: () => setInfoNode(node) },
-            { label: "Rename", run: () => setRenamingId(node.id), disabled: system, dividerAfter: true },
+            { label: "Rename", run: () => setRenamingId(node.id), disabled: system },
+            { label: "Duplicate", run: duplicateSelection, disabled: system, dividerAfter: true },
           ]),
       {
         label: multi ? `Move ${targets.length} Items to Trash` : "Move to Trash",
@@ -863,6 +975,14 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
             ? pathOf(nodes, liveInfoNode.parentId).slice(1).map(n => n.name).join(" / ")
             : ""}
           onClose={() => setInfoNode(null)}
+        />
+      )}
+      {iconPickerTargets.length > 0 && (
+        <IconPickerPanel
+          node={iconPickerTargets[0]}
+          targets={iconPickerTargets}
+          onApply={(glyph, tint) => iconPickerTargets.forEach(t => setIcon(t.id, glyph, tint))}
+          onClose={() => setIconPickerIds(null)}
         />
       )}
       {quickLookNode && nodes[quickLookNode.id] && (
@@ -1020,6 +1140,11 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
                     key={mode}
                     type="button"
                     aria-label={`View as ${mode}`}
+                    // The active mode was signalled by background alone, so
+                    // assistive tech had no way to tell which of the three was
+                    // current — the same segmented-control gap the sort
+                    // popover avoids by rendering a literal ✓.
+                    aria-pressed={view === mode}
                     className={`grid h-[18px] w-6 place-items-center rounded-[5px] ${
                       view === mode
                         ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,.12)]"
@@ -1079,6 +1204,17 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
           {visible.length}
           {" "}
           {visible.length === 1 ? "item" : "items"}
+          {selectedIds.size > 0 && (
+            <span className="ml-2 opacity-70">
+              ·
+              {" "}
+              {selectedIds.size}
+              {" "}
+              selected,
+              {" "}
+              {formatBytes(selectionBytes)}
+            </span>
+          )}
           {inTrash && trashCount > 0 && (
             <span className="ml-2 opacity-70">
               · Items here are deleted forever when you empty the Trash

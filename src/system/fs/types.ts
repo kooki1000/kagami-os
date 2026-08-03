@@ -39,6 +39,18 @@ export interface FsNode {
    * per field).
    */
   label?: string;
+  /**
+   * A user-chosen icon glyph id (one of `nodeIcons.ts`'s `NODE_ICONS`),
+   * overriding the mime-derived glyph `fileMeta.ts` would otherwise pick.
+   * Additive/optional for the same reason as {@link label} above.
+   */
+  iconGlyph?: string;
+  /**
+   * A user-chosen icon tint (one of `nodeLabels.ts`'s swatch ids — the two
+   * share a palette so they can't drift apart). Independent of `iconGlyph`:
+   * either can be set without the other.
+   */
+  iconTint?: string;
 }
 
 /**

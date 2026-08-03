@@ -1,7 +1,17 @@
 import type { FsNode } from "@/system/fs/types";
 import { describe, expect, it } from "vitest";
 import { indexNodes } from "@/system/fs/fsStore";
-import { folderSizes, isAudioNode, isVideoNode, nodeKind, nodeSize } from "./fileMeta";
+import { nodeIconById } from "@/system/fs/nodeIcons";
+import { nodeLabelById } from "@/system/fs/nodeLabels";
+import {
+  DESKTOP_ID,
+  DOCUMENTS_ID,
+  DOWNLOADS_ID,
+  HOME_ID,
+  PICTURES_ID,
+  TRASH_ID,
+} from "@/system/fs/types";
+import { folderSizes, isAudioNode, isVideoNode, nodeIcon, nodeIconColor, nodeKind, nodeSize } from "./fileMeta";
 
 function node(partial: Partial<FsNode> & Pick<FsNode, "id" | "parentId" | "name" | "type">): FsNode {
   return { createdAt: 0, modifiedAt: 0, ...partial };
@@ -117,5 +127,48 @@ describe("folderSizes (review-backlog #5)", () => {
 
   it("returns an empty map for an empty node set", () => {
     expect(folderSizes({}).size).toBe(0);
+  });
+});
+
+describe("nodeIcon / nodeIconColor (custom node icons)", () => {
+  const plainFolder = node({ id: "f", parentId: HOME_ID, name: "Box", type: "folder" });
+  const textFile = node({ id: "t", parentId: HOME_ID, name: "a.md", type: "file", mimeType: "text/markdown" });
+
+  it("a user-set glyph wins over the mime-derived default", () => {
+    const custom = { ...textFile, iconGlyph: "rocket" };
+    expect(nodeIcon(custom)).toBe(nodeIconById("rocket"));
+    expect(nodeIcon(custom)).not.toBe(nodeIcon(textFile));
+  });
+
+  it("a user-set glyph wins over a system folder's own default", () => {
+    const home = node({ id: HOME_ID, parentId: null, name: "Home", type: "folder" });
+    expect(nodeIcon({ ...home, iconGlyph: "star" })).toBe(nodeIconById("star"));
+  });
+
+  it("falls back to the mime default when the glyph id is no longer shipped", () => {
+    // A node persisted by an older/newer build naming a glyph this one doesn't
+    // have must still render something.
+    expect(nodeIcon({ ...textFile, iconGlyph: "spaceship" })).toBe(nodeIcon(textFile));
+    expect(nodeIcon({ ...plainFolder, iconGlyph: "" })).toBe(nodeIcon(plainFolder));
+  });
+
+  it("gives each seeded system folder its own glyph, not one shared Folder", () => {
+    const ids = [HOME_ID, DESKTOP_ID, DOCUMENTS_ID, DOWNLOADS_ID, PICTURES_ID, TRASH_ID];
+    const glyphs = ids.map(id => nodeIcon(node({ id, parentId: null, name: id, type: "folder" })));
+    expect(new Set(glyphs).size).toBe(ids.length);
+    // ...and an ordinary folder still gets the generic one.
+    expect(glyphs).not.toContain(nodeIcon(plainFolder));
+  });
+
+  it("resolves a tint to its swatch hex, and nothing when unset or unknown", () => {
+    expect(nodeIconColor({ ...plainFolder, iconTint: "blue" })).toBe(nodeLabelById("blue")?.hex);
+    expect(nodeIconColor(plainFolder)).toBeUndefined();
+    expect(nodeIconColor({ ...plainFolder, iconTint: "chartreuse" })).toBeUndefined();
+  });
+
+  it("keeps glyph and tint independent", () => {
+    const tintOnly = { ...plainFolder, iconTint: "red" };
+    expect(nodeIcon(tintOnly)).toBe(nodeIcon(plainFolder));
+    expect(nodeIconColor(tintOnly)).toBeDefined();
   });
 });
