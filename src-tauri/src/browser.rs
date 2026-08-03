@@ -23,7 +23,7 @@
 //! let the resulting `on_page_load` report the outcome.
 
 use serde::{Deserialize, Serialize};
-use tauri::webview::PageLoadEvent;
+use tauri::webview::{DownloadEvent, PageLoadEvent};
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewBuilder, WebviewUrl,
 };
@@ -32,6 +32,8 @@ const HOST_WINDOW: &str = "main";
 const NAV_CHANGED_EVENT: &str = "browser://nav-changed";
 const LOAD_STATE_EVENT: &str = "browser://load-state";
 const FIND_RESULT_EVENT: &str = "browser://find-result";
+const DOWNLOAD_STARTED_EVENT: &str = "browser://download-started";
+const DOWNLOAD_FINISHED_EVENT: &str = "browser://download-finished";
 
 /// Content-area bounds in logical (CSS) pixels — mirrors `BrowserBounds` in `browserBridge.ts`.
 #[derive(Deserialize)]
@@ -81,6 +83,51 @@ struct LoadState {
 struct FindResult {
     id: String,
     found: bool,
+}
+
+/// Payloads for the two download events. The OS webview writes downloads to a
+/// real filesystem path; Kagami's "disk" is the VFS, so a download is staged
+/// to a temp directory and the frontend moves the bytes across with
+/// [`browser_take_download`]. See the staging notes on [`download_staging_dir`].
+#[derive(Clone, Serialize)]
+struct DownloadStarted {
+    id: String,
+    filename: String,
+}
+
+#[derive(Clone, Serialize)]
+struct DownloadFinished {
+    id: String,
+    filename: String,
+    /// Absolute staging path, handed straight back to [`browser_take_download`].
+    path: String,
+    success: bool,
+}
+
+/// Where in-flight downloads land before the frontend moves them into the VFS.
+///
+/// Each download gets its own numbered subdirectory rather than a name-mangled
+/// file: two downloads of `report.pdf` must not collide, and the original
+/// filename has to survive intact — it becomes the VFS node's name.
+fn download_staging_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("kagami-browser-downloads")
+}
+
+/// A staging path is the one thing the frontend passes back that names a real
+/// filesystem location, so it's checked against the staging root rather than
+/// read as given — `..` in an IPC argument shouldn't be able to reach the
+/// user's actual files.
+fn staged_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let root = download_staging_dir()
+        .canonicalize()
+        .map_err(|error| format!("no staging directory: {error}"))?;
+    let candidate = std::path::Path::new(path)
+        .canonicalize()
+        .map_err(|error| format!("no such download: {error}"))?;
+    if !candidate.starts_with(&root) {
+        return Err("path is outside the download staging directory".into());
+    }
+    Ok(candidate)
 }
 
 /// Full-size content view: the native title bar overlaps the web content, so
@@ -193,6 +240,75 @@ fn emit_nav_changed(webview: &Webview, id: String, url: String) {
     });
 }
 
+/// Redirects a download into its own staging directory and reports both edges
+/// to the frontend, which is what turns it into a VFS file.
+///
+/// Returning `true` from `Requested` lets the download proceed. Nothing here
+/// decides *whether* to download — the click already did — so there's no
+/// prompt to gate it on.
+fn on_download(webview: &Webview, id: &str, event: DownloadEvent<'_>) -> bool {
+    match event {
+        DownloadEvent::Requested { destination, .. } => {
+            let filename = destination
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "download".to_string());
+            // Nanoseconds, not a counter: this closure is shared across every
+            // download in one webview and holds no state of its own.
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let dir = download_staging_dir().join(unique.to_string());
+            if std::fs::create_dir_all(&dir).is_err() {
+                // Leaving `destination` alone lets the OS put it wherever it
+                // would have; failing the download outright would be worse.
+                return true;
+            }
+            *destination = dir.join(&filename);
+            let _ = webview.app_handle().emit(
+                DOWNLOAD_STARTED_EVENT,
+                DownloadStarted { id: id.to_string(), filename },
+            );
+            true
+        }
+        DownloadEvent::Finished { path, success, .. } => {
+            let path = path.unwrap_or_default();
+            let filename = path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "download".to_string());
+            let _ = webview.app_handle().emit(
+                DOWNLOAD_FINISHED_EVENT,
+                DownloadFinished {
+                    id: id.to_string(),
+                    filename,
+                    path: path.to_string_lossy().to_string(),
+                    success,
+                },
+            );
+            true
+        }
+        _ => true,
+    }
+}
+
+/// Hands a finished download's bytes to the frontend and removes the staged
+/// copy — a move into the VFS, not a copy, so nothing is left behind outside
+/// the "disk" the user can actually see.
+#[tauri::command]
+pub fn browser_take_download(path: String) -> Result<tauri::ipc::Response, String> {
+    let staged = staged_path(&path)?;
+    let bytes = std::fs::read(&staged).map_err(|error| error.to_string())?;
+    // Best-effort: the bytes are already in hand, and failing the whole
+    // download because a temp file outlived it would be the wrong trade.
+    let _ = std::fs::remove_file(&staged);
+    if let Some(dir) = staged.parent() {
+        let _ = std::fs::remove_dir(dir);
+    }
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 pub async fn browser_open(
     app: AppHandle,
@@ -207,7 +323,9 @@ pub async fn browser_open(
     let nav_id = id.clone();
     let inset_y = content_inset_y(&window);
 
+    let download_id = id.clone();
     let builder = WebviewBuilder::new(webview_label(&id), WebviewUrl::External(parse_url(url)?))
+        .on_download(move |webview, event| on_download(&webview, &download_id, event))
         .on_page_load(move |webview, payload| {
             let url = payload.url().to_string();
             match payload.event() {

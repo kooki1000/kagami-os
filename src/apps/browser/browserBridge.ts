@@ -47,6 +47,12 @@ export const browserBridge = {
     queueFor(id)(() => invoke<void>("browser_find", { id, query, forward })),
   clearFind: (id: string) =>
     queueFor(id)(() => invoke<void>("browser_find_clear", { id })),
+  /**
+   * Reads a finished download's bytes and removes the staged file. Not queued
+   * per window: it names a path rather than a webview, and it must not sit
+   * behind a navigation that's still in flight.
+   */
+  takeDownload: (path: string) => invoke<ArrayBuffer>("browser_take_download", { path }),
   setBounds: (id: string, bounds: BrowserBounds) =>
     queueFor(id)(() => invoke<void>("browser_set_bounds", { id, bounds })),
   setVisible: (id: string, visible: boolean) =>
@@ -113,4 +119,25 @@ export interface BrowserFindResult {
 /** Subscribes to the outcome of each find-in-page step. */
 export function onFindResult(handler: (event: BrowserFindResult) => void): () => void {
   return subscribe("browser://find-result", handler);
+}
+
+export interface BrowserDownloadStarted {
+  id: string;
+  filename: string;
+}
+
+export interface BrowserDownloadFinished {
+  id: string;
+  filename: string;
+  /** Staging path to hand back to {@link browserBridge.takeDownload}. */
+  path: string;
+  success: boolean;
+}
+
+export function onDownloadStarted(handler: (event: BrowserDownloadStarted) => void): () => void {
+  return subscribe("browser://download-started", handler);
+}
+
+export function onDownloadFinished(handler: (event: BrowserDownloadFinished) => void): () => void {
+  return subscribe("browser://download-finished", handler);
 }

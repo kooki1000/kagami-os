@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BrowserBounds } from "./browserBridge";
+import type { BrowserBounds, BrowserDownloadFinished } from "./browserBridge";
 import type { BrowserPayload } from "./browserPayload";
 import type { Bookmark } from "./browserPrefsStore";
 import type { ConnectionSecurity } from "./browserUrl";
@@ -9,16 +9,21 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Globe, House, Lock, 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { useAppCommand } from "@/system/appCommands";
+import { launchApp } from "@/system/apps/launch";
+import { useFsStore } from "@/system/fs/fsStore";
+import { DOWNLOADS_ID } from "@/system/fs/types";
+import { notify } from "@/system/notifications/notificationStore";
 import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { isTauri } from "@/system/platform";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
-import { browserBridge, onFindResult, onLoadState, onNavChanged } from "./browserBridge";
+import { browserBridge, onDownloadFinished, onDownloadStarted, onFindResult, onLoadState, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
 import { payloadUrl } from "./browserPayload";
 import { isBookmarked, useBrowserPrefsStore, zoomForHost } from "./browserPrefsStore";
 import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
 import { DEFAULT_ZOOM, formatZoom, stepZoom } from "./browserZoom";
+import { saveDownload } from "./downloads";
 import { searchEngineById } from "./searchEngines";
 
 // Chrome-strip heights. Kept as constants (applied via inline style below) so
@@ -60,6 +65,43 @@ function webviewBounds(rect: WindowRect, chrome: number): BrowserBounds {
     width: rect.width,
     height: rect.height - chrome,
   };
+}
+
+/**
+ * Moves a finished download into the VFS and reports it.
+ *
+ * Module-level rather than a component closure: it depends on nothing a
+ * particular window holds, and keeping it out of the effect avoids a
+ * subscription that tears down and re-subscribes on every render.
+ */
+async function receiveDownload(event: BrowserDownloadFinished): Promise<void> {
+  function failed(): void {
+    notify({ title: "Download failed", body: event.filename, appId: "browser", tone: "danger" });
+  }
+
+  if (!event.success || !event.path) {
+    failed();
+    return;
+  }
+  try {
+    const node = await saveDownload(event, DOWNLOADS_ID, {
+      takeDownload: browserBridge.takeDownload,
+      createBlobFile: useFsStore.getState().createBlobFile,
+    });
+    notify({
+      title: "Download saved",
+      body: `${node.name} in Downloads`,
+      appId: "browser",
+      action: {
+        label: "Show in Files",
+        run: () => launchApp("files", { payload: { folderId: DOWNLOADS_ID } }),
+      },
+    });
+  }
+  catch (error) {
+    console.error("[kagami-browser] saving download failed:", error);
+    failed();
+  }
 }
 
 /** The desktop-only chrome + native child webview (N4). */
@@ -156,6 +198,21 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
       if (id === windowId)
         setFind(current => (current ? { ...current, missed: !found } : current));
     });
+  }, [windowId]);
+
+  useEffect(() => {
+    const unsubscribeStarted = onDownloadStarted(({ id, filename }) => {
+      if (id === windowId)
+        notify({ title: "Downloading", body: filename, appId: "browser" });
+    });
+    const unsubscribeFinished = onDownloadFinished((event) => {
+      if (event.id === windowId)
+        void receiveDownload(event);
+    });
+    return () => {
+      unsubscribeStarted();
+      unsubscribeFinished();
+    };
   }, [windowId]);
 
   // One child webview per Browser window instance, created with its
