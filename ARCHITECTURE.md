@@ -584,8 +584,13 @@ stay lean and stable:
 N-1 shipped — Tauri v2 shell (`src-tauri/`), `isTauri()` platform detection,
 and the native `StorageAdapter`/`BlobStore` pair under `$APPDATA/disk`,
 described under `StorageAdapter` above. `pnpm dev`/`build` (the website) are
-unaffected. Remaining: N-2 (built-in Browser) and N-3 (signed/notarized
-distribution, desktop e2e via `tauri-driver`).
+unaffected. N-2 shipped — the built-in Browser (`src/apps/browser/`,
+`src-tauri/src/browser.rs`): one native child webview per window, layered over
+the content region and driven by `browser_*` commands over a per-window queue,
+with navigation, load state, find results and downloads reported back as
+`browser://*` events. Its depth pass (U17) and the limits the layering imposes
+are in `docs/browser-depth.md`. Remaining: N-3 (signed/notarized distribution,
+desktop e2e via `tauri-driver`).
 
 **Next:** `ROADMAP.md` steps 13–17 — realigned docs, a stability pass over
 the review backlog, app depth and customization (area U), the capability
