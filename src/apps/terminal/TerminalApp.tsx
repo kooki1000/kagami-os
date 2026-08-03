@@ -14,8 +14,55 @@ import { DEFAULT_FONT_SIZE, findHistoryMatch, useTerminalStore } from "./termina
 
 const USER = "kagami";
 
+/**
+ * How many lines of scrollback to keep. `find /` on a deep tree emits one
+ * line per node, and every one of them is a live DOM element — the cap is
+ * what stops that from growing without bound. Virtualizing instead would
+ * bound it too, but it would also take the off-screen lines out of the DOM,
+ * and selecting across the scrollback to copy it is worth more here than
+ * the lines beyond this limit.
+ */
+const SCROLLBACK_LIMIT = 5000;
+
 interface HistoryEntry extends ShellLine {
   id: number;
+  /** Set on an echoed command line: the prompt it was typed at, rendered as segments. */
+  prompt?: string;
+}
+
+/** The prompt, in the look's duotone: path on the accent, the marker dimmed. */
+function Prompt({ path }: { path: string }) {
+  return (
+    <>
+      <span className="text-accent">{path}</span>
+      <span className="text-ink-2">{" $ "}</span>
+    </>
+  );
+}
+
+/**
+ * Colour for one line. `kind` is what the engine did (a command, an error);
+ * `tone` is what the text *is* (a folder, a heading) — so a listing's
+ * folders read as folders without the engine knowing anything about the
+ * palette.
+ */
+function lineClass(entry: HistoryEntry): string {
+  if (entry.kind === "error")
+    return "text-accent-2";
+  if (entry.kind === "system")
+    return "text-accent";
+  if (entry.kind === "input")
+    return "text-ink";
+  switch (entry.tone) {
+    case "dir":
+      return "text-accent";
+    case "heading":
+      return "font-semibold text-ink";
+    case "muted":
+      return "text-ink-2 opacity-70";
+    default:
+      return "text-ink-2";
+  }
 }
 
 /** Short "~/Documents" style prompt path for the current directory. */
@@ -53,6 +100,10 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
    * typing and the candidates are stale.
    */
   const [cycle, setCycle] = useState<{ head: string; matches: string[]; active: number; line: string } | null>(null);
+
+  /** Caret offset and the input's horizontal scroll — together, where to draw the block cursor. */
+  const [caret, setCaret] = useState(0);
+  const [inputScroll, setInputScroll] = useState(0);
 
   const history = useTerminalStore(s => s.history);
   const fontSize = useTerminalStore(s => s.fontSize);
@@ -93,13 +144,25 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     [ready, nodes, safeCwd],
   );
 
+  /**
+   * Write the input line programmatically (history recall, completion, a
+   * readline edit) and say where the caret lands — the DOM caret is applied
+   * after the re-render by the effect above, since React resets it to the
+   * end of a controlled input otherwise.
+   */
+  function setLine(value: string, at: number = value.length): void {
+    setInput(value);
+    setCaret(at);
+    pendingCaretRef.current = at;
+  }
+
   function appendLines(lines: ShellLine[]): void {
     if (lines.length === 0)
       return;
     setEntries(prev => [
       ...prev,
       ...lines.map(l => ({ ...l, id: ++lineCounter })),
-    ]);
+    ].slice(-SCROLLBACK_LIMIT));
   }
 
   function submit(raw: string): void {
@@ -134,8 +197,8 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     // Echo the entered command with its prompt.
     setEntries(prev => [
       ...prev,
-      { id: ++lineCounter, kind: "input", text: `${prompt} $ ${raw}` },
-    ]);
+      { id: ++lineCounter, kind: "input" as const, text: raw, prompt },
+    ].slice(-SCROLLBACK_LIMIT));
 
     terminalState.addHistory(raw);
     setHistoryPos(null);
@@ -167,9 +230,9 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
   function abortLine(): void {
     setEntries(prev => [
       ...prev,
-      { id: ++lineCounter, kind: "input", text: `${prompt} $ ${input}^C` },
-    ]);
-    setInput("");
+      { id: ++lineCounter, kind: "input" as const, text: `${input}^C`, prompt },
+    ].slice(-SCROLLBACK_LIMIT));
+    setLine("");
     setHistoryPos(null);
     setCycle(null);
   }
@@ -179,7 +242,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     setIsSearching(false);
     setSearchQuery("");
     setSearchMatchIndex(null);
-    setInput("");
+    setLine("");
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
@@ -242,10 +305,10 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
           // ⌃A/⌃E only move the caret. React won't re-render for an
           // unchanged value, so the effect below never fires — move it now.
           e.currentTarget.setSelectionRange(edited.caret, edited.caret);
+          setCaret(edited.caret);
         }
         else {
-          pendingCaretRef.current = edited.caret;
-          setInput(edited.value);
+          setLine(edited.value, edited.caret);
         }
         return;
       }
@@ -253,7 +316,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
 
     if (e.key === "Enter") {
       submit(input);
-      setInput("");
+      setLine("");
     }
     else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -261,7 +324,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
         return;
       const next = historyPos === null ? history.length - 1 : Math.max(0, historyPos - 1);
       setHistoryPos(next);
-      setInput(history[next]);
+      setLine(history[next]);
     }
     else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -270,11 +333,11 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       const next = historyPos + 1;
       if (next >= history.length) {
         setHistoryPos(null);
-        setInput("");
+        setLine("");
       }
       else {
         setHistoryPos(next);
-        setInput(history[next]);
+        setLine(history[next]);
       }
     }
     else if (e.key === "Tab") {
@@ -300,7 +363,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
       const next = (cycle.active + direction + cycle.matches.length) % cycle.matches.length;
       const line = cycle.head + quoteToken(cycle.matches[next]);
       setCycle({ ...cycle, active: next, line });
-      setInput(line);
+      setLine(line);
       return;
     }
 
@@ -314,7 +377,7 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
 
     if (completion.kind === "replace") {
       const line = target.head + quoteToken(completion.text);
-      setInput(line);
+      setLine(line);
       // A single match is settled; a shared prefix leaves the rest to cycle
       // through, so the strip stays up with nothing selected yet.
       setCycle(matches.length > 1 ? { head: target.head, matches, active: -1, line } : null);
@@ -332,16 +395,10 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     }
     setCycle(null);
     setInput(value);
+    setCaret(e.target.selectionStart ?? value.length);
   }
 
   const searchMatch = searchMatchIndex !== null ? history[searchMatchIndex] : null;
-
-  const lineColor: Record<ShellLine["kind"], string> = {
-    input: "text-ink",
-    output: "text-ink-2",
-    error: "text-accent-2",
-    system: "text-accent",
-  };
 
   return (
     <div
@@ -351,7 +408,8 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
     >
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-[calc(14px*var(--ui-scale))] py-3">
         {entries.map(entry => (
-          <div key={entry.id} className={`wrap-break-word whitespace-pre-wrap ${lineColor[entry.kind]}`}>
+          <div key={entry.id} className={`wrap-break-word whitespace-pre-wrap ${lineClass(entry)}`}>
+            {entry.prompt !== undefined && <Prompt path={entry.prompt} />}
             {entry.text}
           </div>
         ))}
@@ -368,19 +426,35 @@ export default function TerminalApp({ windowId, focused }: AppWindowProps) {
           </div>
         )}
         <div className="flex items-center gap-[calc(6px*var(--ui-scale))]">
-          <span className="flex-none whitespace-pre text-accent">
-            {isSearching ? `(reverse-i-search)\`${searchQuery}':` : `${prompt} $`}
+          <span className="flex-none whitespace-pre">
+            {isSearching
+              ? <span className="text-accent-2">{`(reverse-i-search)\`${searchQuery}':`}</span>
+              : <Prompt path={prompt} />}
           </span>
-          <input
-            ref={inputRef}
-            value={isSearching ? searchQuery : input}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent text-ink caret-accent outline-none"
-            onChange={onInputChange}
-            onKeyDown={onKeyDown}
-          />
+          <span className="relative min-w-0 flex-1">
+            <input
+              ref={inputRef}
+              value={isSearching ? searchQuery : input}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              className="w-full bg-transparent text-ink caret-transparent outline-none"
+              onChange={onInputChange}
+              onKeyDown={onKeyDown}
+              onSelect={e => setCaret(e.currentTarget.selectionStart ?? 0)}
+              onScroll={e => setInputScroll(e.currentTarget.scrollLeft)}
+            />
+            {focused && !isSearching && (
+              // A block cursor, positioned in `ch` units — exact because the
+              // input is monospace, and offset by the input's own scroll so
+              // it stays put on a line long enough to scroll.
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 w-[1ch] animate-cursor-blink bg-accent/55"
+                style={{ left: `calc(${caret}ch - ${inputScroll}px)` }}
+              />
+            )}
+          </span>
           {isSearching && (
             <span className="min-w-0 flex-none truncate whitespace-pre text-ink-2">
               {searchMatch ?? (searchQuery ? "(no match)" : "")}

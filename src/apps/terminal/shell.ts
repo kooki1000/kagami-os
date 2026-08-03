@@ -21,6 +21,13 @@ import { HOME_ID, ROOT_ID } from "@/system/fs/types";
 export interface ShellLine {
   kind: "input" | "output" | "error" | "system";
   text: string;
+  /**
+   * What the line *is*, for the REPL to colour by — a folder in a listing,
+   * a heading, an aside. The engine names the meaning and the app owns the
+   * palette, so nothing in here has to know a token from a hex value. Plain
+   * output leaves it unset.
+   */
+  tone?: "dir" | "heading" | "muted";
 }
 
 export interface ShellResult {
@@ -217,8 +224,8 @@ function splitPath(path: string): { dir: string; leaf: string } {
     : { dir: path.slice(0, idx), leaf: path.slice(idx + 1) };
 }
 
-function line(kind: ShellLine["kind"], text: string): ShellLine {
-  return { kind, text };
+function line(kind: ShellLine["kind"], text: string, tone?: ShellLine["tone"]): ShellLine {
+  return tone ? { kind, text, tone } : { kind, text };
 }
 
 function err(text: string): ShellResult {
@@ -525,13 +532,18 @@ function treeLines(
   nodes: Record<string, FsNode>,
   id: string,
   prefix: string,
-): string[] {
+): ShellLine[] {
   const kids = childrenOf(nodes, id);
-  const lines: string[] = [];
+  const lines: ShellLine[] = [];
   kids.forEach((kid, i) => {
     const last = i === kids.length - 1;
-    lines.push(`${prefix}${last ? "└─ " : "├─ "}${kid.name}${kid.type === "folder" ? "/" : ""}`);
-    if (kid.type === "folder")
+    const isFolder = kid.type === "folder";
+    lines.push(line(
+      "output",
+      `${prefix}${last ? "└─ " : "├─ "}${kid.name}${isFolder ? "/" : ""}`,
+      isFolder ? "dir" : undefined,
+    ));
+    if (isFolder)
       lines.push(...treeLines(nodes, kid.id, `${prefix}${last ? "   " : "│  "}`));
   });
   return lines;
@@ -582,7 +594,15 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
 
   switch (command) {
     case "help":
-      return out(HELP_TEXT);
+      // The command table is plain output; the title and the closing notes
+      // (everything not indented into the table) read as chrome around it.
+      return {
+        lines: HELP_TEXT.split("\n").map((text, i) => {
+          if (i === 0)
+            return line("output", text, "heading");
+          return line("output", text, text.startsWith("  ") ? undefined : "muted");
+        }),
+      };
 
     case "clear":
       return { lines: [], clear: true };
@@ -620,13 +640,14 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       return {
         lines: visible.map((n) => {
           const name = n.type === "folder" ? `${n.name}/` : n.name;
+          const tone = n.type === "folder" ? "dir" as const : undefined;
           if (!flags.l)
-            return line("output", name);
+            return line("output", name, tone);
           // Folders print "-" rather than a recursive byte total: that would
           // cost a full-tree pass on every listing, and `du` already exists
           // for when the total is what you actually want.
           const size = n.type === "folder" ? "-" : formatBytes(fileBytes(n));
-          return line("output", `${n.type === "folder" ? "d" : "-"} ${size.padStart(9)}  ${formatModified(n.modifiedAt).padEnd(12)}${name}`);
+          return line("output", `${n.type === "folder" ? "d" : "-"} ${size.padStart(9)}  ${formatModified(n.modifiedAt).padEnd(12)}${name}`, tone);
         }),
       };
     }
@@ -868,10 +889,8 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       return { lines: [line("output", `moved '${nodes[targetId].name}' to Trash`)] };
     }
 
-    case "tree": {
-      const lines = treeLines(nodes, cwd, "");
-      return out([".", ...lines].join("\n"));
-    }
+    case "tree":
+      return { lines: [line("output", ".", "dir"), ...treeLines(nodes, cwd, "")] };
 
     case "find": {
       // `find [path] [-name <pattern>]` — path is optional (defaults to
