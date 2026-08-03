@@ -431,6 +431,78 @@ describe("alias", () => {
   });
 });
 
+describe("command flags", () => {
+  it("ls -l prints a type marker, a size and a date per entry", () => {
+    const lines = text("ls -l Documents", HOME_ID).split("\n");
+    expect(lines[0]).toMatch(/^d\s+-\s+\S/);
+    expect(lines[0]).toContain("Reports/");
+    expect(lines.find(l => l.includes("note.md"))).toMatch(/^-\s+2 bytes/);
+  });
+
+  it("ls hides dot-files unless -a is given", () => {
+    run("touch .hidden", DOCUMENTS_ID);
+    expect(text("ls", DOCUMENTS_ID)).not.toContain(".hidden");
+    expect(text("ls -a", DOCUMENTS_ID)).toContain(".hidden");
+  });
+
+  it("mkdir -p creates every missing parent", () => {
+    run("mkdir -p a/b/c", DOCUMENTS_ID);
+    const nodes = useFsStore.getState().nodes;
+    expect(resolvePath(nodes, DOCUMENTS_ID, "a/b/c")).toBeTruthy();
+  });
+
+  it("mkdir -p is silent when the directory already exists", () => {
+    expect(run("mkdir -p Reports", DOCUMENTS_ID).lines).toHaveLength(0);
+    expect(nodesByName("Reports 2")).toBeUndefined();
+  });
+
+  it("mkdir -p refuses to descend through a file", () => {
+    expect(run("mkdir -p note.md/sub", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("mkdir without -p still requires the parent to exist", () => {
+    expect(run("mkdir a/b", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("rm refuses a folder without -r, and accepts it with", () => {
+    expect(run("rm Reports", DOCUMENTS_ID).lines[0].text).toContain("is a directory");
+    expect(run("rm -r Reports", DOCUMENTS_ID).lines[0].text).toContain("moved 'Reports' to Trash");
+  });
+
+  it("rm still trashes a plain file without -r", () => {
+    expect(run("rm note.md", DOCUMENTS_ID).lines[0].text).toContain("moved 'note.md' to Trash");
+  });
+
+  it("grep -E treats the pattern as a regular expression", () => {
+    expect(text("grep -E ^r poem.txt", DOCUMENTS_ID)).toBe("roses");
+    expect(text("grep -E -i ^r poem.txt", DOCUMENTS_ID).split("\n")).toEqual(["roses", "ROSES again"]);
+  });
+
+  it("grep -E reports an invalid pattern instead of throwing", () => {
+    expect(() => run("grep -E \"[\" poem.txt", DOCUMENTS_ID)).not.toThrow();
+    expect(run("grep -E \"[\" poem.txt", DOCUMENTS_ID).lines[0]).toMatchObject({ kind: "error" });
+  });
+
+  it("grep -r searches a whole subtree and prefixes each hit with its path", () => {
+    expect(text("grep -r roses .", DOCUMENTS_ID)).toBe("./poem.txt:roses");
+  });
+
+  it("grep -r defaults to the current directory", () => {
+    expect(text("grep -r hi", DOCUMENTS_ID)).toBe("./note.md:hi");
+  });
+
+  it("grep reports status 1 when nothing matches, without printing an error", () => {
+    const result = run("grep nothing poem.txt", DOCUMENTS_ID);
+    expect(result.lines).toHaveLength(0);
+    expect(statusOf(result)).toBe(1);
+    expect(text("grep nothing poem.txt || echo none", DOCUMENTS_ID)).toBe("none");
+  });
+
+  it("a failing grep still lets the rest of its pipeline run", () => {
+    expect(text("cat poem.txt | grep nothing | wc -l", DOCUMENTS_ID)).toBe("0");
+  });
+});
+
 describe("text builtins", () => {
   it("wc counts lines, words and characters, and names the file", () => {
     expect(text("wc poem.txt", DOCUMENTS_ID)).toBe("4 7 37 poem.txt");

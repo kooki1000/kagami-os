@@ -1,5 +1,5 @@
 import type { FsNode } from "@/system/fs/types";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatModified } from "@/lib/format";
 import {
   cachedFolderSizes,
   childrenOf,
@@ -118,20 +118,21 @@ const COMMAND_NAMES = [
 
 const HELP_TEXT = [
   "Kagami Shell — available commands:",
-  "  ls [path]           list directory contents",
+  "  ls [-l] [-a] [path]  list directory contents (long form, including dot-files)",
   "  cd [path]           change directory (cd .. , cd ~ , cd /)",
   "  pwd                 print working directory",
   "  cat <file>          print a file's contents",
-  "  mkdir <path>        create a directory (parent dirs must exist)",
+  "  mkdir [-p] <path>   create a directory (-p creates missing parents too)",
   "  touch <path>        create an empty file (parent dirs must exist)",
   "  echo <text>         print text (> file to write, >> to append)",
   "  cp <src> <dest>     copy a file or folder",
   "  mv <src> <dest>     move or rename a file or folder",
   "  head [-n N] <file>  print the first N lines (default 10)",
   "  tail [-n N] <file>  print the last N lines (default 10)",
-  "  grep [-i] <pat> <file>  print lines matching a substring",
+  "  grep [-i] [-E] [-r] <pat> <file>  print matching lines (ignoring case,",
+  "                      as a regular expression, recursively through a folder)",
   "  open <path>         open a file in its associated app",
-  "  rm <name>           move an item to the Trash",
+  "  rm [-r] <name>      move an item to the Trash (-r for a folder)",
   "  tree                show the tree below the current directory",
   "  find [path] [-name <pattern>]  list everything under path, optionally",
   "                      filtered by a *?-glob name pattern (default path: .)",
@@ -251,6 +252,52 @@ function resolveCreateParent(
   if (parentId === null)
     return { error: `${path}: no such directory` };
   return { parentId, leaf };
+}
+
+/**
+ * `mkdir -p`: create every missing segment of `path`, and succeed silently
+ * when it already exists. Walks from the deepest existing prefix rather than
+ * re-resolving, because `ctx.nodes` is a snapshot taken before the command
+ * ran — a folder created by an earlier segment of this same loop isn't in
+ * it, so each new segment's id has to come from `createFolder`'s return
+ * value instead of a lookup.
+ */
+function makeDirs(path: string, ctx: ShellContext): ShellResult {
+  const { nodes, cwd } = ctx;
+  let currentId: string;
+  let rest: string;
+  if (path === "~" || path.startsWith("~/")) {
+    currentId = HOME_ID;
+    rest = path.slice(1);
+  }
+  else if (path.startsWith("/")) {
+    currentId = ROOT_ID;
+    rest = path;
+  }
+  else {
+    currentId = cwd;
+    rest = path;
+  }
+
+  for (const segment of rest.split("/")) {
+    if (segment === "" || segment === ".")
+      continue;
+    if (segment === "..") {
+      currentId = nodes[currentId]?.parentId ?? currentId;
+      continue;
+    }
+    if (!isValidNodeName(segment))
+      return err(`mkdir: ${path}: invalid name '${segment}'`);
+    const existing = childByName(nodes, currentId, segment);
+    if (existing) {
+      if (existing.type !== "folder")
+        return err(`mkdir: ${path}: '${segment}' is not a directory`);
+      currentId = existing.id;
+      continue;
+    }
+    currentId = ctx.createFolder(currentId, segment).id;
+  }
+  return { lines: [] };
 }
 
 type Destination
@@ -550,24 +597,38 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
       return out(pathString(nodes, cwd));
 
     case "ls": {
-      const targetId = args[0] ? resolvePath(nodes, cwd, args[0]) : cwd;
+      const parsed = parseFlags(args, "la");
+      if ("error" in parsed)
+        return err(`ls: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      const targetId = rest[0] ? resolvePath(nodes, cwd, rest[0]) : cwd;
       if (targetId === null)
-        return err(`ls: ${args[0]}: no such file or directory`);
+        return err(`ls: ${rest[0]}: no such file or directory`);
       const target = nodes[targetId];
       // Defensive (review-backlog #18): resolvePath can hand back `cwd`
       // unchecked (an empty `rest`), so a caller whose `cwd` no longer
       // exists in `nodes` would otherwise crash here rather than the
       // engine handling it itself.
       if (!target)
-        return err(`ls: ${args[0]}: no such file or directory`);
-      if (target.type === "file")
-        return out(target.name);
-      const kids = childrenOf(nodes, targetId);
-      if (kids.length === 0)
+        return err(`ls: ${rest[0]}: no such file or directory`);
+      const entries = target.type === "file" ? [target] : childrenOf(nodes, targetId);
+      // Dot-files are hidden without -a, the same convention Files' own
+      // "Show Hidden Items" follows.
+      const visible = flags.a ? entries : entries.filter(n => !n.name.startsWith("."));
+      if (visible.length === 0)
         return { lines: [] };
-      return out(
-        kids.map(n => (n.type === "folder" ? `${n.name}/` : n.name)).join("\n"),
-      );
+      return {
+        lines: visible.map((n) => {
+          const name = n.type === "folder" ? `${n.name}/` : n.name;
+          if (!flags.l)
+            return line("output", name);
+          // Folders print "-" rather than a recursive byte total: that would
+          // cost a full-tree pass on every listing, and `du` already exists
+          // for when the total is what you actually want.
+          const size = n.type === "folder" ? "-" : formatBytes(fileBytes(n));
+          return line("output", `${n.type === "folder" ? "d" : "-"} ${size.padStart(9)}  ${formatModified(n.modifiedAt).padEnd(12)}${name}`);
+        }),
+      };
     }
 
     case "cd": {
@@ -608,13 +669,19 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     }
 
     case "mkdir": {
-      if (!args[0])
+      const parsed = parseFlags(args, "p");
+      if ("error" in parsed)
+        return err(`mkdir: ${parsed.error}`);
+      const { flags, rest: mkdirArgs } = parsed;
+      if (!mkdirArgs[0])
         return err("mkdir: missing operand");
-      const resolved = resolveCreateParent(nodes, cwd, args[0]);
+      if (flags.p)
+        return makeDirs(mkdirArgs[0], ctx);
+      const resolved = resolveCreateParent(nodes, cwd, mkdirArgs[0]);
       if ("error" in resolved)
         return err(`mkdir: ${resolved.error}`);
       if (childByName(nodes, resolved.parentId, resolved.leaf))
-        return err(`mkdir: ${args[0]}: file exists`);
+        return err(`mkdir: ${mkdirArgs[0]}: file exists`);
       ctx.createFolder(resolved.parentId, resolved.leaf);
       return { lines: [] };
     }
@@ -697,17 +764,68 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     }
 
     case "grep": {
-      const ignoreCase = args[0] === "-i";
-      const rest = ignoreCase ? args.slice(1) : args;
+      const parsed = parseFlags(args, "irE");
+      if ("error" in parsed)
+        return err(`grep: ${parsed.error}`);
+      const { flags, rest } = parsed;
       const pattern = rest[0];
       if (!pattern)
         return err("grep: missing pattern");
+
+      let matches: (candidate: string) => boolean;
+      if (flags.E) {
+        // -E compiles the pattern as a regular expression. A bad pattern is
+        // a user error to report, not an exception to throw out of the
+        // engine, so the construction is guarded.
+        let regexp: RegExp;
+        try {
+          regexp = new RegExp(pattern, flags.i ? "i" : "");
+        }
+        catch {
+          return err(`grep: ${pattern}: invalid regular expression`);
+        }
+        matches = candidate => regexp.test(candidate);
+      }
+      else {
+        const needle = flags.i ? pattern.toLowerCase() : pattern;
+        matches = candidate => (flags.i ? candidate.toLowerCase() : candidate).includes(needle);
+      }
+
+      if (flags.r) {
+        const display = rest[1] ?? ".";
+        const rootId = rest[1] ? resolvePath(nodes, cwd, rest[1]) : cwd;
+        if (rootId === null || !nodes[rootId])
+          return err(`grep: ${display}: no such file or directory`);
+        const hits: string[] = [];
+        const walk = (id: string, path: string): void => {
+          const node = nodes[id];
+          if (!node)
+            return;
+          if (node.type === "folder") {
+            for (const kid of childrenOf(nodes, id))
+              walk(kid.id, `${path}/${kid.name}`);
+            return;
+          }
+          // Blob-backed files have no inline text to scan (B1) — skipped
+          // rather than reported, the way grep skips a binary file.
+          if (node.contentRef || !node.content)
+            return;
+          for (const candidate of node.content.split("\n")) {
+            if (matches(candidate))
+              hits.push(`${path}:${candidate}`);
+          }
+        };
+        walk(rootId, display);
+        return { lines: hits.map(hit => line("output", hit)), code: hits.length > 0 ? 0 : 1 };
+      }
+
       const linesOrErr = inputLines("grep", rest[1], nodes, cwd, stdin);
       if (!Array.isArray(linesOrErr))
         return linesOrErr;
-      const needle = ignoreCase ? pattern.toLowerCase() : pattern;
-      const matches = linesOrErr.filter(l => (ignoreCase ? l.toLowerCase() : l).includes(needle));
-      return out(matches.join("\n"));
+      const hits = linesOrErr.filter(matches);
+      // No match is a status-1 failure without being an error worth
+      // printing — what makes `grep x f && echo found` behave.
+      return { ...out(hits.join("\n")), code: hits.length > 0 ? 0 : 1 };
     }
 
     case "open": {
@@ -725,18 +843,27 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
     }
 
     case "rm": {
-      if (!args[0])
+      const parsed = parseFlags(args, "rR");
+      if ("error" in parsed)
+        return err(`rm: ${parsed.error}`);
+      const { flags, rest } = parsed;
+      if (!rest[0])
         return err("rm: missing operand");
-      const targetId = resolvePath(nodes, cwd, args[0]);
+      const targetId = resolvePath(nodes, cwd, rest[0]);
       if (targetId === null)
-        return err(`rm: ${args[0]}: no such file or directory`);
+        return err(`rm: ${rest[0]}: no such file or directory`);
       if (isSystemNode(targetId))
-        return err(`rm: ${args[0]}: cannot remove a system folder`);
+        return err(`rm: ${rest[0]}: cannot remove a system folder`);
+      // A folder needs -r, as it does in a real shell — trashing a whole
+      // subtree on a mistyped name is exactly the accident the flag exists
+      // to prevent, even with the Trash as a safety net.
+      if (nodes[targetId]?.type === "folder" && !(flags.r || flags.R))
+        return err(`rm: ${rest[0]}: is a directory (use -r)`);
       if (targetId === cwd)
         return err("rm: cannot remove the current directory");
         // Trashing an ancestor would silently drag the cwd into the Trash.
       if (isDescendantOf(nodes, cwd, targetId))
-        return err(`rm: ${args[0]}: contains the current directory`);
+        return err(`rm: ${rest[0]}: contains the current directory`);
       ctx.moveToTrash(targetId);
       return { lines: [line("output", `moved '${nodes[targetId].name}' to Trash`)] };
     }
@@ -935,7 +1062,10 @@ function runPipeline(input: string, ctx: ShellContext): ShellResult {
   let result: ShellResult = { lines: [] };
   for (const [i, segment] of segments.entries()) {
     result = execSingle(segment, ctx, stdin);
-    if (statusOf(result) !== 0)
+    // Only a printed error stops the pipeline. A plain non-zero status
+    // doesn't: `grep nope file | wc -l` still has to reach wc and print 0,
+    // exactly as it would in a real shell.
+    if (result.lines.some(l => l.kind === "error"))
       return result;
     // Skip the join on the last segment — nothing reads `stdin` again.
     if (i < segments.length - 1)
