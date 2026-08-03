@@ -72,9 +72,11 @@ test.describe("Full-disk export/import", () => {
     expect(zipPath).toBeTruthy();
 
     // Wipe storage (simulating eviction) and reboot to a clean, freshly
-    // reseeded disk — the state a returning user would actually see.
+    // reseeded disk — the state a returning user would actually see. `boot()`
+    // does the reboot; an extra `page.reload()` here would start a second,
+    // un-awaited boot that races it (and, post-wipe, would consume the
+    // one Welcome greeting `boot()` is waiting for).
     await wipeStorage(page);
-    await page.reload();
     await boot(page);
 
     // Import the export back in. Setting the hidden input's files directly
