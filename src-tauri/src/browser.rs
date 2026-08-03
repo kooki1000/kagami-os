@@ -252,6 +252,17 @@ pub fn browser_stop(app: AppHandle, id: String) -> Result<(), String> {
     eval_on_webview(&app, &id, "window.stop()")
 }
 
+/// Page zoom (U17). Unlike back/forward/stop this one *is* native, so it
+/// scales the page the way the OS browser would — layout included — rather
+/// than by restyling content we don't own.
+#[tauri::command]
+pub fn browser_set_zoom(app: AppHandle, id: String, factor: f64) -> Result<(), String> {
+    let Some(webview) = find_webview(&app, &id) else {
+        return Ok(());
+    };
+    webview.set_zoom(factor).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn browser_set_bounds(app: AppHandle, id: String, bounds: Bounds) -> Result<(), String> {
     let Some(webview) = find_webview(&app, &id) else {

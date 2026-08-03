@@ -6,6 +6,7 @@ import type { AppWindowProps } from "@/system/apps/types";
 import type { WindowRect } from "@/system/windows/windowStore";
 import { ChevronLeft, ChevronRight, Globe, House, Lock, RotateCw, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useAppCommand } from "@/system/appCommands";
 import { isOverlayOpen, subscribeOverlayOpen } from "@/system/overlay/overlayRegistry";
 import { isTauri } from "@/system/platform";
 import { useSettingsStore } from "@/system/settings/settingsStore";
@@ -13,7 +14,9 @@ import { TITLE_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { browserBridge, onLoadState, onNavChanged } from "./browserBridge";
 import { applyNavigation, canGoBack, canGoForward, initialHistory } from "./browserHistory";
 import { payloadUrl } from "./browserPayload";
+import { useBrowserPrefsStore, zoomForHost } from "./browserPrefsStore";
 import { connectionSecurity, hostnameOf, normalizeAddress } from "./browserUrl";
+import { DEFAULT_ZOOM, formatZoom, stepZoom } from "./browserZoom";
 import { searchEngineById } from "./searchEngines";
 
 // Address bar height. Kept as a constant (applied to the <form> via inline
@@ -72,6 +75,10 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
   // exact signal for re-syncing the webview's bounds — no ResizeObserver
   // needed. `webviewBounds` derives the child-webview rect from it directly.
   const rect = useWindowStore(s => s.windows.find(w => w.id === windowId)?.rect);
+  // Zoom is scoped to the host, not the window, so a site stays at the size
+  // it was left at across visits and windows (see browserPrefsStore.ts).
+  const zoom = useBrowserPrefsStore(s => zoomForHost(s.zoomByHost, host));
+  const setZoomForHost = useBrowserPrefsStore(s => s.setZoomForHost);
   const overlayOpen = useSyncExternalStore(subscribeOverlayOpen, isOverlayOpen);
   const visible = focused && !overlayOpen;
   // Latest visibility, readable from the open effect without depending on it.
@@ -154,10 +161,43 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
     browserBridge.setVisible(windowId, visible).catch(logBridgeError("set_visible"));
   }, [windowId, visible]);
 
+  // Runs on open too (the bridge's per-id queue holds it behind `open`), which
+  // is what applies a host's remembered zoom to a page loading for the first
+  // time in this window.
+  useEffect(() => {
+    browserBridge.setZoom(windowId, zoom).catch(logBridgeError("set_zoom"));
+  }, [windowId, zoom]);
+
   function go(nextUrl: string): void {
     setAddressInput(nextUrl);
     browserBridge.navigate(windowId, nextUrl).catch(logBridgeError("navigate"));
   }
+
+  useAppCommand(windowId, (command) => {
+    switch (command) {
+      case "browser.back":
+        browserBridge.back(windowId).catch(logBridgeError("back"));
+        break;
+      case "browser.forward":
+        browserBridge.forward(windowId).catch(logBridgeError("forward"));
+        break;
+      case "browser.reload":
+        go(url);
+        break;
+      case "browser.home":
+        go(engine.homeUrl);
+        break;
+      case "browser.zoomIn":
+        setZoomForHost(host, stepZoom(zoom, 1));
+        break;
+      case "browser.zoomOut":
+        setZoomForHost(host, stepZoom(zoom, -1));
+        break;
+      case "browser.zoomReset":
+        setZoomForHost(host, DEFAULT_ZOOM);
+        break;
+    }
+  });
 
   /** Submitting the address bar: anything that isn't an address becomes a search. */
   function submitAddress(): void {
@@ -220,6 +260,16 @@ function NativeBrowser({ windowId, focused, payload }: AppWindowProps) {
           // a way out of a half-typed address that doesn't involve retyping it.
           onCancel={() => setAddressInput(url)}
         />
+        {zoom !== DEFAULT_ZOOM && (
+          <button
+            type="button"
+            title="Reset zoom to 100%"
+            className="ml-1 flex-none rounded-btn bg-ph px-1.5 py-0.5 text-11.5 font-medium text-ink-2 tabular-nums hover:bg-ph-2 hover:text-ink"
+            onClick={() => setZoomForHost(host, DEFAULT_ZOOM)}
+          >
+            {formatZoom(zoom)}
+          </button>
+        )}
       </form>
       {/* The native child webview is layered over this region by the Rust
           side while the window is focused. The OS webview paints on top, so

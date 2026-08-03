@@ -25,7 +25,25 @@ export const browserApp: AppManifest = {
     {
       title: "File",
       items: [
+        { label: "New Window", command: "app.newWindow", shortcut: "⌘N", dividerAfter: true },
         { label: "Close Window", command: "window.close", shortcut: "⌘W" },
+      ],
+    },
+    {
+      title: "View",
+      items: [
+        { label: "Reload", appCommand: "browser.reload", shortcut: "⌘R" },
+        { label: "Home", appCommand: "browser.home", shortcut: "⇧⌘H", dividerAfter: true },
+        { label: "Zoom In", appCommand: "browser.zoomIn", shortcut: "⌘+" },
+        { label: "Zoom Out", appCommand: "browser.zoomOut", shortcut: "⌘−" },
+        { label: "Actual Size", appCommand: "browser.zoomReset", shortcut: "⌘0" },
+      ],
+    },
+    {
+      title: "History",
+      items: [
+        { label: "Back", appCommand: "browser.back", shortcut: "⌘[" },
+        { label: "Forward", appCommand: "browser.forward", shortcut: "⌘]" },
       ],
     },
   ],
