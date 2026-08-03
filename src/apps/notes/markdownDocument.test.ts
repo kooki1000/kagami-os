@@ -144,4 +144,20 @@ describe("docToMarkdown", () => {
   it("renders an empty document as an empty file", () => {
     expect(docToMarkdown({ type: "doc", content: [{ type: "paragraph" }] })).toBe("");
   });
+
+  it("drops an empty paragraph rather than writing blank lines the parser will discard", () => {
+    // Pressing Enter on a blank line is normal editing, but markdown can't
+    // record it — writing it out would leave the file flipping between two
+    // forms on every save/open cycle.
+    const doc = {
+      type: "doc",
+      content: [
+        { type: "paragraph" },
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Title" }] },
+        { type: "paragraph" },
+        { type: "paragraph", content: [{ type: "text", text: "body" }] },
+      ],
+    };
+    expect(docToMarkdown(doc)).toBe("# Title\n\nbody");
+  });
 });

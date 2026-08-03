@@ -244,7 +244,17 @@ function blockToMarkdown(block: JSONContent): string {
   }
 }
 
-/** Serialize the editor's document back to the markdown stored on disk. */
+/**
+ * Serialize the editor's document back to the markdown stored on disk.
+ *
+ * Empty paragraphs are dropped. Markdown has no way to say "a blank
+ * paragraph here" — blank lines are separators — so keeping one would write
+ * leading or doubled newlines that the parser discards on the next open,
+ * leaving the file churning between two forms.
+ */
 export function docToMarkdown(doc: JSONContent): string {
-  return (doc.content ?? []).map(blockToMarkdown).join("\n\n");
+  return (doc.content ?? [])
+    .map(blockToMarkdown)
+    .filter(block => block !== "")
+    .join("\n\n");
 }

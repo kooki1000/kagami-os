@@ -54,6 +54,16 @@ export async function openFiles(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();
 }
 
+/**
+ * Notes' editing surface. Since D9 it's a contenteditable ProseMirror
+ * document rather than a `<textarea>`, so specs assert on its *text* rather
+ * than an input value — the rendered document is what the user sees, and
+ * the markdown behind it only exists on disk.
+ */
+export function noteEditor(page: Page) {
+  return page.locator(".notes-prose");
+}
+
 /** New folder → lands in inline-rename with the field focused → name it. */
 export async function createFolder(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "New folder" }).click();

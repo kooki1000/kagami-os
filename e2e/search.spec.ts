@@ -17,10 +17,7 @@ test.describe("Global search (⌘K)", () => {
     await input.press("Enter");
     await expect(input).not.toBeVisible();
     await expect(page.locator("[data-window-id]")).toHaveCount(1);
-    // Notes' own Filter <input> is also an implicit textbox, so
-    // `getByRole("textbox")` alone is ambiguous — the editor is the only
-    // <textarea> on the page.
-    await expect(page.locator("textarea")).toBeVisible();
+    await expect(page.locator(".notes-prose")).toBeVisible();
   });
 
   test("Escape closes the overlay without opening anything", async ({ page }) => {

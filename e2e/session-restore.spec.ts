@@ -68,7 +68,7 @@ test.describe("Session restore (C1)", () => {
     await page.reload();
     await expect(page.getByText("A desktop that lives in your browser")).toHaveCount(0);
     await expect(page.locator("[data-window-id]")).toHaveCount(1);
-    await expect(page.locator("textarea")).toHaveValue("Hello from session restore");
+    await expect(page.locator(".notes-prose")).toHaveText("Hello from session restore");
 
     // Close the one remaining window, reload again: a session that restores
     // to zero windows must not resurrect Welcome.
@@ -87,7 +87,7 @@ async function openFilesAndCreateNote(page: Parameters<typeof boot>[0]) {
   // The sidebar "+" (always rendered) rather than the empty-state "New Note"
   // button, which only shows up with zero notes — seed data ships two.
   await page.getByRole("button", { name: "New note", exact: true }).click();
-  await page.locator("textarea").fill("Hello from session restore");
+  await page.locator(".notes-prose").fill("Hello from session restore");
   // Autosave debounce (NotesApp's AUTOSAVE_MS) before we reload.
   await expect(page.getByText("Saved")).toBeVisible({ timeout: 2000 });
 }
