@@ -38,14 +38,21 @@ export interface SandboxFileDto {
 /**
  * Methods the bridge dispatches. Kept as a closed union so an unknown
  * `method` is a request-time validation failure, not a runtime surprise.
+ *
+ * `ui.setState` is the frame reporting its own view state outward (which
+ * page, what zoom, is it still loading) so the *host* can render the app's
+ * chrome in React, with the shell's design tokens, instead of the frame
+ * hand-rolling a toolbar in raw CSS it can never theme — a `srcdoc`
+ * document doesn't inherit custom properties. The payload is opaque here on
+ * purpose: the protocol has no idea what a PDF page is, and shouldn't.
  */
-export type SandboxMethod = "fs.read" | "notifications.notify" | "window.setTitle";
+export type SandboxMethod = "fs.read" | "notifications.notify" | "window.setTitle" | "ui.setState";
 
 /**
  * Every valid `SandboxMethod`, for request-time validation against the
  * closed union (`rpc.ts` has no other way to check membership at runtime).
  */
-export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "notifications.notify", "window.setTitle"];
+export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "notifications.notify", "window.setTitle", "ui.setState"];
 
 export type SandboxErrorCode = "capability_denied" | "invalid_request" | "not_found" | "internal";
 
@@ -67,9 +74,17 @@ export type SandboxResponse
   = | { kind: "kagami.sandbox.response"; id: string; ok: true; data: unknown }
     | { kind: "kagami.sandbox.response"; id: string; ok: false; error: SandboxError };
 
-/** Push, shell → frame, no reply expected. */
-export interface SandboxEvent {
-  kind: "kagami.sandbox.event";
-  type: "appCommand";
-  command: string;
-}
+/**
+ * Push, shell → frame, no reply expected.
+ *
+ * `theme` hands the frame a slice of the shell's resolved design tokens. A
+ * `srcdoc` document inherits no CSS custom properties from its embedder and an
+ * opaque-origin iframe cannot be made transparent (its canvas is painted
+ * opaque regardless of the embedded document's own background), so a frame
+ * that renders any surface at all has no way to follow the user's theme
+ * without being told. Sending values rather than letting the frame ask keeps
+ * the shell in control of what it exposes.
+ */
+export type SandboxEvent
+  = | { kind: "kagami.sandbox.event"; type: "appCommand"; command: string }
+    | { kind: "kagami.sandbox.event"; type: "theme"; vars: Record<string, string> };

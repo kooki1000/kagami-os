@@ -39,3 +39,7 @@ export function buildErrorResponse(id: string, error: SandboxError): SandboxResp
 export function buildAppCommandEvent(command: string): SandboxEvent {
   return { kind: "kagami.sandbox.event", type: "appCommand", command };
 }
+
+export function buildThemeEvent(vars: Record<string, string>): SandboxEvent {
+  return { kind: "kagami.sandbox.event", type: "theme", vars };
+}

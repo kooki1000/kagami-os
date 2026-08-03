@@ -27,6 +27,12 @@ export interface BridgeDeps {
   getNodes: () => NodeMap;
   notify: (input: NotifyInput) => string;
   setWindowTitle: (windowId: string, title: string) => void;
+  /**
+   * Hands the frame's reported view state to whatever is rendering its
+   * chrome. Optional because most sandboxed apps draw their own UI entirely
+   * inside the frame and never call `ui.setState`.
+   */
+  setAppState?: (windowId: string, state: Record<string, unknown>) => void;
 }
 
 export type CapabilityDeniedLogger = (info: { appId: string; windowId: string; method: string }) => void;
@@ -89,6 +95,21 @@ async function handleNotify(params: Record<string, unknown>, appId: string, deps
   return null;
 }
 
+/**
+ * The frame reporting its own view state outward. Deliberately unvalidated
+ * beyond "is a plain object": the shell has no idea what any given app's view
+ * state looks like, and shouldn't — the host component that asked for it is
+ * what narrows the shape. Rejecting a non-object still matters, since the
+ * consumer will spread it.
+ */
+function handleSetAppState(params: Record<string, unknown>, windowId: string, deps: BridgeDeps): null {
+  const state = params.state;
+  if (typeof state !== "object" || state === null || Array.isArray(state))
+    throw new SandboxRequestError("invalid_request", "ui.setState requires an object \"state\" param.");
+  deps.setAppState?.(windowId, state as Record<string, unknown>);
+  return null;
+}
+
 function handleSetTitle(params: Record<string, unknown>, windowId: string, deps: BridgeDeps): null {
   const title = params.title;
   if (typeof title !== "string")
@@ -128,6 +149,8 @@ export async function dispatchSandboxRequest(
         return buildSuccessResponse(request.id, await handleNotify(params, context.appId, deps));
       case "window.setTitle":
         return buildSuccessResponse(request.id, handleSetTitle(params, context.windowId, deps));
+      case "ui.setState":
+        return buildSuccessResponse(request.id, handleSetAppState(params, context.windowId, deps));
     }
   }
   catch (error) {

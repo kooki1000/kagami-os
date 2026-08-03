@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAppCommandEvent, buildErrorResponse, buildSuccessResponse, parseSandboxRequest } from "./rpc";
+import { buildAppCommandEvent, buildErrorResponse, buildSuccessResponse, buildThemeEvent, parseSandboxRequest } from "./rpc";
 
 describe("parseSandboxRequest", () => {
   it("accepts a well-formed request and round-trips its fields", () => {
@@ -104,5 +104,27 @@ describe("response/event builders", () => {
       type: "appCommand",
       command: "notes.newNote",
     });
+  });
+});
+
+describe("buildThemeEvent", () => {
+  it("wraps the pushed design tokens", () => {
+    expect(buildThemeEvent({ "--surface-2": "#2a2823" })).toEqual({
+      kind: "kagami.sandbox.event",
+      type: "theme",
+      vars: { "--surface-2": "#2a2823" },
+    });
+  });
+});
+
+describe("ui.setState is a recognized method", () => {
+  it("parses, so a frame can report its view state outward", () => {
+    const request = parseSandboxRequest({
+      kind: "kagami.sandbox.request",
+      id: "documents-1",
+      method: "ui.setState",
+      params: { state: { status: "ready", page: 2 } },
+    });
+    expect(request?.method).toBe("ui.setState");
   });
 });
