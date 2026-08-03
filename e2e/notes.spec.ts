@@ -51,11 +51,13 @@ test.describe("Notes WYSIWYG (D9)", () => {
 
     const editor = noteEditor(page);
     await editor.fill("plain words");
-    // Select "plain" and embolden it. The button must not steal focus, or
-    // there'd be no selection left to format by the time it runs.
-    await page.keyboard.press("Home");
-    for (let i = 0; i < 5; i++)
-      await page.keyboard.press("Shift+ArrowRight");
+    // Double-click selects the word under the cursor in every engine —
+    // Home/Shift+Arrow don't agree across them on macOS. The button must not
+    // steal focus, or there'd be no selection left to format by the time it
+    // runs.
+    // Position it inside the first word: an unpositioned double-click lands
+    // in the middle of the line, which is the gap between the two.
+    await editor.getByText("plain words").dblclick({ position: { x: 8, y: 8 } });
     await page.getByRole("button", { name: "Bold", exact: true }).click();
     await expect(editor.locator("strong")).toHaveText("plain");
 
@@ -109,7 +111,14 @@ test.describe("Notes WYSIWYG (D9)", () => {
     await expect(editor).toHaveText("omega beta omega gamma omega");
   });
 
-  test("pasted HTML keeps its text and drops everything else", async ({ page }) => {
+  test("pasted HTML keeps its text and drops everything else", async ({ page, browserName }) => {
+    // Chromium only: a synthetic ClipboardEvent carrying a DataTransfer is
+    // the only way to drive paste without real clipboard permissions, and
+    // Firefox/WebKit don't deliver one to the editor. The guarantee itself
+    // is engine-independent and unit-tested for every case in
+    // editorSchema.test.ts — this is the smoke test that the real paste
+    // pipeline reaches the same schema.
+    test.skip(browserName !== "chromium", "synthetic paste events aren't delivered outside chromium");
     await boot(page);
     await openApp(page, "notes");
 
