@@ -1,5 +1,6 @@
 import type { FsStore, NodeMap } from "@/system/fs/fsStore";
 import { childrenOf } from "@/system/fs/fsStore";
+import { effectiveMimeType, FALLBACK_MIME_TYPE, isTextLikeMime } from "@/system/fs/mimeTypes";
 import { BLOB_INLINE_THRESHOLD } from "@/system/fs/types";
 
 /** One file to import, with its folder path relative to the upload target. */
@@ -135,10 +136,14 @@ export async function uploadEntries(
   await Promise.all(entries.map(async ({ path, file }) => {
     try {
       const parentId = resolveFolder(path);
-      if (file.type.startsWith("text/") && file.size <= BLOB_INLINE_THRESHOLD)
-        fs.createFile(parentId, file.name, await file.text(), file.type);
+      // Not `file.type`: the browser reports nothing at all for `.py`/`.rs`/
+      // `.toml` and the wrong thing for `.ts`, which used to leave small
+      // source files in the blob store (and unopenable) for no reason.
+      const mimeType = effectiveMimeType({ name: file.name, mimeType: file.type });
+      if (isTextLikeMime(mimeType) && file.size <= BLOB_INLINE_THRESHOLD)
+        fs.createFile(parentId, file.name, await file.text(), mimeType);
       else
-        await fs.createBlobFile(parentId, file.name, file, file.type || undefined);
+        await fs.createBlobFile(parentId, file.name, file, mimeType === FALLBACK_MIME_TYPE ? undefined : mimeType);
       fileCount++;
       totalBytes += file.size;
     }
