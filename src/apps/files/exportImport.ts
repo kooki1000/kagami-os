@@ -210,7 +210,8 @@ function exportFilename(now = new Date()): string {
  * Worker) — covered by `planImport`'s tests plus in-browser verification.
  */
 function unzipInWorker(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
-  return runWorkerJob(new URL("./importZipWorker.ts", import.meta.url), bytes, "Unzip worker failed");
+  const worker = new Worker(new URL("./importZipWorker.ts", import.meta.url), { type: "module" });
+  return runWorkerJob(worker, bytes, "Unzip worker failed");
 }
 
 /**

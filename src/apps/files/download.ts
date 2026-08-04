@@ -80,7 +80,8 @@ export function triggerDownload(blob: Blob, filename: string): void {
  * reuses the same worker plumbing instead of duplicating it.
  */
 export function zipInWorker(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
-  return runWorkerJob(new URL("./zipWorker.ts", import.meta.url), entries, "Zip worker failed");
+  const worker = new Worker(new URL("./zipWorker.ts", import.meta.url), { type: "module" });
+  return runWorkerJob(worker, entries, "Zip worker failed");
 }
 
 /** Download a single file node to the host OS. */

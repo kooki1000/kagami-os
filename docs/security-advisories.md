@@ -45,33 +45,34 @@ update -p glib` and confirm the Dependabot alert closes on its own.
 
 ---
 
-## GHSA-mh99-v99m-4gvg — `brace-expansion` unbounded expansion DoS
+## GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895 — `brace-expansion` unbounded expansion DoS
 
-**Ignored, temporary · 2026-07-25 · `pnpm-workspace.yaml`**
+**Ignored, temporary · 2026-07-25, extended 2026-08-04 · `pnpm-workspace.yaml`**
 
 `brace-expansion <=5.0.7` (pulled in transitively via `@antfu/eslint-config`
 → `eslint`/`@eslint/config-array` → `minimatch`, ~100 paths per `pnpm why
-brace-expansion`) is vulnerable to a DoS via unbounded expansion length. Fix
-is published: `brace-expansion@5.0.8`.
+brace-expansion`) is vulnerable to a DoS via unbounded expansion length
+(GHSA-mh99-v99m-4gvg). The published fix, `5.0.8`, turned out to still be
+bypassable (GHSA-rgw5-rvv9-x895) — the real fix only lands in
+`brace-expansion@5.0.9`.
 
-**Why it's not patched yet:** `5.0.8` was published 2026-07-23 — inside this
+**Why it's not patched yet:** `5.0.9` was published 2026-07-30 — inside this
 workspace's own `minimumReleaseAge: 10080` (7-day) cutoff. `pnpm install`
 refuses to resolve it (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`) until it clears
 that window, the same policy that has blocked other packages before (see the
 `idb` precedent in `ARCHITECTURE.md`'s `StorageAdapter` section). Lowering
 the global policy to let this one version through would weaken the same
 supply-chain guard for every dependency, not just this one, so
-`pnpm-workspace.yaml`'s `auditConfig.ignoreGhsas` carries this one specific
-advisory instead — `pnpm audit` (and CI's unmodified `pnpm audit
---audit-level=high`) honors it natively, rather than the fix being skipped
-silently.
+`pnpm-workspace.yaml`'s `auditConfig.ignoreGhsas` carries both advisories
+instead — `pnpm audit` (and CI's unmodified `pnpm audit --audit-level=high`)
+honors it natively, rather than the fix being skipped silently.
 
 Lint/eslint-tooling-only exposure: `brace-expansion` is pulled in by
 devDependencies (ESLint's dependency graph) — it never ships in the built
 app.
 
-**Revisit after 2026-07-30** (7 days from `5.0.8`'s publish date): add
-`postcss`'s neighbor entry — `brace-expansion: ^5.0.8` — to
+**Revisit after 2026-08-06** (7 days from `5.0.9`'s publish date): add
+`postcss`'s neighbor entry — `brace-expansion: ^5.0.9` — to
 `pnpm-workspace.yaml`'s `overrides`, run `pnpm install`, confirm
-`pnpm audit --audit-level=high` is clean on its own, then remove the
-`auditConfig.ignoreGhsas` entry and this section.
+`pnpm audit --audit-level=high` is clean on its own, then remove both
+`auditConfig.ignoreGhsas` entries and this section.

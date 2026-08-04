@@ -11,3 +11,4 @@ overrides:
 auditConfig:
   ignoreGhsas:
     - GHSA-mh99-v99m-4gvg
+    - GHSA-rgw5-rvv9-x895
