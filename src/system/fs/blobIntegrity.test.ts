@@ -74,11 +74,17 @@ describe("blob GC vs. an in-flight blob write", () => {
     // timer-based) indefinitely if the awaited condition never flips, so a
     // `Promise.race` timeout wouldn't have caught a broken invariant here —
     // this did hang CI for 6h twice (2026-07-27) before this bound existed.
+    // Each spin yields via `setTimeout` rather than `Promise.resolve()`:
+    // `hashBlob`'s `crypto.subtle.digest` resolves off a macrotask, and a
+    // microtask-only spin never lets the event loop reach it, so the loop
+    // could starve itself out to the 1000-iteration bound under CI load
+    // (flaked 2026-08-04) even though the write does land quickly once the
+    // loop actually yields.
     const hash = await hashBlob(new Blob(["fresh upload bytes"], { type: "image/png" }));
     for (let i = 0; !(await blobStore.has(hash)); i++) {
       if (i >= 1000)
         throw new Error("timed out waiting for the blob write to land");
-      await Promise.resolve();
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     // A concurrent deletion elsewhere sweeps while the upload is mid-flight.
