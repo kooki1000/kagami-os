@@ -727,11 +727,18 @@ function DesktopSection() {
 }
 
 // U5 — representative mime types shown even before any "Open With" override
-// exists anywhere, one per built-in family default (openFile.ts's
-// FAMILY_DEFAULTS). A real per-file "Open With" pick elsewhere adds its own
-// row below these for the exact mime type it set.
+// exists anywhere. A real per-file "Open With" pick elsewhere adds its own row
+// below these for the exact mime type it set. This is the *curated* list —
+// "types worth offering a user" is deliberately smaller than the set that can
+// be routed, so a new file type also wants a look at `openFile.ts`'s defaults
+// and `system/fs/mimeTypes.ts`'s extension table.
 const FILE_ASSOCIATION_TYPES: Array<{ mime: string; label: string }> = [
   { mime: "text/plain", label: "Text documents" },
+  { mime: "text/markdown", label: "Markdown" },
+  { mime: "text/javascript", label: "JavaScript" },
+  { mime: "text/typescript", label: "TypeScript" },
+  { mime: "application/json", label: "JSON" },
+  { mime: "text/css", label: "Stylesheets" },
   { mime: "image/png", label: "Images" },
   { mime: "audio/mpeg", label: "Audio" },
   { mime: "video/mp4", label: "Video" },

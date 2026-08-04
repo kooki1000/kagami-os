@@ -7,6 +7,23 @@ export interface SortMenuSpec<K extends string> {
 }
 
 /**
+ * Picking a sort key: re-picking the active one flips direction, a new one
+ * starts at `defaultDir`. Passing `sort.key` is therefore also how "Reverse
+ * order" is expressed. Shared because all three sidebars need the same
+ * behavior, and the one that hand-rolled it silently did nothing when the
+ * active key was re-picked.
+ */
+export function nextSort<K extends string>(
+  sort: SortMenuSpec<K>,
+  key: K,
+  defaultDir: "asc" | "desc" = "asc",
+): SortMenuSpec<K> {
+  return key === sort.key
+    ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
+    : { key, dir: defaultDir };
+}
+
+/**
  * Build a "Sort By" context menu: one checkmarked entry per key in `labels`
  * (insertion order), plus a "Reverse order" toggle at the end — the exact
  * shape Files' and Notes' sort-by menus both need, so neither hand-rolls its

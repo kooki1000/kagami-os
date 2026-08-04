@@ -19,7 +19,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
-import { buildSortMenuEntries } from "@/components/ui/sortMenuEntries";
+import { buildSortMenuEntries, nextSort } from "@/components/ui/sortMenuEntries";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
@@ -198,18 +198,12 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   const noRealFolder = inTrash || inRecents;
   const sort = sortForFolder(sortByFolder, cwd);
 
-  /** Pick a sort key for the current folder; re-picking it flips direction. */
   function applySort(key: SortKey): void {
-    setSortPref(
-      cwd,
-      key === sort.key
-        ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: "asc" },
-    );
+    setSortPref(cwd, nextSort(sort, key));
   }
 
   function toggleSortDir(): void {
-    setSortPref(cwd, { key: sort.key, dir: sort.dir === "asc" ? "desc" : "asc" });
+    setSortPref(cwd, nextSort(sort, sort.key));
   }
 
   // If the current folder vanished (trashed/deleted elsewhere), go home.

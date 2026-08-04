@@ -86,3 +86,19 @@ export function useSyncWindowTitle(windowId: string, name: string | undefined): 
       setWindowTitle(windowId, name);
   }, [name, windowId, setWindowTitle]);
 }
+
+/**
+ * Keep a window's `payload` pointed at whichever file the app is actually
+ * showing. Picking a file inside an app is internal state, not a re-launch,
+ * so without this session restore (C1) would only ever reopen whichever file
+ * the window was launched with. Shared by Notes and the code editor, whose
+ * sidebars both let the user switch files in place.
+ */
+export function useSyncWindowFilePayload(windowId: string, fileId: string | null): void {
+  useEffect(() => {
+    const store = useWindowStore.getState();
+    const current = store.windows.find(w => w.id === windowId);
+    if (current && payloadFileId(current.payload) !== fileId)
+      store.setWindowPayload(windowId, fileId ? { fileId } : undefined);
+  }, [windowId, fileId]);
+}

@@ -1,0 +1,5 @@
+{
+  "name": "kagami-fixture",
+  "version": 2,
+  "nested": { "enabled": true, "tags": ["a", "b"] }
+}

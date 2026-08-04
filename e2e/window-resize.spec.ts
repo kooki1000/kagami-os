@@ -37,9 +37,13 @@ test.describe("windows track viewport resizes", () => {
     await page.setViewportSize({ width: 700, height: 500 });
 
     // At least 80px of the window and its whole title bar must remain on
-    // screen, or it can never be grabbed again.
+    // screen, or it can never be grabbed again. Polled, like the maximize
+    // case above: the clamp runs from App.tsx's resize listener through a
+    // React commit, so reading the box straight after `setViewportSize`
+    // races it — and read too early it returns the *pre*-clamp position,
+    // which is exactly the failure this test is meant to describe.
+    await expect.poll(async () => (await win.boundingBox())!.x).toBeLessThanOrEqual(700 - 80);
     const box = await win.boundingBox();
-    expect(box!.x).toBeLessThanOrEqual(700 - 80);
     expect(box!.y).toBeLessThanOrEqual(500 - 40);
     expect(box!.y).toBeGreaterThanOrEqual(30);
   });

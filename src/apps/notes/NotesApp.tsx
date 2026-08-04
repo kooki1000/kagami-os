@@ -11,19 +11,19 @@ import {
   Plus,
   Search,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { Segmented } from "@/components/ui/Segmented";
-import { buildSortMenuEntries } from "@/components/ui/sortMenuEntries";
+import { buildSortMenuEntries, nextSort } from "@/components/ui/sortMenuEntries";
 import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
-import { payloadFileId, usePayloadFileId } from "@/system/apps/filePayload";
+import { usePayloadFileId, useSyncWindowFilePayload } from "@/system/apps/filePayload";
 import { launchApp } from "@/system/apps/launch";
 import { isDescendantOf, useFsStore } from "@/system/fs/fsStore";
+import { isTextFile } from "@/system/fs/mimeTypes";
 import { isCommittableRename } from "@/system/fs/renameCommit";
 import { DOCUMENTS_ID, HOME_ID, TRASH_ID } from "@/system/fs/types";
-import { useWindowStore } from "@/system/windows/windowStore";
 import { NoteEditor } from "./NoteEditor";
 import {
   filterDocs,
@@ -74,16 +74,7 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
   // back home instead of a separate effect racing to "fix" stale state.
   const scopeFolderId = nodes[rawScopeFolderId]?.type === "folder" ? rawScopeFolderId : DOCUMENTS_ID;
 
-  // Keep the window's payload in sync with whichever note is actually
-  // showing (selecting a note in the sidebar is internal state, not a
-  // re-launch) — otherwise session restore (C1) would only ever reopen
-  // whichever note Notes happened to be launched with.
-  useEffect(() => {
-    const store = useWindowStore.getState();
-    const current = store.windows.find(w => w.id === windowId);
-    if (current && payloadFileId(current.payload) !== selectedId)
-      store.setWindowPayload(windowId, selectedId ? { fileId: selectedId } : undefined);
-  }, [windowId, selectedId]);
+  useSyncWindowFilePayload(windowId, selectedId);
 
   // Opening a note outside the current scope (a re-launch via "Open with",
   // "Reveal", session restore, …) brings its folder into scope instead of
@@ -114,10 +105,14 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
   // The selected note always wins over scope (see the widen-scope adjustment
   // above) — falling back to the first listed note only when nothing valid
   // is selected, same as the pre-U11 `docs.find(...) ?? docs[0]` fallback.
+  //
+  // What Notes can *open* is deliberately wider than what its sidebar
+  // *lists*: the sidebar is prose-only (`isNoteDoc`), but "Open With ▸ Notes"
+  // offers it for any text-like file, and a gate narrower than that offer
+  // silently swapped in a different file instead of the one asked for.
   const selectedNode = selectedId ? nodes[selectedId] : undefined;
   const selectedIsValidDoc = !!selectedNode
-    && selectedNode.type === "file"
-    && (selectedNode.mimeType?.startsWith("text/") ?? false)
+    && isTextFile(selectedNode)
     && !isDescendantOf(nodes, selectedNode.id, TRASH_ID);
   const doc = selectedIsValidDoc ? selectedNode : listedDocs[0];
 
@@ -165,17 +160,12 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
     ];
   }
 
-  /** Pick a sort key for the sidebar list; re-picking it flips direction. Mirrors Files' `applySort`. */
   function applySort(key: NotesSortKey): void {
-    setSort(
-      key === sort.key
-        ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: key === "date" ? "desc" : "asc" },
-    );
+    setSort(nextSort(sort, key, key === "date" ? "desc" : "asc"));
   }
 
   function toggleSortDir(): void {
-    setSort({ key: sort.key, dir: sort.dir === "asc" ? "desc" : "asc" });
+    setSort(nextSort(sort, sort.key));
   }
 
   function sortMenuEntries(): ContextMenuEntry[] {
@@ -315,17 +305,24 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
                     Notes
                   </div>
                 )}
-                <button
-                  type="button"
+                {/* A container with two sibling buttons, not a button with a
+                    button inside it: nesting interactive controls is an axe
+                    `nested-interactive` violation, and screen readers don't
+                    reliably announce the inner one. */}
+                <div
                   className={`group flex w-full items-center gap-1 rounded-[8px] px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-left ${
                     doc?.id === d.id
                       ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)]"
                       : "hover:bg-ph"
                   }`}
-                  onClick={() => setSelectedId(d.id)}
                   onContextMenu={e => onDocContextMenu(e, d.id)}
                 >
-                  <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    aria-current={doc?.id === d.id}
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setSelectedId(d.id)}
+                  >
                     {renamingId === d.id
                       ? (
                           <RenameInput
@@ -357,22 +354,19 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
                             </span>
                           </>
                         )}
-                  </div>
-                  <span
-                    role="button"
-                    tabIndex={-1}
-                    aria-label={pinnedIds.has(d.id) ? "Unpin" : "Pin"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${pinnedIds.has(d.id) ? "Unpin" : "Pin"} ${d.name}`}
+                    aria-pressed={pinnedIds.has(d.id)}
                     className={`grid size-5 flex-none place-items-center rounded-[5px] text-ink-2 hover:bg-ph-2 ${
                       pinnedIds.has(d.id) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                     }`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      togglePinned(d.id);
-                    }}
+                    onClick={() => togglePinned(d.id)}
                   >
                     {pinnedIds.has(d.id) ? <Pin className="size-3 fill-current" /> : <PinOff className="size-3" />}
-                  </span>
-                </button>
+                  </button>
+                </div>
               </div>
             ))}
             {listedDocs.length === 0 && (

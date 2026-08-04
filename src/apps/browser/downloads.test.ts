@@ -1,28 +1,7 @@
 import type { FsNode } from "@/system/fs/types";
 import { describe, expect, it, vi } from "vitest";
-import { FALLBACK_MIME_TYPE, mimeTypeForFilename, saveDownload } from "./downloads";
-
-describe("mimeTypeForFilename", () => {
-  it("maps common extensions", () => {
-    expect(mimeTypeForFilename("report.pdf")).toBe("application/pdf");
-    expect(mimeTypeForFilename("photo.PNG")).toBe("image/png");
-    expect(mimeTypeForFilename("track.mp3")).toBe("audio/mpeg");
-  });
-
-  it("reads the last extension of a multi-dotted name", () => {
-    expect(mimeTypeForFilename("archive.tar.gz")).toBe("application/gzip");
-  });
-
-  it("falls back for unknown or missing extensions", () => {
-    expect(mimeTypeForFilename("data.unknownext")).toBe(FALLBACK_MIME_TYPE);
-    expect(mimeTypeForFilename("README")).toBe(FALLBACK_MIME_TYPE);
-    expect(mimeTypeForFilename("trailing.")).toBe(FALLBACK_MIME_TYPE);
-  });
-
-  it("does not read a dotfile's name as an extension", () => {
-    expect(mimeTypeForFilename(".gitignore")).toBe(FALLBACK_MIME_TYPE);
-  });
-});
+import { FALLBACK_MIME_TYPE } from "@/system/fs/mimeTypes";
+import { saveDownload } from "./downloads";
 
 describe("saveDownload", () => {
   const node = { id: "n1", name: "report.pdf" } as FsNode;
