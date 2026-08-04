@@ -13,11 +13,19 @@ backend, no telemetry, ever. The online track (accounts, sync, sharing) was
 retired in July 2026; see `ROADMAP.md` §3.X.1 for the reasoning and §3.X.2
 for the parked bring-your-own-storage alternative. Don't propose a backend.
 
-Current priorities, in order (`ROADMAP.md` §4): stability (step 14) → app
-depth and customization (step 15, area U) → the capability sandbox and the
-apps that need it (step 16) → the third-party app SDK (step 17). Anything
+Steps 14–16 are done (`ROADMAP.md` §4): stability, app depth and
+customization (area U), the capability sandbox and the apps that needed it.
+**Step 17, the third-party app SDK, is what's next.** Anything
 distribution-shaped — public deploy, releases, signed installers — is
 deliberately below that line.
+
+Two rules the app suite is now governed by: the D-area list is **closed**
+(§6.2) — a new app is a new decision, not an extension of "fill the obvious
+holes" — and whether something renders in the capability sandbox is settled
+by §6.8 (Notes) and §6.9 (the code editor) together, not case by case. The
+short version: the sandbox is for renderers that _interpret or execute_
+untrusted content, and anything that fetches, embeds or evaluates what it
+displays belongs inside it.
 
 ## Commands
 
@@ -66,10 +74,9 @@ CI (`.github/workflows/ci.yml`) runs two jobs on every push/PR to `main`:
 non-trivial change; update it when a change alters one of the seams below.
 `ROADMAP.md` tracks the phased feature backlog, and
 `docs/review-backlog.md` holds bugs from the last review pass (with repros
-and proposed fixes) — check it before touching the shell's menus, the Files
-view, or the persisted stores, but read its staleness banner first: five of
-its entries were closed incidentally by the accessibility pass and it hasn't
-been re-triaged since. `docs/security-advisories.md`
+and proposed fixes) — as of step 14 every entry in it is resolved, so read it
+as a record of what was fixed and why, not as open work.
+`docs/security-advisories.md`
 records dependency vulnerability alerts that were investigated and
 deliberately left open (with the reasoning and a revisit condition) — check
 it before re-dismissing or "fixing" an alert someone already triaged. The
@@ -130,6 +137,11 @@ A look is one accent pair; the control duotone and the wallpaper's five tone
 roles are **derived from it** in OKLCH (`src/design/color.ts`), which is what
 stops a user-picked accent from clashing with the desktop. Don't hand-author
 colors downstream of the accent — extend the derivation, or the look table.
+There is exactly one sanctioned exception, and it argues for itself in
+`src/apps/code/syntaxPalette.ts`: syntax highlighting, where the hues carry
+meaning and must stay distinguishable from each other, so they are fixed and
+contrast-tested rather than derived. Adding a second exception needs the same
+kind of argument, in the file, plus a test.
 Wallpaper styles must emit no viewport units (Settings previews them in small
 cards) and size tiled geometry through `var(--wall-tile)`.
 

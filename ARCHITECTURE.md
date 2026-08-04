@@ -45,6 +45,19 @@ so feeding Lagoon's own accent pair back in reproduces its original gradient
 and shape colors to within a unit or two per channel (asserted in
 `color.test.ts` and `palettes.test.ts`).
 
+**One deliberate exception: the code editor's syntax palette**
+(`src/apps/code/syntaxPalette.ts`). "Don't hand-author color downstream of
+the accent" exists so a user-picked accent can't clash with the chrome around
+it. Highlighting is different in kind — its hues carry _meaning_ (a keyword
+is not a string is not a comment) and must stay distinguishable from each
+other, which one derived hue can't promise: some accents would collapse
+keyword and string together and make code harder to read for exactly the
+users who chose that accent. So it is a fixed pair of palettes, light and
+dark, held to WCAG AA against `--surface` and to a minimum OKLCH hue gap
+between roles by `theme.test.ts`. It is not user-facing and not part of the
+derivation. The editor's _chrome_ — background, gutter, selection, caret — is
+all tokens and follows the look normally.
+
 ### Wallpaper artwork is data
 
 `system/settings/wallpaperStyles.ts` holds the procedural library. A style is
@@ -284,6 +297,22 @@ in `useFsStore` (Zustand), with two seams around it:
   store directly (`childrenOf`, `pathOf` selectors) for live updates — both
   views share the same state.
 
+**Mime types are resolved, not trusted** (`mimeTypes.ts`). `FsNode.mimeType`
+is written once, at creation, by creators that disagree with each other:
+uploads take the browser's `File.type` — empty for `.py`/`.rs`/`.toml`, and
+`video/mp2t` (the MPEG transport stream) for `.ts` — downloads arrive as
+bytes with no type at all, and the Terminal used to write `text/plain` for
+everything. A node whose type is missing or wrong can't be routed by "Open
+with", which is why `.json` and `.ts` files were unopenable rather than
+merely unhighlighted before D4. So `effectiveMimeType(node)` decides at
+_read_ time: the stored type wins unless it is absent, `octet-stream`, or
+contradicted by a text/code extension — no schema version, and files saved
+wrong by an older build are fixed retroactively. `openFile.ts`, Files' kind
+labels and the editor all route through it; `mimeTypeForFilename` (the
+extension table, once private to the Browser's downloads) and
+`textMimeTypeForFilename` (for callers who already know it's text) are the
+name-only halves.
+
 Semantics worth knowing: well-known folder ids (`home`, `documents`,
 `trash`, …) are seeded on first run and protected from rename/move/trash
 (`SYSTEM_IDS`); `delete` means "move to Trash" (recording `trashedFrom` for
@@ -396,6 +425,31 @@ focused instance without the shell knowing app internals.
   the moment it's opened), and toolbar buttons suppress `mousedown` so the
   editor keeps the selection they're about to format. The editor chunk is
   lazy-loaded with the app: ~9 kB gzip → ~113 kB.
+
+- **Code** (`src/apps/code/`) — D4, the code/text editor. Single-instance
+  with a file sidebar rather than tabs (nothing else in the shell has a tab
+  primitive, and the Browser deliberately doesn't either), sharing Notes'
+  listing logic through `system/fs/fileScope.ts` — the same scope/filter/
+  sort/pin helpers, parameterized by a predicate, since the only thing that
+  differed was which files belong in the list. Storage behaves exactly as
+  Notes': debounced autosave, flush on switch and unmount, and content
+  migrating across `BLOB_INLINE_THRESHOLD` in both directions.
+
+  **It runs in-process, not in the capability sandbox** — the opposite call
+  from Documents (PDF), and worth understanding as a pair. G2's sandbox is
+  for renderers that _interpret or execute_ untrusted content; a syntax
+  highlighter tokenizes text into styled spans and evaluates nothing. The
+  deciding constraint is concrete rather than philosophical: the bridge
+  exposes no `fs.write` capability at all, so a sandboxed editor could read
+  but never save. See `ROADMAP.md` §6's decision, the counterpart to
+  decision 8's argument for Notes.
+
+  CodeMirror 6 is the engine, with one `import()` per language
+  (`languageSupport.ts`) so Vite emits a chunk each — a `.py` file never
+  downloads the HTML grammar. `languages.ts` is the pure half (extension →
+  language, extension before mime, because `.ts` and `.tsx` share a type but
+  not a parser) and is unit-tested in the `node` environment; the CodeMirror
+  wiring is not, per the `documents/pageNav.ts` split.
 
 - **Viewer** (`src/apps/viewer/`) — multi-instance image viewer with
   zoom/fit/rotate; fit recomputes via a `ResizeObserver` on the window.
@@ -615,9 +669,19 @@ only reach the frame's own window. `SandboxedAppHost` watches `<html>` with a
 a custom accent or a material level all rewrite the tokens without flipping
 light/dark.
 
-Step 16b is underway, with D6 (PDF viewing, `src/apps/documents/`)
-shipped 2026-08-01 as the sandbox's first real (non-demo) consumer, and D7
-(small utilities — Calculator, Clock, Paint; `src/apps/calculator/`,
-`src/apps/clock/`, `src/apps/paint/`) shipped 2026-08-02, needing no sandbox.
-D4 (code editor) is the only item left before step 16b's exit criteria are
-fully met.
+Step 16b is **complete**. D6 (PDF viewing, `src/apps/documents/`) shipped
+2026-08-01 as the sandbox's first real (non-demo) consumer; D7 (small
+utilities — Calculator, Clock, Paint) shipped 2026-08-02, needing no sandbox;
+and D4 (the code editor, `src/apps/code/`) shipped 2026-08-04, deliberately
+outside the sandbox — the reasoning is under the app's entry above and in
+`ROADMAP.md` §6.
+
+D4 closed the second half of the step's exit criterion ("every file type the
+VFS can hold opens in an app that handles it properly") in a way the roadmap
+row didn't anticipate: the blocker wasn't highlighting but mime resolution —
+`.json`, `.ts`, `.py` and `.yaml` had no associated app at all and failed
+with "Can't open this file". See the VFS section's mime-type note.
+
+**Next:** step 17, the third-party app SDK (D8) — generalizing 16a's bridge
+from first-party to third-party, where `fs.write` and a consent model become
+real work rather than something first-party apps could route around.

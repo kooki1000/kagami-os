@@ -187,9 +187,15 @@ demonstrates why the native tier is worth installing.
 > markdown preview (`ROADMAP.md` D1) turned out not to need this: it shipped
 > as a closed, fixed-vocabulary renderer with no generic-HTML code path, so
 > it isn't "untrusted content" in the sense this bet worried about — see
-> `ROADMAP.md` §6 decision 8. A future format-as-you-type WYSIWYG editor for
-> Notes (`ROADMAP.md` D9) would revisit that only if its editor schema opens
-> up to raw HTML.
+> `ROADMAP.md` §6 decision 8. D9's WYSIWYG editor kept that guarantee, and
+> the code editor (D4) ships outside the sandbox for a related reason plus a
+> concrete one: the bridge has no `fs.write` capability, so a sandboxed
+> editor could read but never save (§6 decision 9). Between them, decisions 8
+> and 9 are what actually define where the line sits — the sandbox is for
+> renderers that _interpret or execute_ what they display.
+>
+> That gap is also the first real piece of step 17's work: a third-party app
+> that cannot write is a viewer, not an app.
 
 The biggest lift, and a genuine fork in what Kagami _is_. Third-party apps
 cannot be bundled TypeScript loaded into our own React tree — they must be
@@ -320,8 +326,9 @@ records _why_ the native build is shaped the way it is.
    One exception is worth taking immediately: the repository is public with
    no LICENSE, which legally means all rights reserved. That is hygiene, not
    distribution.
-5. **How far the app suite grows.** Open. The current answer is "fill the
-   obvious holes, then stop" — markdown preview (shipped), PDF, a code
-   editor, a few small utilities, plus Notes' inline WYSIWYG (`ROADMAP.md`
-   D9) as a further refinement. A spreadsheet or a drawing app would be a new
-   decision; §6's "coherence over sprawl" is the tie-breaker.
+5. **How far the app suite grows.** ✅ **Decided: the holes are filled, and
+   the list is closed.** Markdown preview, Notes' inline WYSIWYG, PDF, the
+   small utilities and the code editor have all shipped (`ROADMAP.md` §6.2).
+   A spreadsheet or a drawing app would be a new decision, as would depth
+   inside an existing app that crosses the sandbox line in §6.9; §6's
+   "coherence over sprawl" remains the tie-breaker.
