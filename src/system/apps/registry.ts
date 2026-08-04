@@ -2,6 +2,7 @@ import type { AppManifest } from "./types";
 import { browserApp } from "@/apps/browser";
 import { calculatorApp } from "@/apps/calculator";
 import { clockApp } from "@/apps/clock";
+import { codeApp } from "@/apps/code";
 import { devCrashApp } from "@/apps/devcrash";
 import { documentsApp } from "@/apps/documents";
 import { filesApp } from "@/apps/files";
@@ -22,6 +23,7 @@ import { isFlagEnabled } from "@/system/flags";
 export const apps: AppManifest[] = [
   filesApp,
   notesApp,
+  codeApp,
   viewerApp,
   documentsApp,
   calculatorApp,
