@@ -57,4 +57,20 @@ test.describe("axe-core accessibility audit", () => {
     const results = await scan(page, ["color-contrast"]).analyze();
     expect(results.violations).toEqual([]);
   });
+
+  test("the Code editor window has no violations", async ({ page }) => {
+    await openFiles(page);
+    await page.locator("input[type=\"file\"]").first().setInputFiles("e2e/fixtures/sample.ts");
+    await expect(page.getByText("sample.ts", { exact: true })).toBeVisible();
+    await page.getByText("sample.ts", { exact: true }).dblclick();
+    await expect(page.locator("[data-code-editor] .cm-content")).toBeVisible();
+
+    // Same color-contrast carve-out as Files above, and for the same reason:
+    // the shared sidebar chrome. The editor's own syntax palette is held to
+    // AA by `src/apps/code/theme.test.ts`, which axe can't check for it —
+    // highlighted spans are painted from a stylesheet axe doesn't resolve
+    // back to a token pair.
+    const results = await scan(page, ["color-contrast"]).analyze();
+    expect(results.violations).toEqual([]);
+  });
 });

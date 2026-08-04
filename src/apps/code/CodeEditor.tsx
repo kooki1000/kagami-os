@@ -79,6 +79,7 @@ export function CodeEditor({
     theme: new Compartment(),
     view: new Compartment(),
     editable: new Compartment(),
+    label: new Compartment(),
   }), []);
   // The file's text at mount. A ref because the view is built once, in an
   // effect: later content changes come from the editor itself, not from here.
@@ -119,6 +120,7 @@ export function CodeEditor({
           compartments.view.of([]),
           compartments.language.of([]),
           compartments.editable.of([]),
+          compartments.label.of([]),
           compartments.theme.of([]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged)
@@ -173,6 +175,18 @@ export function CodeEditor({
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme", "class"] });
     return () => observer.disconnect();
   }, [compartments]);
+
+  // CodeMirror's content element is an ARIA textbox, and an unnamed input
+  // field is a serious axe violation (`e2e/a11y-axe.spec.ts`) — a screen
+  // reader would announce "edit text" with no idea which file. Reconfigured
+  // rather than set once, so a rename while the file is open keeps it true.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: compartments.label.reconfigure(
+        EditorView.contentAttributes.of({ "aria-label": `${doc.name}, code editor` }),
+      ),
+    });
+  }, [compartments, doc.name]);
 
   // A file that's still loading (or too large) must not accept keystrokes
   // that would be saved over its real contents.

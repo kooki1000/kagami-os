@@ -9,6 +9,7 @@ import {
   isValidNodeName,
   pathOf,
 } from "@/system/fs/fsStore";
+import { textMimeTypeForFilename } from "@/system/fs/mimeTypes";
 import { HOME_ID, ROOT_ID } from "@/system/fs/types";
 
 /**
@@ -569,7 +570,7 @@ function applyRedirect(
   if (existing)
     ctx.updateFileContent(existing.id, finalText);
   else
-    ctx.createFile(cwd, redirect.path, finalText, "text/plain");
+    ctx.createFile(cwd, redirect.path, finalText, textMimeTypeForFilename(redirect.path));
   return { ...result, lines: [] };
 }
 
@@ -722,7 +723,7 @@ function runBuiltin(command: string, args: string[], ctx: ShellContext, stdin: s
           ctx.touchFile(existing.id);
         return { lines: [] };
       }
-      ctx.createFile(resolved.parentId, resolved.leaf, "", "text/plain");
+      ctx.createFile(resolved.parentId, resolved.leaf, "", textMimeTypeForFilename(resolved.leaf));
       return { lines: [] };
     }
 

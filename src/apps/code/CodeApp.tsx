@@ -303,18 +303,25 @@ export default function CodeApp({ windowId, payload }: AppWindowProps) {
                   Files
                 </div>
               )}
-              <button
-                type="button"
-                data-code-file={f.name}
+              {/* The row is a container with two sibling buttons, not a
+                  button with a button inside it: nesting interactive
+                  controls is an axe `nested-interactive` violation, and
+                  screen readers don't reliably announce the inner one. */}
+              <div
                 className={`group flex w-full items-center gap-1 rounded-[8px] px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-left ${
                   doc?.id === f.id
                     ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)]"
                     : "hover:bg-ph"
                 }`}
-                onClick={() => setSelectedId(f.id)}
                 onContextMenu={e => onFileContextMenu(e, f.id)}
               >
-                <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  data-code-file={f.name}
+                  aria-current={doc?.id === f.id}
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() => setSelectedId(f.id)}
+                >
                   {renamingId === f.id
                     ? (
                         <RenameInput
@@ -344,22 +351,19 @@ export default function CodeApp({ windowId, payload }: AppWindowProps) {
                           </span>
                         </>
                       )}
-                </div>
-                <span
-                  role="button"
-                  tabIndex={-1}
-                  aria-label={pinnedIds.has(f.id) ? "Unpin" : "Pin"}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${pinnedIds.has(f.id) ? "Unpin" : "Pin"} ${f.name}`}
+                  aria-pressed={pinnedIds.has(f.id)}
                   className={`grid size-5 flex-none place-items-center rounded-[5px] text-ink-2 hover:bg-ph-2 ${
                     pinnedIds.has(f.id) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                   }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    togglePinned(f.id);
-                  }}
+                  onClick={() => togglePinned(f.id)}
                 >
                   {pinnedIds.has(f.id) ? <Pin className="size-3 fill-current" /> : <PinOff className="size-3" />}
-                </span>
-              </button>
+                </button>
+              </div>
             </div>
           ))}
           {listedFiles.length === 0 && (

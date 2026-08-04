@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectiveMimeType, FALLBACK_MIME_TYPE, isTextLikeMime, mimeTypeForFilename } from "./mimeTypes";
+import { effectiveMimeType, FALLBACK_MIME_TYPE, isTextLikeMime, mimeTypeForFilename, textMimeTypeForFilename } from "./mimeTypes";
 
 describe("mimeTypeForFilename", () => {
   it("names the code types D4's editor opens", () => {
@@ -79,5 +79,23 @@ describe("effectiveMimeType", () => {
 
   it("follows a rename into a text extension, the way a desktop does", () => {
     expect(effectiveMimeType({ name: "photo.txt", mimeType: "image/png" })).toBe("text/plain");
+  });
+});
+
+describe("textMimeTypeForFilename", () => {
+  it("names the type when the extension does, and stays text otherwise", () => {
+    expect(textMimeTypeForFilename("app.ts")).toBe("text/typescript");
+    expect(textMimeTypeForFilename("notes.md")).toBe("text/markdown");
+    // A file the Terminal wrote out of plain text must not become "some
+    // bytes" just because its name says nothing.
+    expect(textMimeTypeForFilename("README")).toBe("text/plain");
+    expect(textMimeTypeForFilename("data.unknownext")).toBe("text/plain");
+    // Nor should a binary extension override what the caller already knows.
+    expect(textMimeTypeForFilename("photo.png")).toBe("text/plain");
+  });
+
+  it("reads the leaf of a path, not the whole thing", () => {
+    expect(mimeTypeForFilename("assets.d/main")).toBe(FALLBACK_MIME_TYPE);
+    expect(mimeTypeForFilename("src/app.ts")).toBe("text/typescript");
   });
 });

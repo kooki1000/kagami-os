@@ -110,10 +110,25 @@ const TEXT_LIKE_APPLICATION_TYPES = new Set([
  * not an extension), and a trailing dot names nothing at all.
  */
 export function mimeTypeForFilename(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  if (dot <= 0 || dot === filename.length - 1)
+  // Take the leaf first: the Terminal passes paths, and a folder called
+  // `assets.d` would otherwise make `assets.d/main` look like a `.d/main`.
+  const name = filename.slice(filename.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0 || dot === name.length - 1)
     return FALLBACK_MIME_TYPE;
-  return MIME_BY_EXTENSION[filename.slice(dot + 1).toLowerCase()] ?? FALLBACK_MIME_TYPE;
+  return MIME_BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? FALLBACK_MIME_TYPE;
+}
+
+/**
+ * The type for a file the caller already knows is text — the Terminal's
+ * `touch` and `>` redirect. Falls back to `text/plain` rather than
+ * `application/octet-stream`, because "some bytes" would make a file the
+ * shell just wrote out of plain text unreadable to `cat` and uneditable in
+ * both editors.
+ */
+export function textMimeTypeForFilename(filename: string): string {
+  const mime = mimeTypeForFilename(filename);
+  return mime !== FALLBACK_MIME_TYPE && isTextLikeMime(mime) ? mime : "text/plain";
 }
 
 /** Can this type be read as text — by an editor, `cat`, or search? */
