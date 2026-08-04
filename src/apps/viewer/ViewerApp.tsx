@@ -17,18 +17,19 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toolbarIconButtonClass } from "@/apps/shared/toolbarIconButton";
 import { capturePointer, releasePointer } from "@/lib/pointerCapture";
+import { useLatestRef } from "@/lib/useLatestRef";
 import { useAppCommand } from "@/system/appCommands";
-import { usePayloadFileId } from "@/system/apps/filePayload";
+import { usePayloadFileId, useSyncWindowTitle } from "@/system/apps/filePayload";
 import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
-import { useBlobUrl } from "@/system/fs/useBlobUrl";
+import { isBlobMissing, useBlobUrl } from "@/system/fs/useBlobUrl";
 import { notify } from "@/system/notifications/notificationStore";
 import { setWallpaperFromFile } from "@/system/settings/settingsStore";
 import { useBareArrowKeys } from "@/system/shortcuts";
-import { useWindowStore } from "@/system/windows/windowStore";
 import { resolveFileBytes } from "../files/download";
 import { isImageNode } from "../files/fileMeta";
 import { buildExifFields } from "./exifInfo";
@@ -56,15 +57,8 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   const node = activeId ? nodes[activeId] : undefined;
   const { url: blobUrl, status: blobStatus } = useBlobUrl(node?.contentRef);
   const src = node?.content ?? blobUrl ?? undefined;
-  const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
-  // Viewer windows are titled after their file; keep the title bar in step
-  // when the file is renamed elsewhere (Files, Terminal) while it's open,
-  // or when Next/Previous switches images.
-  useEffect(() => {
-    if (node?.name)
-      setWindowTitle(windowId, node.name);
-  }, [node?.name, windowId, setWindowTitle]);
+  useSyncWindowTitle(windowId, node?.name);
 
   // Every other image in the opened file's folder, in the same order Files
   // lists them — the slideshow's Next/Previous cursor.
@@ -77,13 +71,13 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   // the slideshow interval and the arrow-key listener below both depend on
   // it, and re-deriving `siblings` on every unrelated fs write (any rename,
   // any Notes autosave) would otherwise tear down and rebuild both.
-  const siblingsRef = useRef(siblings);
-  useLayoutEffect(() => {
-    siblingsRef.current = siblings;
-  });
+  const siblingsRef = useLatestRef(siblings);
   const step = useCallback((delta: number): void => {
     setActiveId(prev => stepSibling(siblingsRef.current, prev, delta) ?? prev);
-  }, [setActiveId]);
+    // siblingsRef's identity (from useLatestRef) never changes, so listing it
+    // doesn't affect `step`'s own stability — it just satisfies
+    // exhaustive-deps, which can't see through the custom hook.
+  }, [setActiveId, siblingsRef]);
 
   // `playing` can stay stale-true once the folder no longer has enough
   // images to cycle through — nothing renders or acts on it directly, only
@@ -130,12 +124,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   }
 
   // Latest fit inputs for the resize observer, which lives outside renders.
-  // Synced in an effect (not during render) so refs stay outside the
-  // render phase, per react-hooks/refs.
-  const fitStateRef = useRef({ fitted, rotatedWidth, rotatedHeight });
-  useLayoutEffect(() => {
-    fitStateRef.current = { fitted, rotatedWidth, rotatedHeight };
-  });
+  const fitStateRef = useLatestRef({ fitted, rotatedWidth, rotatedHeight });
 
   useEffect(() => {
     const body = bodyRef.current;
@@ -148,7 +137,9 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     });
     observer.observe(body);
     return () => observer.disconnect();
-  }, []);
+    // fitStateRef's identity (from useLatestRef) never changes, so listing it
+    // doesn't reinstall the observer — it just satisfies exhaustive-deps.
+  }, [fitStateRef]);
 
   // Stable identity (only ever touches state setters) so the wheel-zoom
   // native listener below can depend on it without reinstalling itself.
@@ -358,7 +349,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
   // `useBlobUrl` settles to "missing" (the hash isn't in the blob store —
   // review-backlog #18), treat it the same as no source at all instead of
   // spinning forever.
-  const blobMissing = node?.contentRef !== undefined && blobStatus === "missing";
+  const blobMissing = isBlobMissing(node, blobStatus);
   const hasSource = !!(node?.content || (node?.contentRef && !blobMissing));
   if (!hasSource) {
     return (
@@ -379,8 +370,7 @@ export default function ViewerApp({ windowId, payload, focused }: AppWindowProps
     );
   }
 
-  const toolButton
-    = "grid size-6 place-items-center rounded-[6px] text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
+  const toolButton = toolbarIconButtonClass("size-6");
   const hasSlideshow = siblings.length > 1;
   const slideshowPlaying = playing && hasSlideshow;
 

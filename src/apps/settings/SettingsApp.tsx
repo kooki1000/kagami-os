@@ -265,6 +265,12 @@ function LookMiniature({ look, theme, customAccentHex }: {
   );
 }
 
+const THEME_OPTIONS: SegmentOption<ThemePreference>[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "auto", label: "Auto" },
+];
+
 const MATERIAL_OPTIONS: SegmentOption<MaterialLevel>[] = [
   { value: "clear", label: "Clear" },
   { value: "frosted", label: "Frosted" },
@@ -278,6 +284,12 @@ const WALLPAPER_FIT_OPTIONS: SegmentOption<WallpaperFit>[] = [
   { value: "tile", label: "Tile" },
 ];
 
+const UI_SCALE_OPTIONS: SegmentOption<UiScale>[] = [
+  { value: "small", label: "Small" },
+  { value: "default", label: "Default" },
+  { value: "large", label: "Large" },
+];
+
 const REDUCE_MOTION_OPTIONS: SegmentOption<ReduceMotionPreference>[] = [
   { value: "system", label: "System" },
   { value: "on", label: "Reduce" },
@@ -288,6 +300,35 @@ const ANIMATION_SPEED_OPTIONS: SegmentOption<number>[] = [
   { value: 0.5, label: "Slower" },
   { value: 1, label: "Normal" },
   { value: 2, label: "Faster" },
+];
+
+const DOCK_SIZE_OPTIONS: SegmentOption<DockSize>[] = [
+  { value: "small", label: "Small" },
+  { value: "medium", label: "Medium" },
+  { value: "large", label: "Large" },
+];
+
+const DOCK_POSITION_OPTIONS: SegmentOption<DockPosition>[] = [
+  { value: "bottom", label: "Bottom" },
+  { value: "left", label: "Left" },
+  { value: "right", label: "Right" },
+];
+
+const DESKTOP_ICON_SIZE_OPTIONS: SegmentOption<DesktopIconSize>[] = [
+  { value: "small", label: "Small" },
+  { value: "medium", label: "Medium" },
+  { value: "large", label: "Large" },
+];
+
+const SORT_KEY_OPTIONS: SegmentOption<SortKey>[] = [
+  { value: "name", label: "Name" },
+  { value: "date", label: "Date" },
+  { value: "kind", label: "Kind" },
+];
+
+const CLOCK_FORMAT_OPTIONS: SegmentOption<"12" | "24">[] = [
+  { value: "12", label: "12-hour" },
+  { value: "24", label: "24-hour" },
 ];
 
 /**
@@ -486,11 +527,7 @@ function AppearanceSection() {
           width={240}
           value={preference}
           onChange={setPreference}
-          options={[
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-            { value: "auto", label: "Auto" },
-          ]}
+          options={THEME_OPTIONS}
         />
       </Row>
 
@@ -572,11 +609,7 @@ function AppearanceSection() {
           width={240}
           value={uiScale}
           onChange={setUiScale}
-          options={[
-            { value: "small", label: "Small" },
-            { value: "default", label: "Default" },
-            { value: "large", label: "Large" },
-          ]}
+          options={UI_SCALE_OPTIONS}
         />
       </Row>
 
@@ -614,11 +647,7 @@ function DockSection() {
           width={240}
           value={size}
           onChange={setSize}
-          options={[
-            { value: "small", label: "Small" },
-            { value: "medium", label: "Medium" },
-            { value: "large", label: "Large" },
-          ]}
+          options={DOCK_SIZE_OPTIONS}
         />
       </Row>
       <Row label="Position on screen">
@@ -626,11 +655,7 @@ function DockSection() {
           width={240}
           value={position}
           onChange={setPosition}
-          options={[
-            { value: "bottom", label: "Bottom" },
-            { value: "left", label: "Left" },
-            { value: "right", label: "Right" },
-          ]}
+          options={DOCK_POSITION_OPTIONS}
         />
       </Row>
     </>
@@ -668,11 +693,7 @@ function DesktopSection() {
           width={240}
           value={iconSize}
           onChange={setIconSize}
-          options={[
-            { value: "small", label: "Small" },
-            { value: "medium", label: "Medium" },
-            { value: "large", label: "Large" },
-          ]}
+          options={DESKTOP_ICON_SIZE_OPTIONS}
         />
       </Row>
       <Row label="Sort by">
@@ -680,11 +701,7 @@ function DesktopSection() {
           width={240}
           value={sortOrder}
           onChange={setSortOrder}
-          options={[
-            { value: "name", label: "Name" },
-            { value: "date", label: "Date" },
-            { value: "kind", label: "Kind" },
-          ]}
+          options={SORT_KEY_OPTIONS}
         />
       </Row>
       <Row label="Auto-arrange">
@@ -809,10 +826,7 @@ function MenuBarSection() {
           width={180}
           value={clockHour12 ? "12" : "24"}
           onChange={value => setClockHour12(value === "12")}
-          options={[
-            { value: "12", label: "12-hour" },
-            { value: "24", label: "24-hour" },
-          ]}
+          options={CLOCK_FORMAT_OPTIONS}
         />
       </Row>
       <Row label="Show seconds">

@@ -257,6 +257,19 @@ fn eval_on_webview(app: &AppHandle, id: &str, js: &str) -> Result<(), String> {
     webview.eval(js).map_err(|error| error.to_string())
 }
 
+/// Runs `f` against the webview for `id`, no-op if it isn't open — the shape
+/// shared by every command below that doesn't need "not found" to be an error
+/// (unlike [`browser_navigate`], which does).
+fn with_webview<F>(app: &AppHandle, id: &str, f: F) -> Result<(), String>
+where
+    F: FnOnce(&Webview) -> Result<(), tauri::Error>,
+{
+    let Some(webview) = find_webview(app, id) else {
+        return Ok(());
+    };
+    f(&webview).map_err(|error| error.to_string())
+}
+
 fn emit_load_state(webview: &Webview, id: String, url: String, loading: bool) {
     let _ = webview
         .app_handle()
@@ -479,42 +492,29 @@ pub fn browser_find_clear(app: AppHandle, id: String) -> Result<(), String> {
 /// than by restyling content we don't own.
 #[tauri::command]
 pub fn browser_set_zoom(app: AppHandle, id: String, factor: f64) -> Result<(), String> {
-    let Some(webview) = find_webview(&app, &id) else {
-        return Ok(());
-    };
-    webview.set_zoom(factor).map_err(|error| error.to_string())
+    with_webview(&app, &id, |webview| webview.set_zoom(factor))
 }
 
 #[tauri::command]
 pub fn browser_set_bounds(app: AppHandle, id: String, bounds: Bounds) -> Result<(), String> {
-    let Some(webview) = find_webview(&app, &id) else {
-        return Ok(());
-    };
-    webview
-        .set_position(bounds.position(cached_content_inset_y()))
-        .map_err(|error| error.to_string())?;
-    webview
-        .set_size(bounds.size())
-        .map_err(|error| error.to_string())
+    with_webview(&app, &id, |webview| {
+        webview.set_position(bounds.position(cached_content_inset_y()))?;
+        webview.set_size(bounds.size())
+    })
 }
 
 #[tauri::command]
 pub fn browser_set_visible(app: AppHandle, id: String, visible: bool) -> Result<(), String> {
-    let Some(webview) = find_webview(&app, &id) else {
-        return Ok(());
-    };
-    let result = if visible {
-        webview.show()
-    } else {
-        webview.hide()
-    };
-    result.map_err(|error| error.to_string())
+    with_webview(&app, &id, |webview| {
+        if visible {
+            webview.show()
+        } else {
+            webview.hide()
+        }
+    })
 }
 
 #[tauri::command]
 pub fn browser_close(app: AppHandle, id: String) -> Result<(), String> {
-    let Some(webview) = find_webview(&app, &id) else {
-        return Ok(());
-    };
-    webview.close().map_err(|error| error.to_string())
+    with_webview(&app, &id, |webview| webview.close())
 }

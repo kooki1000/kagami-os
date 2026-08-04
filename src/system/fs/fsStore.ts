@@ -325,16 +325,27 @@ function collectSubtrees(nodes: NodeMap, rootIds: string[]): string[] {
   return ids;
 }
 
-/** `desired`, or `desired 2`, `desired 3`, … if siblings collide. */
+/**
+ * `desired`, or `desired 2`, `desired 3`, … if siblings collide.
+ *
+ * `childIds` is an optional pre-resolved `childIdsByParent(nodes)` index —
+ * pass it when the caller already has one (e.g. `duplicate`'s recursive
+ * clone) so this looks siblings up in `O(children)` instead of re-scanning
+ * every node in the tree via `Object.values(nodes)` per call.
+ */
 export function uniqueChildName(
   nodes: NodeMap,
   parentId: string,
   desired: string,
   excludeId?: string,
+  childIds?: Map<string, string[]>,
 ): string {
+  const siblingNodes = childIds
+    ? (childIds.get(parentId) ?? []).map(id => nodes[id]).filter((n): n is FsNode => !!n)
+    : Object.values(nodes).filter(n => n.parentId === parentId);
   const siblings = new Set(
-    Object.values(nodes)
-      .filter(n => n.parentId === parentId && n.id !== excludeId)
+    siblingNodes
+      .filter(n => n.id !== excludeId)
       .map(n => n.name.toLowerCase()),
   );
   if (!siblings.has(desired.toLowerCase()))
@@ -704,7 +715,7 @@ export const useFsStore = create<FsStore>()((set, get) => {
           ...node,
           id: crypto.randomUUID(),
           parentId,
-          name: uniqueChildName(nodes, parentId, node.name),
+          name: uniqueChildName(nodes, parentId, node.name, undefined, childIds),
           createdAt: now,
           modifiedAt: now,
           trashedFrom: undefined,

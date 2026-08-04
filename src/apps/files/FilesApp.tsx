@@ -19,9 +19,11 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
+import { buildSortMenuEntries } from "@/components/ui/sortMenuEntries";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { formatBytes } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
+import { payloadStringField } from "@/system/apps/filePayload";
 import { appIdForFile, candidateAppsForFile, openFile, openFileWithApp } from "@/system/apps/openFile";
 import { getApp } from "@/system/apps/registry";
 import { blobStore } from "@/system/fs/blobStore";
@@ -97,15 +99,7 @@ interface MenuState {
 
 /** Launch payload for opening Files scoped to a specific folder (B7: Desktop icons open into their folder rather than always landing on Home). */
 function payloadFolderId(payload: unknown): string | null {
-  if (
-    payload
-    && typeof payload === "object"
-    && "folderId" in payload
-    && typeof (payload as { folderId: unknown }).folderId === "string"
-  ) {
-    return (payload as { folderId: string }).folderId;
-  }
-  return null;
+  return payloadStringField(payload, "folderId");
 }
 
 /** Resolve ids to their live nodes, silently dropping any that no longer exist. */
@@ -921,15 +915,7 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
   }
 
   function sortEntries(): ContextMenuEntry[] {
-    const check = (on: boolean) => (on ? "✓  " : "  ");
-    return [
-      ...(Object.keys(SORT_LABELS) as SortKey[]).map((key, i, arr) => ({
-        label: `${check(sort.key === key)}${SORT_LABELS[key]}`,
-        run: () => applySort(key),
-        dividerAfter: i === arr.length - 1,
-      })),
-      { label: `${check(sort.dir === "desc")}Reverse order`, run: toggleSortDir },
-    ];
+    return buildSortMenuEntries(sort, SORT_LABELS, applySort, toggleSortDir);
   }
 
   function onItemContextMenu(e: MouseEvent, node: FsNode): void {

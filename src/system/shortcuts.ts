@@ -58,14 +58,11 @@ export const WINDOW_CHORDS: ChordDescriptor[] = [
 /**
  * `KeyboardEvent.key` → the glyph the menus print for it.
  *
- * Without this the dispatcher only ever matched ⌘+letter, so **every**
- * non-letter shortcut any app declared was decorative: Documents' page nav and
- * zoom, Viewer's zoom and prev/next, Player's prev/next and Terminal's font
- * size — 13 menu items advertising chords that silently did nothing.
- *
- * Two normalizations matter for matching the strings the manifests actually
- * contain: zoom-out is written with a real minus sign (U+2212), not a hyphen,
- * and zoom-in is written `+` though the unshifted key is `=` on most layouts.
+ * Needed so non-letter menu shortcuts (Documents' zoom, Viewer's prev/next,
+ * etc.) actually match. Two normalizations matter for matching the strings
+ * the manifests actually contain: zoom-out is written with a real minus sign
+ * (U+2212), not a hyphen, and zoom-in is written `+` though the unshifted key
+ * is `=` on most layouts.
  */
 const CHORD_GLYPHS: Record<string, string> = {
   "ArrowUp": "↑",

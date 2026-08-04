@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFsStore } from "@/system/fs/fsStore";
+import { useWindowStore } from "@/system/windows/windowStore";
 
 /**
  * Launch payload used when an app is asked to open a specific file. Kept in
@@ -13,16 +14,26 @@ export interface FilePayload {
   fileId: string;
 }
 
-export function payloadFileId(payload: unknown): string | null {
+/**
+ * Narrow a launch payload down to one string field, e.g. `{ fileId }` or
+ * `{ folderId }` — the shape every app's ad hoc payload object turns out to
+ * have. Shared so each call site (`payloadFileId` here, Files' own
+ * `payloadFolderId`) doesn't hand-roll the same `typeof`/`in` guard.
+ */
+export function payloadStringField(payload: unknown, key: string): string | null {
   if (
     payload
     && typeof payload === "object"
-    && "fileId" in payload
-    && typeof (payload as FilePayload).fileId === "string"
+    && key in payload
+    && typeof (payload as Record<string, unknown>)[key] === "string"
   ) {
-    return (payload as FilePayload).fileId;
+    return (payload as Record<string, string>)[key];
   }
   return null;
+}
+
+export function payloadFileId(payload: unknown): string | null {
+  return payloadStringField(payload, "fileId");
 }
 
 /**
@@ -60,4 +71,18 @@ export function serializeFilePayload(payload: unknown): FilePayload | undefined 
 export function restoreFilePayload(json: unknown): FilePayload | undefined {
   const fileId = payloadFileId(json);
   return fileId && useFsStore.getState().nodes[fileId] ? { fileId } : undefined;
+}
+
+/**
+ * Keeps a single-file app's window title in step with its open file — on
+ * mount, and whenever the file is renamed elsewhere (Files, Terminal) or
+ * Next/Previous switches to a different one. Shared by Player and Viewer,
+ * which both title their window after the currently open file this way.
+ */
+export function useSyncWindowTitle(windowId: string, name: string | undefined): void {
+  const setWindowTitle = useWindowStore(s => s.setWindowTitle);
+  useEffect(() => {
+    if (name)
+      setWindowTitle(windowId, name);
+  }, [name, windowId, setWindowTitle]);
 }

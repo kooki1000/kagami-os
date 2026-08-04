@@ -14,16 +14,17 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toolbarIconButtonClass } from "@/apps/shared/toolbarIconButton";
 import { formatDuration } from "@/lib/format";
+import { useLatestRef } from "@/lib/useLatestRef";
 import { useAppCommand } from "@/system/appCommands";
-import { usePayloadFileId } from "@/system/apps/filePayload";
+import { usePayloadFileId, useSyncWindowTitle } from "@/system/apps/filePayload";
 import { siblingsOf, stepSibling } from "@/system/apps/siblingNav";
 import { useFsStore } from "@/system/fs/fsStore";
-import { useBlobUrl } from "@/system/fs/useBlobUrl";
+import { isBlobMissing, useBlobUrl } from "@/system/fs/useBlobUrl";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useBareArrowKeys } from "@/system/shortcuts";
-import { useWindowStore } from "@/system/windows/windowStore";
 import { isAudioNode, isVideoNode } from "../files/fileMeta";
 import { onEndedAction } from "./repeatMode";
 import { applyShuffleOrder, buildShuffleOrder } from "./shuffleOrder";
@@ -41,17 +42,11 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
   const nodes = useFsStore(s => s.nodes);
   const node = activeId ? nodes[activeId] : undefined;
   const { url: blobUrl, status: blobStatus } = useBlobUrl(node?.contentRef);
-  const setWindowTitle = useWindowStore(s => s.setWindowTitle);
 
   const playerVolume = useSettingsStore(s => s.playerVolume);
   const setPlayerVolume = useSettingsStore(s => s.setPlayerVolume);
 
-  // Player windows are titled after the current track; keep the title bar in
-  // step both on open and whenever Next/Previous switches tracks.
-  useEffect(() => {
-    if (node?.name)
-      setWindowTitle(windowId, node.name);
-  }, [node?.name, windowId, setWindowTitle]);
+  useSyncWindowTitle(windowId, node?.name);
 
   // Every other file of the same media kind (audio or video, not mixed) in
   // the opened file's folder, in the same order Files lists them.
@@ -69,14 +64,8 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
   // effect's dependency list to just what should actually trigger a
   // reshuffle (see below), and keeps `step` a stable identity for the
   // keyboard listener.
-  const activeIdRef = useRef(activeId);
-  useLayoutEffect(() => {
-    activeIdRef.current = activeId;
-  });
-  const siblingIdsRef = useRef(siblingIds);
-  useLayoutEffect(() => {
-    siblingIdsRef.current = siblingIds;
-  });
+  const activeIdRef = useLatestRef(activeId);
+  const siblingIdsRef = useLatestRef(siblingIds);
 
   // Shuffle order, held stable in state rather than rebuilt every render
   // (see shuffleOrder.ts's own docs) — only re-rolled when shuffle is turned
@@ -85,21 +74,25 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
   const [shuffleOrderIds, setShuffleOrderIds] = useState<string[]>([]);
   useEffect(() => {
     if (shuffle)
+      // Rebuilding the order is the whole point of this effect (see the
+      // comment above) — pre-existing, unrelated to the refs below.
+      // eslint-disable-next-line react/set-state-in-effect
       setShuffleOrderIds(buildShuffleOrder(siblingIdsRef.current, activeIdRef.current));
-  }, [shuffle, siblingIdsKey]);
+    // activeIdRef/siblingIdsRef's identity (from useLatestRef) never changes,
+    // so listing them doesn't cause an extra reshuffle — it just satisfies
+    // exhaustive-deps, which can't see through the custom hook the way it
+    // can a literal useRef().
+  }, [shuffle, siblingIdsKey, activeIdRef, siblingIdsRef]);
 
   const activeOrder = useMemo<FsNode[]>(
     () => (shuffle ? applyShuffleOrder(siblings, shuffleOrderIds) : siblings),
     [shuffle, siblings, shuffleOrderIds],
   );
-  const activeOrderRef = useRef(activeOrder);
-  useLayoutEffect(() => {
-    activeOrderRef.current = activeOrder;
-  });
+  const activeOrderRef = useLatestRef(activeOrder);
 
   const step = useCallback((delta: number): void => {
     setActiveId(prev => stepSibling(activeOrderRef.current, prev, delta) ?? prev);
-  }, [setActiveId]);
+  }, [setActiveId, activeOrderRef]);
 
   // Whether stepping forward lands on a different track without wrapping —
   // repeatMode.ts's `hasNext` input, deciding what onEnded does at the end
@@ -228,7 +221,7 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
   // A node with a contentRef but no blob store entry is missing, not
   // loading — treat it the same as no track selected instead of spinning
   // forever (the same fix ViewerApp got for review-backlog #18).
-  const blobMissing = node?.contentRef !== undefined && blobStatus === "missing";
+  const blobMissing = isBlobMissing(node, blobStatus);
 
   if (!activeId || !node || blobMissing) {
     return (
@@ -251,8 +244,7 @@ export default function PlayerApp({ windowId, payload, focused }: AppWindowProps
 
   const video = isVideoNode(node);
   const hasPlaylist = siblings.length > 1;
-  const transportButton
-    = "grid size-7 place-items-center rounded-[6px] text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
+  const transportButton = toolbarIconButtonClass("size-7");
   const toggleButton = (active: boolean) =>
     `grid size-7 place-items-center rounded-[6px] enabled:hover:bg-ph disabled:opacity-35 ${
       active ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent" : "text-ink-2 enabled:hover:text-ink"
