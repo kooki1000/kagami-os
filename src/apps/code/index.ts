@@ -13,10 +13,6 @@ import { restoreFilePayload, serializeFilePayload } from "@/system/apps/filePayl
  * spans. The bridge also has no `fs.write` capability, so a sandboxed editor
  * could read but never save — see ROADMAP.md §6's decision on this, the
  * counterpart to decision 8's argument for Notes.
- *
- * Single-instance with a file sidebar rather than the "multi-tab" the roadmap
- * row originally imagined: no other app in the shell has tabs, and the sidebar
- * Notes established already answers "which file" without inventing one.
  */
 export const codeApp: AppManifest = {
   id: "code",

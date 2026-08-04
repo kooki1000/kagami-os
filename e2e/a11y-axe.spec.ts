@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { boot, openFiles } from "./helpers";
+import { boot, openApp, openFiles } from "./helpers";
 
 // Phase 11 (H1)'s exit criterion (ROADMAP.md) is "menus and context menus
 // pass an axe-core audit". The other a11y-*.spec.ts files hand-assert
@@ -54,6 +54,17 @@ test.describe("axe-core accessibility audit", () => {
     // selected-item text fall short of WCAG AA at the Lagoon palette's
     // current token values. Bumping them needs its own design sign-off —
     // tracked as follow-up, not a side effect of this audit.
+    const results = await scan(page, ["color-contrast"]).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  // Notes and Code render the same sidebar shape, and the nested-interactive
+  // fix reached Code first — this is here so the two can't drift apart again.
+  test("the Notes window has no violations", async ({ page }) => {
+    await boot(page);
+    await openApp(page, "notes");
+    await expect(page.locator("[data-window-id]", { hasText: "Notes" })).toBeVisible();
+
     const results = await scan(page, ["color-contrast"]).analyze();
     expect(results.violations).toEqual([]);
   });

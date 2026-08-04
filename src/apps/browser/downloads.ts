@@ -13,12 +13,8 @@ import { mimeTypeForFilename } from "@/system/fs/mimeTypes";
  * Downloads arrive as a filename and bytes with no type attached (unlike an
  * upload, where `File.type` is filled in by the browser), and a node with no
  * mime type can't be routed by "Open with" at all — hence the name-based
- * lookup. That table used to live here; it moved to `system/fs/mimeTypes.ts`
- * when D4's editor needed the same answers, and is re-exported below so this
- * app's own callers don't have to care where it went.
+ * lookup.
  */
-
-export { FALLBACK_MIME_TYPE, mimeTypeForFilename } from "@/system/fs/mimeTypes";
 
 export interface FinishedDownload {
   filename: string;

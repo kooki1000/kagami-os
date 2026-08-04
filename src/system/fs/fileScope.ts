@@ -1,6 +1,6 @@
 import type { NodeMap } from "./fsStore";
 import type { FsNode } from "./types";
-import { childIdsByParent, collator } from "./fsStore";
+import { childIdsByParent, collator, isDescendantOf } from "./fsStore";
 import { TRASH_ID } from "./types";
 
 /**
@@ -51,15 +51,28 @@ export function scopedFiles(
   accepts: (node: FsNode) => boolean,
 ): FsNode[] {
   const childIds = childIdsByParent(nodes);
-  const trashIds = descendantIds(childIds, TRASH_ID);
-  const subtreeIds = mode === "subtree" ? descendantIds(childIds, folderId) : null;
-  return Object.values(nodes).filter((n) => {
-    if (n.type !== "file" || !accepts(n))
-      return false;
-    if (trashIds.has(n.id))
-      return false;
-    return mode === "folder" ? n.parentId === folderId : subtreeIds!.has(n.id);
-  });
+  // Walk down from the scope folder rather than scanning every node and
+  // filtering — the same O(subtree) vs O(drive) change `childrenOf` made
+  // under T7 (`docs/perf-baseline.md`).
+  const candidateIds = mode === "folder"
+    ? childIds.get(folderId) ?? []
+    : descendantIds(childIds, folderId);
+  // Nothing under Trash is listed. In "folder" mode every candidate is a
+  // direct child, so the only question is whether the folder itself is in
+  // there — no need to walk the whole Trash subtree to find out.
+  if (mode === "folder" && isDescendantOf(nodes, folderId, TRASH_ID))
+    return [];
+  const trashIds = mode === "folder" ? null : descendantIds(childIds, TRASH_ID);
+
+  const files: FsNode[] = [];
+  for (const id of candidateIds) {
+    if (trashIds?.has(id))
+      continue;
+    const node = nodes[id];
+    if (node?.type === "file" && accepts(node))
+      files.push(node);
+  }
+  return files;
 }
 
 /** Case-insensitive substring filter on name — mirrors Files' filter input. */

@@ -10,7 +10,6 @@ import { scopedFiles } from "@/system/fs/fileScope";
  * predicate below is Notes-specific.
  */
 
-export type { FolderOption } from "@/system/fs/fileScope";
 export { filterFiles as filterDocs, folderOptions, sortFiles as sortDocs, splitPinned } from "@/system/fs/fileScope";
 
 export type NotesSortKey = FileSortSpec["key"];

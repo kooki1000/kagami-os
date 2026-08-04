@@ -136,9 +136,9 @@ export async function uploadEntries(
   await Promise.all(entries.map(async ({ path, file }) => {
     try {
       const parentId = resolveFolder(path);
-      // Not `file.type`: the browser reports nothing at all for `.py`/`.rs`/
-      // `.toml` and the wrong thing for `.ts`, which used to leave small
-      // source files in the blob store (and unopenable) for no reason.
+      // Not `file.type` — see `system/fs/mimeTypes.ts` for why it can't be
+      // trusted. Small source files used to land in the blob store, and be
+      // unopenable, purely because of that.
       const mimeType = effectiveMimeType({ name: file.name, mimeType: file.type });
       if (isTextLikeMime(mimeType) && file.size <= BLOB_INLINE_THRESHOLD)
         fs.createFile(parentId, file.name, await file.text(), mimeType);

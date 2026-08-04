@@ -1,5 +1,5 @@
 import type { FsNode } from "@/system/fs/types";
-import { effectiveMimeType, isTextLikeMime } from "@/system/fs/mimeTypes";
+import { effectiveMimeType, extensionOf, MIME_BY_EXTENSION } from "@/system/fs/mimeTypes";
 
 /**
  * Which language a file is written in — the pure half of D4's highlighting.
@@ -69,41 +69,22 @@ const LANGUAGE_BY_EXTENSION: Record<string, LanguageId> = {
   go: "go",
 };
 
-/** The fallback path, for a file whose name says nothing (`Makefile`, `.env`). */
-const LANGUAGE_BY_MIME: Record<string, LanguageId> = {
-  "text/javascript": "javascript",
-  "text/typescript": "typescript",
-  "application/json": "json",
-  "text/css": "css",
-  "text/html": "html",
-  "application/xml": "xml",
-  "text/x-python": "python",
-  "application/yaml": "yaml",
-  "application/x-sh": "shell",
-  "application/toml": "toml",
-  "application/sql": "sql",
-  "text/rust": "rust",
-  "text/x-go": "go",
-};
-
-function extensionOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot <= 0 || dot === name.length - 1 ? "" : name.slice(dot + 1).toLowerCase();
-}
+/**
+ * The fallback path, for a file named so vaguely that only its stored type
+ * says anything (a `Makefile` saved as `text/x-makefile`). Derived from the
+ * two tables above rather than hand-written a third time: the first extension
+ * that produces a given mime type decides that type's language, so it can't
+ * drift out of step with either.
+ */
+const LANGUAGE_BY_MIME: Partial<Record<string, LanguageId>> = Object.fromEntries(
+  Object.entries(MIME_BY_EXTENSION)
+    .map(([extension, mime]) => [mime, LANGUAGE_BY_EXTENSION[extension]])
+    .filter(([, language]) => language !== undefined)
+    .reverse(),
+);
 
 export function languageIdForNode(node: Pick<FsNode, "name" | "mimeType">): LanguageId {
-  const byExtension = LANGUAGE_BY_EXTENSION[extensionOf(node.name)];
-  if (byExtension)
-    return byExtension;
-  return LANGUAGE_BY_MIME[effectiveMimeType(node)] ?? "plain";
-}
-
-/**
- * Can the editor open this at all? Anything readable as text, which is wider
- * than what it highlights — a `.md` or a `.log` opens as plain text rather
- * than being refused. Which app opens it *by default* is a separate question,
- * answered by `system/apps/openFile.ts`.
- */
-export function isEditableFile(node: Pick<FsNode, "type" | "name" | "mimeType">): boolean {
-  return node.type === "file" && isTextLikeMime(effectiveMimeType(node));
+  return LANGUAGE_BY_EXTENSION[extensionOf(node.name)]
+    ?? LANGUAGE_BY_MIME[effectiveMimeType(node)]
+    ?? "plain";
 }

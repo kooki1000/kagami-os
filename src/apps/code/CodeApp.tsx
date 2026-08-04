@@ -3,23 +3,22 @@ import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { FileSortSpec } from "@/system/fs/fileScope";
 import { ArrowUpDown, FileCode, FolderOpen, Pin, PinOff, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { Segmented } from "@/components/ui/Segmented";
-import { buildSortMenuEntries } from "@/components/ui/sortMenuEntries";
+import { buildSortMenuEntries, nextSort } from "@/components/ui/sortMenuEntries";
 import { formatModified } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
-import { payloadFileId, usePayloadFileId } from "@/system/apps/filePayload";
+import { usePayloadFileId, useSyncWindowFilePayload } from "@/system/apps/filePayload";
 import { launchApp } from "@/system/apps/launch";
 import { filterFiles, folderOptions, scopedFiles, sortFiles, splitPinned } from "@/system/fs/fileScope";
 import { isDescendantOf, useFsStore } from "@/system/fs/fsStore";
+import { isTextFile } from "@/system/fs/mimeTypes";
 import { isCommittableRename } from "@/system/fs/renameCommit";
-import { DOCUMENTS_ID, HOME_ID } from "@/system/fs/types";
-import { useWindowStore } from "@/system/windows/windowStore";
+import { DOCUMENTS_ID, HOME_ID, TRASH_ID } from "@/system/fs/types";
 import { CodeEditor } from "./CodeEditor";
 import { useCodePrefsStore } from "./codePrefsStore";
-import { isEditableFile } from "./languages";
 
 const SORT_LABELS: Record<FileSortSpec["key"], string> = {
   name: "Name",
@@ -73,15 +72,7 @@ export default function CodeApp({ windowId, payload }: AppWindowProps) {
   // of an effect racing to fix stale state.
   const scopeFolderId = nodes[rawScopeFolderId]?.type === "folder" ? rawScopeFolderId : DOCUMENTS_ID;
 
-  // Keep the window's payload pointed at whatever is actually open, so
-  // session restore (C1) reopens the file the user was last editing rather
-  // than whichever one the window was launched with.
-  useEffect(() => {
-    const store = useWindowStore.getState();
-    const current = store.windows.find(w => w.id === windowId);
-    if (current && payloadFileId(current.payload) !== selectedId)
-      store.setWindowPayload(windowId, selectedId ? { fileId: selectedId } : undefined);
-  }, [windowId, selectedId]);
+  useSyncWindowFilePayload(windowId, selectedId);
 
   // Opening a file outside the current scope brings its folder into scope.
   // Adjusted during render per React's "adjusting state when a prop changes"
@@ -99,8 +90,12 @@ export default function CodeApp({ windowId, payload }: AppWindowProps) {
     }
   }
 
+  // Anything readable as text, which is wider than what the editor
+  // highlights — a `.md` or a `.log` opens as plain text rather than being
+  // refused. Which app opens it *by default* is a separate question, answered
+  // by `system/apps/openFile.ts`.
   const allFiles = useMemo(
-    () => scopedFiles(nodes, scopeFolderId, scopeMode, isEditableFile),
+    () => scopedFiles(nodes, scopeFolderId, scopeMode, isTextFile),
     [nodes, scopeFolderId, scopeMode],
   );
   const filteredFiles = useMemo(() => filterFiles(allFiles, query), [allFiles, query]);
@@ -111,7 +106,10 @@ export default function CodeApp({ windowId, payload }: AppWindowProps) {
   // The selected file always wins over scope; fall back to the first listed
   // file only when nothing valid is selected.
   const selectedNode = selectedId ? nodes[selectedId] : undefined;
-  const doc = selectedNode && isEditableFile(selectedNode) ? selectedNode : listedFiles[0];
+  const selectedIsOpenable = !!selectedNode
+    && isTextFile(selectedNode)
+    && !isDescendantOf(nodes, selectedNode.id, TRASH_ID);
+  const doc = selectedIsOpenable ? selectedNode : listedFiles[0];
 
   function newFile(): void {
     const node = createFile(scopeFolderId, NEW_FILE_NAME, "", "text/plain");
@@ -179,8 +177,8 @@ export default function CodeApp({ windowId, payload }: AppWindowProps) {
     return buildSortMenuEntries(
       sort,
       SORT_LABELS,
-      key => setSort({ ...sort, key }),
-      () => setSort({ ...sort, dir: sort.dir === "asc" ? "desc" : "asc" }),
+      key => setSort(nextSort(sort, key, key === "date" ? "desc" : "asc")),
+      () => setSort(nextSort(sort, sort.key)),
     );
   }
 

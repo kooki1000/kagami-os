@@ -12,38 +12,53 @@ import { getApp } from "./registry";
 export type { FilePayload } from "./filePayload";
 export { payloadFileId } from "./filePayload";
 
-// Built-in mime-family → app defaults (B11's baseline, before any
-// user override from settingsStore.fileAssociations). Ordered by
-// specificity: whichever family matches first wins, so the exact code types
-// below have to precede the bare `text/` family they belong to.
+/**
+ * Built-in mime → app defaults (B11's baseline, before any user override from
+ * `settingsStore.fileAssociations`).
+ *
+ * Two tables rather than one ordered list: an exact type always beats a
+ * family, so adding a row can't accidentally be shadowed by a broader prefix
+ * declared above it. Code and structured data open in the editor (D4); prose
+ * — `text/plain`, `text/markdown` — stays with Notes. Both apps can open
+ * either, so this only decides what a double-click does.
+ */
+const EXACT_DEFAULTS: Record<string, string> = {
+  "text/javascript": "code",
+  "text/typescript": "code",
+  "text/css": "code",
+  "text/x-scss": "code",
+  "text/x-less": "code",
+  "text/html": "code",
+  "text/rust": "code",
+  "text/x-python": "code",
+  "text/x-go": "code",
+  "application/json": "code",
+  "application/xml": "code",
+  "application/yaml": "code",
+  "application/toml": "code",
+  "application/sql": "code",
+  "application/x-sh": "code",
+  "application/pdf": "documents",
+};
+
 const FAMILY_DEFAULTS: Array<{ prefix: string; appId: string }> = [
-  // Code and structured data open in the editor (D4). Prose — `text/plain`,
-  // `text/markdown` — deliberately stays with Notes: both apps can open
-  // either, and this only picks what a double-click does.
-  { prefix: "text/javascript", appId: "code" },
-  { prefix: "text/typescript", appId: "code" },
-  { prefix: "text/css", appId: "code" },
-  { prefix: "text/html", appId: "code" },
-  { prefix: "text/rust", appId: "code" },
-  { prefix: "text/x-", appId: "code" },
-  { prefix: "application/json", appId: "code" },
-  { prefix: "application/xml", appId: "code" },
-  { prefix: "application/yaml", appId: "code" },
-  { prefix: "application/toml", appId: "code" },
-  { prefix: "application/sql", appId: "code" },
-  { prefix: "application/x-sh", appId: "code" },
   { prefix: "text/", appId: "notes" },
   { prefix: "image/", appId: "viewer" },
-  { prefix: "application/pdf", appId: "documents" },
   { prefix: "audio/", appId: "player" },
   { prefix: "video/", appId: "player" },
 ];
 
-/** Apps that can open any text-ish file, whichever one is the default for it. */
+/**
+ * Apps that can open any text-ish file, whichever one is the default for it.
+ * A hardcoded list because an app can't yet *declare* what it opens — step 17
+ * (`ROADMAP.md` D8) needs exactly that declaration for third-party apps, and
+ * this list dissolves into it. Every id here must accept anything
+ * `isTextLikeMime` accepts, not just `text/*`.
+ */
 const TEXT_CAPABLE_APP_IDS = ["notes", "code"];
 
 function familyDefaultAppId(mime: string): string | null {
-  return FAMILY_DEFAULTS.find(f => mime.startsWith(f.prefix))?.appId ?? null;
+  return EXACT_DEFAULTS[mime] ?? FAMILY_DEFAULTS.find(f => mime.startsWith(f.prefix))?.appId ?? null;
 }
 
 /**
@@ -84,9 +99,8 @@ export function candidateAppsForFile(node: FsNode): string[] {
  * Which app opens this file? A user override (settingsStore) wins over the
  * built-in mime-family table.
  *
- * Routes on `effectiveMimeType`, not the stored one: a `.ts` uploaded as
- * `video/mp2t` or a `.py` uploaded as nothing at all would otherwise match no
- * family and fail to open at all.
+ * Routes on `effectiveMimeType` rather than the stored type, so a file whose
+ * creator recorded the wrong one still opens — see `system/fs/mimeTypes.ts`.
  */
 export function appIdForFile(node: FsNode): string | null {
   if (node.type !== "file")

@@ -90,6 +90,18 @@ const chromeTheme = EditorView.theme({
   },
 });
 
+/**
+ * Both themes, built once at module load. `HighlightStyle.define` mints a
+ * `StyleModule`, and style-mod mounts its rules into the document without ever
+ * unmounting them — building one per call would append a fresh copy of every
+ * syntax rule each time the editor re-themed, which is unbounded while a
+ * colour picker is being dragged.
+ */
+const THEMES: Record<"light" | "dark", Extension> = {
+  light: [chromeTheme, syntaxHighlighting(highlightStyle(LIGHT_SYNTAX))],
+  dark: [chromeTheme, syntaxHighlighting(highlightStyle(DARK_SYNTAX))],
+};
+
 export function editorTheme(dark: boolean): Extension {
-  return [chromeTheme, syntaxHighlighting(highlightStyle(dark ? DARK_SYNTAX : LIGHT_SYNTAX))];
+  return dark ? THEMES.dark : THEMES.light;
 }

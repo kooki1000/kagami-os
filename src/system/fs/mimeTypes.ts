@@ -3,23 +3,15 @@ import type { FsNode } from "./types";
 /**
  * Extension → mime type, and how to decide what type a node *really* is.
  *
- * `FsNode.mimeType` is only ever written at creation, and every creator has a
- * different idea of the truth: uploads take the browser's `File.type` (empty
- * for `.py`/`.rs`/`.toml`, and `video/mp2t` for `.ts` in Chromium — the MPEG
- * transport stream, not TypeScript), downloads arrive as bytes with no type
- * attached at all, and the Terminal writes `text/plain` for everything. A node
- * whose stored type is wrong or missing can't be routed by "Open with", which
- * is why `.json` and `.ts` files were unopenable before this module existed.
- *
- * The fix is to resolve the type at *read* time (`effectiveMimeType`) rather
- * than migrate what's on disk — no version bump, and it corrects files that
- * were saved wrong long before this code shipped.
- *
- * This table started life inside the Browser app (U17's downloads) and moved
- * here when the code editor (D4) needed the same answers.
+ * `FsNode.mimeType` is written once, at creation, by creators that disagree:
+ * uploads take the browser's `File.type` (empty for `.py`/`.rs`/`.toml`, and
+ * `video/mp2t` — the MPEG transport stream — for `.ts` in Chromium), downloads
+ * carry no type at all. Resolving at *read* time (`effectiveMimeType`) rather
+ * than migrating the disk fixes files saved wrong by older builds, with no
+ * schema version. `ARCHITECTURE.md`'s VFS section has the longer account.
  */
 
-const MIME_BY_EXTENSION: Record<string, string> = {
+export const MIME_BY_EXTENSION: Record<string, string> = {
   // documents
   pdf: "application/pdf",
   txt: "text/plain",
@@ -105,18 +97,21 @@ const TEXT_LIKE_APPLICATION_TYPES = new Set([
 ]);
 
 /**
- * The mime type a filename implies, or {@link FALLBACK_MIME_TYPE}. A leading
- * dot is an extension-less name (`.gitignore` is a file called "gitignore",
- * not an extension), and a trailing dot names nothing at all.
+ * A filename's lowercased extension, or `""`. One definition, because two
+ * copies of the edge rules drift: a leading dot is a name (`.gitignore` is a
+ * file called "gitignore"), a trailing dot names nothing, and the leaf comes
+ * first so a folder called `assets.d` doesn't make `assets.d/main` look like
+ * it has a `.d/main` extension.
  */
-export function mimeTypeForFilename(filename: string): string {
-  // Take the leaf first: the Terminal passes paths, and a folder called
-  // `assets.d` would otherwise make `assets.d/main` look like a `.d/main`.
+export function extensionOf(filename: string): string {
   const name = filename.slice(filename.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
-  if (dot <= 0 || dot === name.length - 1)
-    return FALLBACK_MIME_TYPE;
-  return MIME_BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? FALLBACK_MIME_TYPE;
+  return dot <= 0 || dot === name.length - 1 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+/** The mime type a filename implies, or {@link FALLBACK_MIME_TYPE}. */
+export function mimeTypeForFilename(filename: string): string {
+  return MIME_BY_EXTENSION[extensionOf(filename)] ?? FALLBACK_MIME_TYPE;
 }
 
 /**
@@ -128,7 +123,7 @@ export function mimeTypeForFilename(filename: string): string {
  */
 export function textMimeTypeForFilename(filename: string): string {
   const mime = mimeTypeForFilename(filename);
-  return mime !== FALLBACK_MIME_TYPE && isTextLikeMime(mime) ? mime : "text/plain";
+  return isTextLikeMime(mime) ? mime : "text/plain";
 }
 
 /** Can this type be read as text — by an editor, `cat`, or search? */
@@ -142,29 +137,35 @@ export function isTextLikeMime(mime: string): boolean {
 
 /**
  * The type to route this node by — what "Open with", the kind label and the
- * editor should all believe.
+ * editors should all believe.
  *
- * The stored type is trusted by default (the creator usually knew), with two
- * exceptions:
+ * A file's extension is the user's own statement of what it is, so a name that
+ * says something specific beats a stored type that says something else — which
+ * is what rescues an `app.ts` the browser insisted was `video/mp2t`, and what
+ * makes renaming behave the way a desktop should.
  *
- *  - it's missing, blank, or the generic `application/octet-stream`, in which
- *    case the name is all we have;
- *  - the name says text or code and the stored type says otherwise. That's
- *    the `.ts` → `video/mp2t` trap, and the empty `File.type` a browser gives
- *    for `.py`/`.rs`/`.toml`. A file's extension is the user's own statement
- *    of what it is, so it wins over a sniffed type that contradicts it —
- *    including after a rename, which is how a desktop is expected to behave.
+ * `text/plain` is the one derived type that doesn't get to overrule another
+ * text type, because it means "just text" rather than anything specific: a
+ * `.txt` note saved as `text/markdown` stays markdown. It still overrules a
+ * binary type, so renaming an image to `.txt` does what it looks like.
  *
- * When both agree that it's text but disagree on which text (`.txt` saved as
- * `text/markdown`, say), the stored type stands: the distinction came from
- * whatever created the file, and the name can't improve on it.
+ * The rename case is why the name wins rather than merely filling gaps: the
+ * editor creates files as `untitled.txt` and immediately invites a rename, and
+ * `main.ts` has to stop being plain text the moment it is called that.
  */
 export function effectiveMimeType(node: Pick<FsNode, "name" | "mimeType">): string {
   const stored = node.mimeType?.trim() ?? "";
   const derived = mimeTypeForFilename(node.name);
   if (stored === "" || stored === FALLBACK_MIME_TYPE)
     return derived;
-  if (derived !== FALLBACK_MIME_TYPE && isTextLikeMime(derived) && !isTextLikeMime(stored))
-    return derived;
-  return stored;
+  if (derived === FALLBACK_MIME_TYPE || derived === stored)
+    return stored;
+  if (derived === "text/plain" && isTextLikeMime(stored))
+    return stored;
+  return derived;
+}
+
+/** Is this node a file whose bytes an editor can open as text? */
+export function isTextFile(node: Pick<FsNode, "type" | "name" | "mimeType">): boolean {
+  return node.type === "file" && isTextLikeMime(effectiveMimeType(node));
 }

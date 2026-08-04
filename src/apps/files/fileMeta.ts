@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { FsNode } from "@/system/fs/types";
 import { Download, File, FileText, Film, Folder, House, Image, Monitor, Music, NotebookText, Trash2 } from "lucide-react";
+import { effectiveMimeType } from "@/system/fs/mimeTypes";
 import { nodeIconById } from "@/system/fs/nodeIcons";
 import { nodeLabelById } from "@/system/fs/nodeLabels";
 import {
@@ -12,16 +13,22 @@ import {
   TRASH_ID,
 } from "@/system/fs/types";
 
+/**
+ * These read the *resolved* type, not the stored one, so a file Files shows
+ * and a file "Open with" routes can never disagree — an `app.ts` uploaded as
+ * `video/mp2t` otherwise drew a film icon and read "Video" while opening in
+ * the code editor. See `system/fs/mimeTypes.ts`.
+ */
 export function isImageNode(node: FsNode): boolean {
-  return node.type === "file" && (node.mimeType?.startsWith("image/") ?? false);
+  return node.type === "file" && effectiveMimeType(node).startsWith("image/");
 }
 
 export function isAudioNode(node: FsNode): boolean {
-  return node.type === "file" && (node.mimeType?.startsWith("audio/") ?? false);
+  return node.type === "file" && effectiveMimeType(node).startsWith("audio/");
 }
 
 export function isVideoNode(node: FsNode): boolean {
-  return node.type === "file" && (node.mimeType?.startsWith("video/") ?? false);
+  return node.type === "file" && effectiveMimeType(node).startsWith("video/");
 }
 
 /**
@@ -58,7 +65,7 @@ export function nodeIcon(node: FsNode): LucideIcon {
     return Film;
   if (isAudioNode(node))
     return Music;
-  if (node.mimeType?.startsWith("text/"))
+  if (effectiveMimeType(node).startsWith("text/"))
     return FileText;
   return File;
 }
@@ -88,7 +95,8 @@ const KIND_LABELS: Record<string, string> = {
 export function nodeKind(node: FsNode): string {
   if (node.type === "folder")
     return "Folder";
-  const labeled = KIND_LABELS[node.mimeType ?? ""];
+  const mime = effectiveMimeType(node);
+  const labeled = KIND_LABELS[mime];
   if (labeled)
     return labeled;
   if (isVideoNode(node))

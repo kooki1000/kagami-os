@@ -1,4 +1,4 @@
-import type { LanguageSupport, StreamParser } from "@codemirror/language";
+import type { StreamParser } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 import type { LanguageId } from "./languages";
 
@@ -58,5 +58,3 @@ export async function loadLanguage(id: LanguageId): Promise<Extension | null> {
       return null;
   }
 }
-
-export type { LanguageSupport };

@@ -6,7 +6,7 @@ import { withoutStaleIds } from "@/system/settings/viewPrefsStore";
 
 export const MIN_CODE_FONT_SIZE = 10;
 export const MAX_CODE_FONT_SIZE = 24;
-export const DEFAULT_CODE_FONT_SIZE = 13;
+const DEFAULT_CODE_FONT_SIZE = 13;
 
 /** Keeps the font-size stepper inside sane bounds regardless of the step direction. */
 export function clampCodeFontSize(size: number): number {
@@ -14,7 +14,7 @@ export function clampCodeFontSize(size: number): number {
 }
 
 /** Name-first: a source tree is browsed by path, not by when a file last changed. */
-export const DEFAULT_CODE_SORT: FileSortSpec = { key: "name", dir: "asc" };
+const DEFAULT_CODE_SORT: FileSortSpec = { key: "name", dir: "asc" };
 
 interface CodePrefsStore {
   /** Ids of pinned files, most-recently-pinned last — shown ahead of the rest of the sidebar list. */

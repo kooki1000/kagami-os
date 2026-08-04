@@ -3,10 +3,8 @@ import { contrastRatio, hexToOklch, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { DARK_SYNTAX, LIGHT_SYNTAX } from "./syntaxPalette";
 
 /**
- * The syntax palette is the one place in the system that hand-authors colour
- * outside the accent derivation (see `syntaxPalette.ts` for why), so it carries the
- * obligation the derivation carries elsewhere: stay readable, and stay
- * distinguishable. Both are asserted rather than eyeballed.
+ * The obligations `syntaxPalette.ts` takes on in exchange for hand-authoring
+ * colour: stay readable, and stay distinguishable. Asserted, not eyeballed.
  */
 
 /** `--surface` in `src/styles/global.css`, the pane the editor sits on. */

@@ -80,6 +80,14 @@ describe("effectiveMimeType", () => {
   it("follows a rename into a text extension, the way a desktop does", () => {
     expect(effectiveMimeType({ name: "photo.txt", mimeType: "image/png" })).toBe("text/plain");
   });
+
+  it("follows a rename that makes plain text into something specific", () => {
+    // The editor's own New File flow: created as untitled.txt/text/plain and
+    // renamed straight away. Without this it stayed plain text, so
+    // double-clicking the file the editor had just made opened Notes.
+    expect(effectiveMimeType({ name: "main.ts", mimeType: "text/plain" })).toBe("text/typescript");
+    expect(effectiveMimeType({ name: "data.json", mimeType: "text/plain" })).toBe("application/json");
+  });
 });
 
 describe("textMimeTypeForFilename", () => {
