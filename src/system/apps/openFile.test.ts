@@ -28,9 +28,13 @@ function resetStores() {
 beforeEach(resetStores);
 
 describe("candidateAppsForFile (B11)", () => {
-  it("lists the built-in default app for a known mime family", () => {
+  it("lists the built-in default app first, then the others that can open it", () => {
+    // Text is the first type with more than one candidate (D4): Notes owns
+    // prose by default, the editor is offered alongside it.
     const note = file({ id: "n", name: "todo.txt", mimeType: "text/plain" });
-    expect(candidateAppsForFile(note)).toEqual(["notes"]);
+    expect(candidateAppsForFile(note)).toEqual(["notes", "code"]);
+    const source = file({ id: "s", name: "app.ts", mimeType: "text/typescript" });
+    expect(candidateAppsForFile(source)).toEqual(["code", "notes"]);
   });
 
   it("is empty for folders and for mime types with no association", () => {
@@ -44,7 +48,8 @@ describe("candidateAppsForFile (B11)", () => {
 describe("candidateAppsForMime (U5)", () => {
   it("lists the built-in default app for a known mime family without needing a node", () => {
     expect(candidateAppsForMime("image/png")).toEqual(["viewer"]);
-    expect(candidateAppsForMime("text/markdown")).toEqual(["notes"]);
+    expect(candidateAppsForMime("text/markdown")).toEqual(["notes", "code"]);
+    expect(candidateAppsForMime("application/json")).toEqual(["code", "notes"]);
   });
 
   it("is empty for a mime type with no built-in association", () => {
@@ -74,6 +79,30 @@ describe("appIdForFile (B11)", () => {
     const svg = file({ id: "s", name: "icon.svg", mimeType: "image/svg+xml" });
     useSettingsStore.getState().setFileAssociation("image/png", "player");
     expect(appIdForFile(svg)).toBe("viewer");
+  });
+
+  it("sends code to the editor and prose to Notes (D4)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["app.ts", "text/typescript", "code"],
+      ["main.js", "text/javascript", "code"],
+      ["data.json", "application/json", "code"],
+      ["theme.css", "text/css", "code"],
+      ["script.py", "text/x-python", "code"],
+      ["config.yaml", "application/yaml", "code"],
+      ["build.sh", "application/x-sh", "code"],
+      ["readme.md", "text/markdown", "notes"],
+      ["todo.txt", "text/plain", "notes"],
+    ];
+    for (const [name, mimeType, expected] of cases)
+      expect(appIdForFile(file({ id: name, name, mimeType }))).toBe(expected);
+  });
+
+  it("opens a file whose stored type is wrong or missing", () => {
+    // The two shapes real uploads produce: Chromium's `video/mp2t` for `.ts`,
+    // and nothing at all for `.py`. Both used to fail with "Can't open this
+    // file" rather than merely opening unhighlighted.
+    expect(appIdForFile(file({ id: "a", name: "app.ts", mimeType: "video/mp2t" }))).toBe("code");
+    expect(appIdForFile(file({ id: "b", name: "script.py", mimeType: undefined }))).toBe("code");
   });
 });
 

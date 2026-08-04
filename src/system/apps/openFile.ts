@@ -1,5 +1,6 @@
 import type { FsNode } from "../fs/types";
 import type { FilePayload } from "./filePayload";
+import { effectiveMimeType, isTextLikeMime } from "../fs/mimeTypes";
 import { notify } from "../notifications/notificationStore";
 import { useSettingsStore } from "../settings/settingsStore";
 import { useViewPrefsStore } from "../settings/viewPrefsStore";
@@ -13,14 +14,33 @@ export { payloadFileId } from "./filePayload";
 
 // Built-in mime-family → app defaults (B11's baseline, before any
 // user override from settingsStore.fileAssociations). Ordered by
-// specificity: whichever family matches first wins.
+// specificity: whichever family matches first wins, so the exact code types
+// below have to precede the bare `text/` family they belong to.
 const FAMILY_DEFAULTS: Array<{ prefix: string; appId: string }> = [
+  // Code and structured data open in the editor (D4). Prose — `text/plain`,
+  // `text/markdown` — deliberately stays with Notes: both apps can open
+  // either, and this only picks what a double-click does.
+  { prefix: "text/javascript", appId: "code" },
+  { prefix: "text/typescript", appId: "code" },
+  { prefix: "text/css", appId: "code" },
+  { prefix: "text/html", appId: "code" },
+  { prefix: "text/rust", appId: "code" },
+  { prefix: "text/x-", appId: "code" },
+  { prefix: "application/json", appId: "code" },
+  { prefix: "application/xml", appId: "code" },
+  { prefix: "application/yaml", appId: "code" },
+  { prefix: "application/toml", appId: "code" },
+  { prefix: "application/sql", appId: "code" },
+  { prefix: "application/x-sh", appId: "code" },
   { prefix: "text/", appId: "notes" },
   { prefix: "image/", appId: "viewer" },
   { prefix: "application/pdf", appId: "documents" },
   { prefix: "audio/", appId: "player" },
   { prefix: "video/", appId: "player" },
 ];
+
+/** Apps that can open any text-ish file, whichever one is the default for it. */
+const TEXT_CAPABLE_APP_IDS = ["notes", "code"];
 
 function familyDefaultAppId(mime: string): string | null {
   return FAMILY_DEFAULTS.find(f => mime.startsWith(f.prefix))?.appId ?? null;
@@ -31,29 +51,47 @@ function familyDefaultAppId(mime: string): string | null {
  * first. The mime-type-only half of `candidateAppsForFile`, for callers
  * (e.g. Settings' Default Apps pane, U5) that want to offer a mime type
  * no file on disk happens to have right now.
+ *
+ * Text is the first type with more than one candidate — Notes and the code
+ * editor both open it — which is what turns "Open With ▸" and the Default
+ * Apps pane from one-item menus into real choices.
  */
 export function candidateAppsForMime(mime: string): string[] {
   const appId = familyDefaultAppId(mime);
-  return appId ? [appId] : [];
+  const candidates = appId ? [appId] : [];
+  if (isTextLikeMime(mime)) {
+    for (const id of TEXT_CAPABLE_APP_IDS) {
+      if (!candidates.includes(id))
+        candidates.push(id);
+    }
+  }
+  // An app can be absent from a build (a flag-gated one, or a manifest that
+  // was removed); offering it would produce a menu item that can only fail.
+  return candidates.filter(id => getApp(id));
 }
 
 /**
  * Every app capable of opening this file's mime type, built-in default
- * first. Powers the Files "Open With ▸" submenu; today every family has
- * exactly one built-in candidate, but the list shape is what lets a
- * future second app (e.g. a code editor) show up alongside it.
+ * first. Powers the Files "Open With ▸" submenu.
  */
 export function candidateAppsForFile(node: FsNode): string[] {
   if (node.type !== "file")
     return [];
-  return candidateAppsForMime(node.mimeType ?? "");
+  return candidateAppsForMime(effectiveMimeType(node));
 }
 
-/** Which app opens this file? A user override (settingsStore) wins over the built-in mime-family table. */
+/**
+ * Which app opens this file? A user override (settingsStore) wins over the
+ * built-in mime-family table.
+ *
+ * Routes on `effectiveMimeType`, not the stored one: a `.ts` uploaded as
+ * `video/mp2t` or a `.py` uploaded as nothing at all would otherwise match no
+ * family and fail to open at all.
+ */
 export function appIdForFile(node: FsNode): string | null {
   if (node.type !== "file")
     return null;
-  const mime = node.mimeType ?? "";
+  const mime = effectiveMimeType(node);
   const override = useSettingsStore.getState().fileAssociations[mime];
   if (override && getApp(override))
     return override;
@@ -123,7 +161,10 @@ export function openFileWithApp(node: FsNode, appId: string): boolean {
   // otherwise a bad/unregistered appId still overwrites the association,
   // silently breaking every future plain `openFile()` for this mime type.
   if (ok) {
-    const mime = node.mimeType ?? "";
+    // Keyed on the effective type, the same one `appIdForFile` will look the
+    // override up by — storing the raw `video/mp2t` a `.ts` upload carries
+    // would record a preference nothing ever reads back.
+    const mime = effectiveMimeType(node);
     if (mime)
       useSettingsStore.getState().setFileAssociation(mime, appId);
   }

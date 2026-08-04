@@ -732,6 +732,11 @@ function DesktopSection() {
 // row below these for the exact mime type it set.
 const FILE_ASSOCIATION_TYPES: Array<{ mime: string; label: string }> = [
   { mime: "text/plain", label: "Text documents" },
+  { mime: "text/markdown", label: "Markdown" },
+  { mime: "text/javascript", label: "JavaScript" },
+  { mime: "text/typescript", label: "TypeScript" },
+  { mime: "application/json", label: "JSON" },
+  { mime: "text/css", label: "Stylesheets" },
   { mime: "image/png", label: "Images" },
   { mime: "audio/mpeg", label: "Audio" },
   { mime: "video/mp4", label: "Video" },
