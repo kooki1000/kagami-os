@@ -2,6 +2,7 @@ import type { NodeMap } from "@/system/fs/fsStore";
 import type { BlobStore, FsNode } from "@/system/fs/types";
 import { dataUrlToBlob } from "@/system/fs/blobMigration";
 import { childrenOf } from "@/system/fs/fsStore";
+import { runWorkerJob } from "./workerJob";
 
 /**
  * Resolve a file node's actual bytes, whichever of B1's three content paths
@@ -79,21 +80,8 @@ export function triggerDownload(blob: Blob, filename: string): void {
  * reuses the same worker plumbing instead of duplicating it.
  */
 export function zipInWorker(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./zipWorker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = (e: MessageEvent<{ ok: true; data: Uint8Array } | { ok: false; error: string }>) => {
-      worker.terminate();
-      if (e.data.ok)
-        resolve(e.data.data);
-      else
-        reject(new Error(e.data.error));
-    };
-    worker.onerror = () => {
-      worker.terminate();
-      reject(new Error("Zip worker failed"));
-    };
-    worker.postMessage(entries);
-  });
+  const worker = new Worker(new URL("./zipWorker.ts", import.meta.url), { type: "module" });
+  return runWorkerJob(worker, entries, "Zip worker failed");
 }
 
 /** Download a single file node to the host OS. */

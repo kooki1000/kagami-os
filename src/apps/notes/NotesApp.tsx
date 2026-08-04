@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { RenameInput } from "@/components/ui/RenameInput";
 import { Segmented } from "@/components/ui/Segmented";
+import { buildSortMenuEntries } from "@/components/ui/sortMenuEntries";
 import { formatModified, nameStem } from "@/lib/format";
 import { useAppCommand } from "@/system/appCommands";
 import { payloadFileId, usePayloadFileId } from "@/system/apps/filePayload";
@@ -164,16 +165,21 @@ export default function NotesApp({ windowId, payload }: AppWindowProps) {
     ];
   }
 
+  /** Pick a sort key for the sidebar list; re-picking it flips direction. Mirrors Files' `applySort`. */
+  function applySort(key: NotesSortKey): void {
+    setSort(
+      key === sort.key
+        ? { key, dir: sort.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: key === "date" ? "desc" : "asc" },
+    );
+  }
+
+  function toggleSortDir(): void {
+    setSort({ key: sort.key, dir: sort.dir === "asc" ? "desc" : "asc" });
+  }
+
   function sortMenuEntries(): ContextMenuEntry[] {
-    const check = (on: boolean) => (on ? "✓  " : "  ");
-    return [
-      ...(Object.keys(SORT_LABELS) as NotesSortKey[]).map((key, i, arr) => ({
-        label: `${check(sort.key === key)}${SORT_LABELS[key]}`,
-        run: () => setSort(key === sort.key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" ? "desc" : "asc" }),
-        dividerAfter: i === arr.length - 1,
-      })),
-      { label: `${check(sort.dir === "desc")}Reverse order`, run: () => setSort({ key: sort.key, dir: sort.dir === "asc" ? "desc" : "asc" }) },
-    ];
+    return buildSortMenuEntries(sort, SORT_LABELS, applySort, toggleSortDir);
   }
 
   function folderMenuEntries(): ContextMenuEntry[] {

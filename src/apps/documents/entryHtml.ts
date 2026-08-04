@@ -10,19 +10,14 @@
  * internal fs-store id, never raw user input, but it's escaped anyway on
  * general principle before landing in an HTML attribute.
  *
- * **This document deliberately holds no chrome.** It used to carry a whole
- * stylesheet — page background, status line, spinner, a fixed page-info pill
- * — every value hardcoded to the *light* theme, because CSS custom properties
- * don't cross a `srcdoc` boundary and the frame had no way to read
- * `--surface`. The result was a viewer that was visibly wrong in dark mode
- * and could never be fixed from in here.
- *
- * So the chrome moved out to `DocumentsApp.tsx`, where it's React using the
- * shell's own tokens, and the frame reports its view state outward over
- * `ui.setState` instead of drawing it. The one surface left in here — the
- * backdrop the page sits on — takes its color from a token the host pushes
- * in over the sandbox theme event, since a transparent iframe turned out not
- * to be achievable (see the stylesheet comment).
+ * **This document deliberately holds no chrome** — that lives in
+ * `DocumentsApp.tsx` as React using the shell's own tokens, with the frame
+ * reporting its view state outward over `ui.setState` instead of drawing it.
+ * CSS custom properties don't cross a `srcdoc` boundary, so any chrome drawn
+ * in here would be stuck hardcoded to one theme. The one surface left in
+ * here — the backdrop the page sits on — takes its color from a token the
+ * host pushes in over the sandbox theme event, since a transparent iframe
+ * turned out not to be achievable (see the stylesheet comment).
  *
  * Note for editors: the markup below is a JS template literal, so it must
  * contain no backticks. Keep prose inside it plain.

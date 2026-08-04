@@ -45,22 +45,24 @@ export async function migrateInlineBlobs(
   store: BlobStore,
   threshold: number = BLOB_INLINE_THRESHOLD,
 ): Promise<FsNode[]> {
-  const changed: FsNode[] = [];
-  for (const node of Object.values(nodes)) {
+  // Each node's migration is independent, so hash/store them in parallel
+  // rather than one at a time — same Promise.all shape as `replaceAll`'s
+  // blob writes and `tauriBlobStore.ts`'s `delete`.
+  const results = await Promise.all(Object.values(nodes).map(async (node): Promise<FsNode | null> => {
     const content = node.content;
     if (content === undefined || !content.startsWith("data:") || content.length <= threshold)
-      continue;
+      return null;
     const blob = dataUrlToBlob(content);
     if (!blob)
-      continue;
+      return null;
     const hash = await hashBlob(blob);
     if (!(await store.has(hash)))
       await store.put(hash, blob);
-    changed.push({
+    return {
       ...node,
       content: undefined,
       contentRef: { hash, size: blob.size, mimeType: blob.type || node.mimeType },
-    });
-  }
-  return changed;
+    };
+  }));
+  return results.filter((n): n is FsNode => n !== null);
 }

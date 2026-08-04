@@ -4,6 +4,7 @@ import { sha256Hex } from "@/system/fs/blobHash";
 import { isSystemNode, pathOf } from "@/system/fs/fsStore";
 import { BLOB_INLINE_THRESHOLD, ROOT_ID } from "@/system/fs/types";
 import { buildZipEntries, triggerDownload, zipInWorker } from "./download";
+import { runWorkerJob } from "./workerJob";
 
 /**
  * Zip entry holding export metadata that raw file bytes at a path can't
@@ -209,21 +210,8 @@ function exportFilename(now = new Date()): string {
  * Worker) — covered by `planImport`'s tests plus in-browser verification.
  */
 function unzipInWorker(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./importZipWorker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = (e: MessageEvent<{ ok: true; data: Record<string, Uint8Array> } | { ok: false; error: string }>) => {
-      worker.terminate();
-      if (e.data.ok)
-        resolve(e.data.data);
-      else
-        reject(new Error(e.data.error));
-    };
-    worker.onerror = () => {
-      worker.terminate();
-      reject(new Error("Unzip worker failed"));
-    };
-    worker.postMessage(bytes);
-  });
+  const worker = new Worker(new URL("./importZipWorker.ts", import.meta.url), { type: "module" });
+  return runWorkerJob(worker, bytes, "Unzip worker failed");
 }
 
 /**

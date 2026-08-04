@@ -2,12 +2,15 @@ import type { Point, Stroke } from "./paintHistory";
 import type { AppWindowProps } from "@/system/apps/types";
 import { Eraser, Paintbrush, Save, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { toolbarIconButtonClass } from "@/apps/shared/toolbarIconButton";
+import { swatchRingClass } from "@/components/ui/swatchRing";
 import { capturePointer, releasePointer } from "@/lib/pointerCapture";
+import { useLatestRef } from "@/lib/useLatestRef";
 import { useAppCommand } from "@/system/appCommands";
 import { useFsStore } from "@/system/fs/fsStore";
 import { PICTURES_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
-import { appendPoint, clearHistory, pushStroke, undo } from "./paintHistory";
+import { clearHistory, pushStroke, undo } from "./paintHistory";
 
 const COLORS = ["#1e1e1e", "#e0654b", "#e8a23b", "#3f9e6d", "#3d7fc7", "#8a5fd6", "#ffffff"];
 const SIZES = [2, 4, 8, 16];
@@ -66,20 +69,16 @@ function redrawAll(canvas: HTMLCanvasElement, history: Stroke[], dpr: number): v
   for (const stroke of history) drawStroke(ctx, stroke);
 }
 
-// size-6 / rounded-[6px] matches every other toolbar icon button in the app
-// (ViewerApp's toolButton, PlayerApp's transportButton/toggleButton) — not
-// rounded-btn (7px), which the app reserves for bigger CTA-style buttons.
+/** The brush/eraser/color/size toggle look — plain hover (not `enabled:`-gated) since these buttons are never disabled. */
 function toolButtonClass(active: boolean): string {
   return `grid size-6 place-items-center rounded-[6px] ${
     active ? "bg-[color-mix(in_oklab,var(--accent)_16%,transparent)] text-accent" : "text-ink-2 hover:bg-ph hover:text-ink"
   }`;
 }
-const actionButtonClass = "grid size-6 place-items-center rounded-[6px] text-ink-2 enabled:hover:bg-ph enabled:hover:text-ink disabled:opacity-35";
-/** Matches SettingsApp.tsx's CustomAccentPicker swatch exactly (ring via box-shadow, not Tailwind's ring-* utilities). */
+const actionButtonClass = toolbarIconButtonClass("size-6");
+/** Palette swatches are ~18px, smaller than Settings' ~26px custom-accent input, so the ring is thinner (see swatchRingClass). */
 function swatchClass(active: boolean): string {
-  return `size-[calc(18px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 p-0 ${
-    active ? "shadow-[0_0_0_2px_var(--surface),0_0_0_3px_var(--accent)]" : ""
-  }`;
+  return `size-[calc(18px*var(--ui-scale))] cursor-pointer rounded-full border-[1.5px] border-black/10 p-0 ${swatchRingClass(active, 3)}`;
 }
 const divider = <div className="mx-1.5 h-4 w-px flex-none bg-hairline" />;
 
@@ -88,20 +87,16 @@ export default function PaintApp({ windowId }: AppWindowProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dprRef = useRef(1);
   const currentStrokeRef = useRef<Stroke | null>(null);
-  const historyRef = useRef<Stroke[]>([]);
   // Set right before a plain stroke-append commit, whose pixels are already
   // on screen from handlePointerMove's incremental drawing — skips the
   // O(n) full-history redraw that undo/clear/resize genuinely need.
   const skipNextRedrawRef = useRef(false);
 
   const [history, setHistory] = useState<Stroke[]>([]);
+  const historyRef = useLatestRef(history);
   const [color, setColor] = useState(COLORS[0]);
   const [brushSize, setBrushSize] = useState(SIZES[1]);
   const [erase, setErase] = useState(false);
-
-  useLayoutEffect(() => {
-    historyRef.current = history;
-  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -134,7 +129,10 @@ export default function PaintApp({ windowId }: AppWindowProps) {
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+    // historyRef's identity (from useLatestRef) never changes, so listing it
+    // doesn't reinstall the observer — it just satisfies exhaustive-deps,
+    // which (unlike a literal useRef()) can't see through the custom hook.
+  }, [historyRef]);
 
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>): void {
     capturePointer(e.currentTarget, e.pointerId);
@@ -152,7 +150,11 @@ export default function PaintApp({ windowId }: AppWindowProps) {
       return;
     const point = getPoint(e);
     const prev = stroke.points[stroke.points.length - 1];
-    currentStrokeRef.current = appendPoint(stroke, point);
+    // Mutated in place rather than through the immutable `appendPoint`: this
+    // ref is never read for referential equality, only committed to state
+    // once on pointer-up, so an O(1) push beats an O(n) copy on every move
+    // of a potentially long-running drag.
+    stroke.points.push(point);
     const ctx = canvasRef.current && getScaledContext(canvasRef.current, dprRef.current);
     if (ctx)
       drawStroke(ctx, { ...stroke, points: [prev, point] });

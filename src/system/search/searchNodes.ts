@@ -31,22 +31,26 @@ export function searchNodes(nodes: NodeMap, query: string, limit = DEFAULT_LIMIT
   if (!q)
     return [];
 
-  const matches: FsNode[] = [];
+  // Lowercase each matched name once here rather than in the sort
+  // comparator below, which would otherwise recompute it on every
+  // comparison across the O(n log n) sort.
+  const matches: { node: FsNode; lower: string }[] = [];
   for (const node of Object.values(nodes)) {
-    if (!node.name.toLowerCase().includes(q))
+    const lower = node.name.toLowerCase();
+    if (!lower.includes(q))
       continue;
     if (isTrashed(nodes, node))
       continue;
-    matches.push(node);
+    matches.push({ node, lower });
   }
 
   matches.sort((a, b) => {
-    const aPrefix = a.name.toLowerCase().startsWith(q);
-    const bPrefix = b.name.toLowerCase().startsWith(q);
+    const aPrefix = a.lower.startsWith(q);
+    const bPrefix = b.lower.startsWith(q);
     if (aPrefix !== bPrefix)
       return aPrefix ? -1 : 1;
-    return collator.compare(a.name, b.name);
+    return collator.compare(a.node.name, b.node.name);
   });
 
-  return matches.slice(0, limit).map(node => ({ node, path: pathLabel(nodes, node) }));
+  return matches.slice(0, limit).map(({ node }) => ({ node, path: pathLabel(nodes, node) }));
 }

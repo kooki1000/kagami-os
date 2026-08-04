@@ -1,4 +1,4 @@
-import type { ContentRef } from "./types";
+import type { ContentRef, FsNode } from "./types";
 import { useEffect, useState } from "react";
 import { blobStore } from "./blobStore";
 
@@ -55,4 +55,15 @@ export function useBlobUrl(ref: ContentRef | undefined): BlobUrlResult {
   }, [hash]);
 
   return state;
+}
+
+/**
+ * True when `node` names a blob (has a `contentRef`) but the blob store no
+ * longer has that hash (review-backlog #18) — distinguishes "gone" from
+ * "still loading" (`status === "loading"` with no `contentRef` yet resolved).
+ * Shared by Player and Viewer, which both fall back to a "no longer
+ * available" state on this rather than spinning forever.
+ */
+export function isBlobMissing(node: Pick<FsNode, "contentRef"> | undefined, status: BlobUrlStatus): boolean {
+  return node?.contentRef !== undefined && status === "missing";
 }

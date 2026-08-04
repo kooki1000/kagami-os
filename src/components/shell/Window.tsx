@@ -2,6 +2,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { OsWindow, WindowRect } from "@/system/windows/windowStore";
 import { memo, Suspense, useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "@/components/ui/useFocusTrap";
+import { capturePointer, releasePointer } from "@/lib/pointerCapture";
 import { getApp } from "@/system/apps/registry";
 import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useEffectiveReducedMotion } from "@/system/theme/useReducedMotion";
@@ -20,25 +21,6 @@ const ENTER_MS = 180;
 // tech treat a 0ms transition as never having fired, and this still has to
 // outrun the fly-to-dock setTimeout below to avoid an apparent hang.
 const REDUCED_MOTION_MS = 20;
-
-/** Pointer capture can throw for already-released or synthetic pointers. */
-function capturePointer(el: Element, pointerId: number) {
-  try {
-    el.setPointerCapture(pointerId);
-  }
-  catch {
-    /* drag still works for mouse input without capture */
-  }
-}
-
-function releasePointer(el: Element, pointerId: number) {
-  try {
-    el.releasePointerCapture(pointerId);
-  }
-  catch {
-    /* already released */
-  }
-}
 
 type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
