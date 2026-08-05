@@ -15,10 +15,10 @@ export interface ThirdPartyAppHostProps extends AppWindowProps {
 
 /**
  * Turns one installed bundle into a running sandboxed window. Resolves the
- * entry script's bytes into a same-realm `blob:` URL per mount (§
- * `thirdPartyEntryHtml.ts`), rather than at scan time, so the bytes are
- * fresh and the blob URL's lifetime matches the window's — revoked on
- * unmount rather than leaked for the session.
+ * entry script's bytes fresh per mount (rather than at scan time) and hands
+ * them to `buildThirdPartyEntryHtml`, which embeds them as base64 for the
+ * frame's own loader to turn into a same-realm `blob:` URL — see that
+ * file's doc comment for why this side can't build the blob: URL itself.
  */
 export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
   const { entryNodeId, capabilities } = props;
@@ -26,15 +26,13 @@ export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
 
   useEffect(() => {
     let cancelled = false;
-    let scriptUrl: string | null = null;
 
     void (async () => {
       try {
         const node = await fileSystem.readFile(entryNodeId);
         const bytes = await resolveFileBytes(node, blobStore);
-        scriptUrl = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "text/javascript" }));
         if (!cancelled)
-          setEntryHtml(buildThirdPartyEntryHtml(scriptUrl));
+          setEntryHtml(buildThirdPartyEntryHtml(bytes));
       }
       catch {
         // Entry bytes vanished or the node was removed between scan and
@@ -45,8 +43,6 @@ export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
 
     return () => {
       cancelled = true;
-      if (scriptUrl)
-        URL.revokeObjectURL(scriptUrl);
     };
   }, [entryNodeId]);
 

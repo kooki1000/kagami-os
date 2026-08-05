@@ -20,7 +20,7 @@ const outDir = `${root}public/sandbox`;
 
 await mkdir(outDir, { recursive: true });
 
-await build({
+const sharedConfig = {
   root,
   configFile: false,
   // outDir sits inside the project's publicDir (public/sandbox) —
@@ -32,6 +32,11 @@ await build({
       "@": `${root}src`,
     },
   },
+  logLevel: "warn",
+};
+
+await build({
+  ...sharedConfig,
   build: {
     outDir,
     emptyOutDir: false, // demo-app.js (hand-authored, step 16a) also lives here
@@ -46,7 +51,26 @@ await build({
       fileName: () => "documents.js",
     },
   },
-  logLevel: "warn",
 });
-
 console.log("[build:sandbox] wrote public/sandbox/documents.js");
+
+// Step 17 (D8.5): the generic loader every installed third-party app's
+// frame loads via a real <script src>. Has no imports of its own — a
+// separate build call (rather than a multi-entry lib config) keeps each
+// bundle's config next to its own comment, since the two have nothing in
+// common besides outDir.
+await build({
+  ...sharedConfig,
+  build: {
+    outDir,
+    emptyOutDir: false,
+    minify: true,
+    lib: {
+      entry: `${root}src/system/apps/thirdPartyLoaderEntry.ts`,
+      formats: ["iife"],
+      name: "KagamiThirdPartyLoader",
+      fileName: () => "third-party-loader.js",
+    },
+  },
+});
+console.log("[build:sandbox] wrote public/sandbox/third-party-loader.js");

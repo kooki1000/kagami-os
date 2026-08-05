@@ -2,6 +2,7 @@ import type { InstalledAppBundle } from "./installedApps";
 import type { AppManifest, AppWindowProps } from "./types";
 import { Puzzle } from "lucide-react";
 import { createElement, lazy } from "react";
+import { getGrantedCapabilities } from "./appGrantsStore";
 import { ThirdPartyAppHost } from "./ThirdPartyAppHost";
 
 /**
@@ -26,14 +27,20 @@ const THIRD_PARTY_TILE_GRADIENT: [string, string] = ["#8f8f96", "#5c5c63"];
 export function buildInstalledAppManifest(bundle: InstalledAppBundle): AppManifest {
   const { manifest, entryNodeId } = bundle;
   // The exposed component only ever receives AppWindowProps (that's all
-  // Window.tsx passes any app's component) — appId/entryNodeId/capabilities
-  // are closed over here, not supplied by the caller.
+  // Window.tsx passes any app's component) — appId/entryNodeId are closed
+  // over here, not supplied by the caller. Capabilities are read fresh from
+  // appGrantsStore *inside* the closure, at launch time, rather than
+  // captured once when this manifest is built — so a launch that happens
+  // after a Settings revocation (D8.7) picks up the change without needing
+  // a fresh boot-time scan. manifest.capabilities itself is never read here:
+  // what's granted is only ever what appGrantsStore records (see its own
+  // doc comment for why the two are kept separate).
   const component = lazy(() => Promise.resolve({
     default: (props: AppWindowProps) => createElement(ThirdPartyAppHost, {
       ...props,
       appId: manifest.id,
       entryNodeId,
-      capabilities: manifest.capabilities,
+      capabilities: getGrantedCapabilities(manifest.id),
     }),
   }));
 

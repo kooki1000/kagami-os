@@ -685,21 +685,57 @@ row didn't anticipate: the blocker wasn't highlighting but mime resolution —
 `.json`, `.ts`, `.py` and `.yaml` had no associated app at all and failed
 with "Can't open this file". See the VFS section's mime-type note.
 
-**Step 17 (the third-party app SDK, D8) is underway.** Its first slice landed
-2026-08-05: `fs.write`/`fs.delete` joined the bridge's method vocabulary
-(`src/system/sandbox/{types,capabilities,bridge}.ts`), gated by a new
-`fs.write:<scope>` capability that authorizes both writing under a folder and
-deleting a node within it — the same self-or-descendant scoping `fs.read:<scope>`
-already used. `fs.delete` routes through `FileSystemProvider.delete`, never
-the raw `fsStore.deleteForever`, which is what closes T6 (the debt-register
-item — the trash-only guard living only at call sites) for the bridge
-specifically: `BridgeDeps.fileSystem` only ever exposes a
-`Pick<FileSystemProvider, ...>`, so the still-unguarded `deleteForever`
-is structurally unreachable from a sandboxed app.
+**Step 17 (the third-party app SDK, D8) is underway.** D8.1–D8.5 landed
+2026-08-05:
 
-**Still open, the rest of the step:** the hidden `/Apps` VFS convention and a
-`manifest.json` schema, a dynamic app registry fed from installed bundles
-instead of `registry.ts`'s static array, the install/consent flow, a Settings
-management pane, live capability revocation, and a reference third-party app
-proving the whole install→run→uninstall→revoke lifecycle end to end — see
+- `fs.write`/`fs.delete` joined the bridge's method vocabulary
+  (`src/system/sandbox/{types,capabilities,bridge}.ts`), gated by a new
+  `fs.write:<scope>` capability that authorizes both writing under a folder
+  and deleting a node within it — the same self-or-descendant scoping
+  `fs.read:<scope>` already used. `fs.delete` routes through
+  `FileSystemProvider.delete`, never the raw `fsStore.deleteForever`, which
+  is what closes T6 (the debt-register item — the trash-only guard living
+  only at call sites) for the bridge specifically: `BridgeDeps.fileSystem`
+  only ever exposes a `Pick<FileSystemProvider, ...>`, so the
+  still-unguarded `deleteForever` is structurally unreachable from a
+  sandboxed app.
+- A hidden `Apps` system folder (`src/system/fs/{types,systemFolders}.ts`,
+  backfilled onto existing installs the same way B1's blob migration is)
+  and `AppBundleManifest`/`parseAppManifest` (`system/apps/manifestSchema.ts`)
+  — a fail-closed validator for a third-party `manifest.json`, mirroring
+  `sandbox/rpc.ts`'s never-throw convention.
+- The registry (`system/apps/registry.ts`) gained `registerInstalledApps`,
+  which mutates its `byId` lookup directly rather than making the exported
+  `apps` array reactive — every consumer but Settings' two startup-config
+  lists only ever does a by-id `getApp()` lookup, so this is enough for an
+  installed app to appear in the dock once launched or pinned, with no
+  change to `Dock`/`MenuBar`/`Window.tsx`. `ThirdPartyAppHost` and
+  `buildThirdPartyEntryHtml` (`system/apps/`) turn one scanned bundle into a
+  running sandboxed window.
+- The install flow (`system/apps/installBundle.ts`, a new Settings "Apps"
+  pane) parses an uploaded zip, shows a consent screen listing exactly what
+  it requests (`apps/settings/InstallAppDialog.tsx`), and only writes
+  anything — to `/Apps`, and to a new `appGrantsStore` recording what was
+  actually approved, kept deliberately separate from a manifest's own
+  unreviewed `capabilities` wishlist — after an explicit "Install" click.
+
+**A real bug found and fixed along the way**, worth remembering as a
+pattern: the first pass at D8.4 had the _shell_ build the entry script's
+`blob:` URL and hand the frame that URL as a `<script src>`. It looked
+right and wasn't — `e2e/install-app.spec.ts` caught it once it exercised a
+real installed app rather than a hand-placed fixture (Chromium: "Not
+allowed to load local resource"). A `blob:` URL is scoped to the document
+that created it; an opaque-origin frame can't dereference one the shell's
+real origin created — the same restriction `SandboxFileDto`'s doc comment
+already named for file _reads_, not yet carried over to script _loading_.
+`thirdPartyLoaderEntry.ts` fixes it the way `sandboxEntry.ts` already
+works around the identical problem for pdf.js's worker: a small,
+app-agnostic bundle loaded via a real `<script src="/sandbox/third-party-loader.js">`
+builds the `blob:` URL itself, same-realm, from entry-script bytes carried
+in as base64 markup rather than executable text.
+
+**Still open, the rest of the step:** a Settings pane listing installed
+apps with uninstall (D8.6), live capability revocation reaching an
+already-open window (D8.7), and a reference third-party app proving the
+whole install→run→uninstall→revoke lifecycle end to end (D8.8) — see
 `ROADMAP.md`'s Step 17 backlog.
