@@ -2,6 +2,7 @@ import type { ChangeEvent, CSSProperties, ReactNode } from "react";
 import type { SegmentOption } from "@/components/ui/Segmented";
 import type { WallpaperTone } from "@/design/color";
 import type { UiScale } from "@/design/tokens";
+import type { ParsedBundle } from "@/system/apps/installBundle";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { DesktopIconSize } from "@/system/desktop/desktopLayout";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
@@ -10,7 +11,7 @@ import type { LookPreset, MaterialLevel, WallpaperFit } from "@/system/settings/
 import type { MenuBarStatusItem, ReduceMotionPreference } from "@/system/settings/settingsStore";
 import type { ChordDescriptor } from "@/system/shortcuts";
 import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
-import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, Puzzle, SlidersHorizontal } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { SEARCH_ENGINES } from "@/apps/browser/searchEngines";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
@@ -19,6 +20,7 @@ import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { formatShortcut } from "@/lib/format";
+import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps/installBundle";
 import { launchApp } from "@/system/apps/launch";
 import { candidateAppsForMime } from "@/system/apps/openFile";
 import { apps, getApp } from "@/system/apps/registry";
@@ -42,14 +44,19 @@ import { PREVIEW_WALL_TILE, WALLPAPER_STYLES, wallpaperStyleVars } from "@/syste
 import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
 import { useThemeStore } from "@/system/theme/themeStore";
+import { InstallAppDialog } from "./InstallAppDialog";
 
-type Section = "appearance" | "dock" | "desktop" | "defaultApps" | "menuBar" | "startup" | "shortcuts" | "general" | "about";
+type Section = "appearance" | "dock" | "desktop" | "defaultApps" | "apps" | "menuBar" | "startup" | "shortcuts" | "general" | "about";
 
 const NAV: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "dock", label: "Dock", icon: Monitor },
   { id: "desktop", label: "Desktop", icon: LayoutGrid },
   { id: "defaultApps", label: "Default Apps", icon: FileType },
+  // Step 17 (D8.5): hidden behind the same dev-only flag that gates the
+  // installable-app registry itself (system/flags.ts) — a build with it off
+  // has a byte-identical nav list to before this section existed.
+  ...(isFlagEnabled("third_party_apps") ? [{ id: "apps" as const, label: "Apps", icon: Puzzle }] : []),
   { id: "menuBar", label: "Menu Bar", icon: Clock },
   { id: "startup", label: "Startup", icon: Power },
   { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
@@ -805,6 +812,98 @@ function DefaultAppsSection() {
   );
 }
 
+type InstallState
+  = | { phase: "idle" }
+    | { phase: "parsing" }
+    | { phase: "consent"; bundle: ParsedBundle }
+    | { phase: "installing"; bundle: ParsedBundle };
+
+/**
+ * Step 17 (D8.5) — sideload a bundle and walk through its consent screen.
+ * No list of already-installed apps yet: that, plus uninstall, is D8.6's
+ * pane, built on the same `appGrantsStore`/`registry.ts` this section
+ * already writes to. Errors (an invalid archive, an id already installed)
+ * report through a toast rather than inline state, matching
+ * `BackupSection`'s export/import error handling above.
+ */
+function AppsSection() {
+  const [state, setState] = useState<InstallState>({ phase: "idle" });
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handlePick(e: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!file)
+      return;
+    setState({ phase: "parsing" });
+    try {
+      const bundle = await parseBundleZip(file);
+      setState({ phase: "consent", bundle });
+    }
+    catch (error) {
+      setState({ phase: "idle" });
+      notify({
+        title: "Couldn't install app",
+        body: error instanceof InvalidBundleError || error instanceof Error ? error.message : "The bundle couldn't be read.",
+        tone: "danger",
+      });
+    }
+  }
+
+  async function handleInstall(): Promise<void> {
+    if (state.phase !== "consent")
+      return;
+    const { bundle } = state;
+    setState({ phase: "installing", bundle });
+    try {
+      await commitInstall(bundle);
+      setState({ phase: "idle" });
+      notify({
+        title: `"${bundle.manifest.name}" installed`,
+        action: { label: "Open", run: () => launchApp(bundle.manifest.id) },
+      });
+    }
+    catch (error) {
+      setState({ phase: "idle" });
+      notify({
+        title: "Couldn't install app",
+        body: error instanceof Error ? error.message : "Install failed.",
+        tone: "danger",
+      });
+    }
+  }
+
+  const parsing = state.phase === "parsing";
+
+  return (
+    <Row label="Apps">
+      <p className="mb-3 text-12/relaxed text-ink-2">
+        Install a third-party app from a bundle (a .zip containing a
+        manifest.json and its entry script). Installed apps run sandboxed
+        and can only do what you approve below.
+      </p>
+      <button
+        type="button"
+        disabled={parsing}
+        className="rounded-btn bg-ph px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-11.5 font-medium text-ink hover:bg-ph-2 disabled:opacity-50"
+        onClick={() => inputRef.current?.click()}
+      >
+        {parsing ? "Reading bundle…" : "Install App…"}
+      </button>
+      <input ref={inputRef} type="file" accept=".zip" hidden onChange={e => void handlePick(e)} />
+
+      {(state.phase === "consent" || state.phase === "installing") && (
+        <InstallAppDialog
+          bundle={state.bundle}
+          installing={state.phase === "installing"}
+          onCancel={() => setState({ phase: "idle" })}
+          onInstall={() => void handleInstall()}
+        />
+      )}
+    </Row>
+  );
+}
+
 const STATUS_ITEM_LABELS: Record<MenuBarStatusItem, string> = {
   offline: "Offline indicator",
   search: "Search",
@@ -1291,6 +1390,7 @@ export default function SettingsApp({ payload }: AppWindowProps) {
         {section === "dock" && <DockSection />}
         {section === "desktop" && <DesktopSection />}
         {section === "defaultApps" && <DefaultAppsSection />}
+        {section === "apps" && <AppsSection />}
         {section === "menuBar" && <MenuBarSection />}
         {section === "startup" && <StartupSection />}
         {section === "shortcuts" && <ShortcutsSection />}
