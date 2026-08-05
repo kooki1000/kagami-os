@@ -11,6 +11,7 @@ import { createIdbAdapter } from "./idbAdapter";
 import { isValidNodeIcon } from "./nodeIcons";
 import { isValidNodeLabel } from "./nodeLabels";
 import { createSeedNodes } from "./seed";
+import { ensureAppsFolder } from "./systemFolders";
 import { createTauriAdapter } from "./tauriAdapter";
 import { DOCUMENTS_ID, SYSTEM_IDS, TRASH_ID } from "./types";
 
@@ -524,6 +525,20 @@ export const useFsStore = create<FsStore>()((set, get) => {
             for (const node of migrated)
               nodes[node.id] = node;
             await adapter.putMany(migrated);
+          }
+        }
+        catch (error) {
+          logPersistError(error);
+        }
+
+        // Step 17 (D8): backfill the Apps system folder onto a tree that was
+        // seeded before it existed. Same idle isolation as the migration
+        // above — a failure here never blocks boot.
+        try {
+          const appsFolder = ensureAppsFolder(nodes, Date.now());
+          if (appsFolder) {
+            nodes[appsFolder.id] = appsFolder;
+            await adapter.putMany([appsFolder]);
           }
         }
         catch (error) {
