@@ -9,6 +9,7 @@ import { ToastStack } from "./components/shell/ToastStack";
 import { WindowLayer } from "./components/shell/WindowLayer";
 import { uiScaleMultipliers } from "./design/tokens";
 import { launchApp } from "./system/apps/launch";
+import { loadInstalledApps } from "./system/apps/loadInstalledApps";
 import { useFsStore } from "./system/fs/fsStore";
 import { lookById, themeVariables } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
@@ -102,11 +103,18 @@ export default function App() {
     // then restore the previous session's windows (C1) — a `?fresh` query
     // param bypasses restore as a recovery hatch if a bad session ever
     // wedges boot.
-    void useFsStore.getState().init().then(() => {
+    void useFsStore.getState().init().then(async () => {
       if (cancelled)
         return;
       if (useSettingsStore.getState().autoEmptyTrash)
         useFsStore.getState().purgeExpiredTrash();
+
+      // Step 17: installed third-party apps must be in the registry before
+      // anything below can launchApp() one of them by id — session restore
+      // and startupApps both can. A no-op behind the third_party_apps flag.
+      await loadInstalledApps();
+      if (cancelled)
+        return;
 
       const url = new URL(window.location.href);
       const fresh = url.searchParams.has("fresh");
