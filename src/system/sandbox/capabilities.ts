@@ -51,6 +51,25 @@ export function canReadFsNode(granted: readonly Capability[], targetId: string, 
 }
 
 /**
+ * Scoped `fs.write` check: granted iff some `fs.write:<scopeId>` capability
+ * names `targetId` itself or an ancestor of it — same shape as
+ * `canReadFsNode`. One capability governs both writing under the scope
+ * (`targetId` = destination folder) and deleting a node under it (`targetId`
+ * = the node itself): a writable-directory grant implies delete-within-it,
+ * matching the `fs.write:<own-data-dir>` capability sketched for step 17.
+ */
+export function canWriteFsNode(granted: readonly Capability[], targetId: string, nodes: NodeMap): boolean {
+  for (const cap of granted) {
+    const parsed = parseCapability(cap);
+    if (!parsed || parsed.verb !== "fs.write" || !parsed.scope)
+      continue;
+    if (parsed.scope === targetId || isDescendantOf(nodes, targetId, parsed.scope))
+      return true;
+  }
+  return false;
+}
+
+/**
  * Central capability gate the bridge dispatcher calls before running any
  * method. `window.setTitle` and `ui.setState` need no capability — both are
  * basic window chrome, available to every sandboxed app exactly like
@@ -61,12 +80,18 @@ export function canReadFsNode(granted: readonly Capability[], targetId: string, 
 export function isMethodAuthorized(
   granted: readonly Capability[],
   method: SandboxMethod,
-  params: { id?: string },
+  params: { id?: string; parentId?: string },
   nodes: NodeMap,
 ): boolean {
   switch (method) {
     case "fs.read":
       return typeof params.id === "string" && canReadFsNode(granted, params.id, nodes);
+    case "fs.write":
+      // Authorized against the destination folder, not params.id — the file
+      // being written may not exist yet.
+      return typeof params.parentId === "string" && canWriteFsNode(granted, params.parentId, nodes);
+    case "fs.delete":
+      return typeof params.id === "string" && canWriteFsNode(granted, params.id, nodes);
     case "notifications.notify":
       return hasCapability(granted, "notifications");
     case "window.setTitle":

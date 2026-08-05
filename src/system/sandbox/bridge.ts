@@ -1,8 +1,9 @@
-import type { Capability, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse } from "./types";
+import type { Capability, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse, SandboxWriteResultDto } from "./types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { BlobStore, FileSystemProvider, FsNode } from "@/system/fs/types";
 import type { NotifyInput } from "@/system/notifications/notificationStore";
 import { resolveFileBytes } from "@/apps/files/download";
+import { fileBytes } from "@/system/fs/fsStore";
 import { isMethodAuthorized } from "./capabilities";
 import { buildErrorResponse, buildSuccessResponse } from "./rpc";
 
@@ -22,7 +23,7 @@ export interface SandboxContext {
  * singletons so `bridge.test.ts` can stub every side effect.
  */
 export interface BridgeDeps {
-  fileSystem: Pick<FileSystemProvider, "readFile">;
+  fileSystem: Pick<FileSystemProvider, "readFile" | "writeFile" | "delete">;
   blobStore: BlobStore;
   getNodes: () => NodeMap;
   notify: (input: NotifyInput) => string;
@@ -81,6 +82,49 @@ async function handleFsRead(params: Record<string, unknown>, deps: BridgeDeps): 
     // Notes/Terminal-authored files and is always text.
     isText: (node.mimeType ?? "text/plain").startsWith("text/"),
   };
+}
+
+async function handleFsWrite(params: Record<string, unknown>, deps: BridgeDeps): Promise<SandboxWriteResultDto> {
+  // isMethodAuthorized already required params.parentId to be a string
+  // granted under some fs.write:<scope> capability before this handler runs.
+  const parentId = params.parentId as string;
+  const name = params.name;
+  const content = params.content;
+  if (typeof name !== "string" || name.length === 0)
+    throw new SandboxRequestError("invalid_request", "fs.write requires a non-empty string \"name\" param.");
+  if (typeof content !== "string")
+    throw new SandboxRequestError("invalid_request", "fs.write requires a string \"content\" param.");
+  const mimeType = typeof params.mimeType === "string" ? params.mimeType : undefined;
+
+  // writeFile has no folder-type check of its own — harmless for its
+  // existing trusted first-party callers, but this is the first time it's
+  // reachable from untrusted input, so it's tightened here rather than
+  // inherited.
+  if (deps.getNodes()[parentId]?.type !== "folder")
+    throw new SandboxRequestError("not_found", `"${parentId}" is not a folder.`);
+
+  let node: FsNode;
+  try {
+    node = await deps.fileSystem.writeFile(parentId, name, content, mimeType);
+  }
+  catch {
+    throw new SandboxRequestError("not_found", `Cannot write into folder "${parentId}".`);
+  }
+  return { id: node.id, name: node.name, size: fileBytes(node), modifiedAt: node.modifiedAt };
+}
+
+async function handleFsDelete(params: Record<string, unknown>, deps: BridgeDeps): Promise<null> {
+  // isMethodAuthorized already required params.id to be a string granted
+  // under some fs.write:<scope> capability before this handler runs.
+  const id = params.id as string;
+  if (!deps.getNodes()[id])
+    throw new SandboxRequestError("not_found", `No node with id "${id}".`);
+  // Routes through the FileSystemProvider seam, never the raw
+  // fsStore.deleteForever — provider.delete already branches trash-vs-permanent
+  // (T6), so a sandboxed app's fs.delete can never bypass the Trash on a node
+  // that isn't already in it.
+  await deps.fileSystem.delete(id);
+  return null;
 }
 
 async function handleNotify(params: Record<string, unknown>, appId: string, deps: BridgeDeps): Promise<null> {
@@ -145,6 +189,10 @@ export async function dispatchSandboxRequest(
     switch (request.method) {
       case "fs.read":
         return buildSuccessResponse(request.id, await handleFsRead(params, deps));
+      case "fs.write":
+        return buildSuccessResponse(request.id, await handleFsWrite(params, deps));
+      case "fs.delete":
+        return buildSuccessResponse(request.id, await handleFsDelete(params, deps));
       case "notifications.notify":
         return buildSuccessResponse(request.id, await handleNotify(params, context.appId, deps));
       case "window.setTitle":

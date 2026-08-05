@@ -36,6 +36,18 @@ export interface SandboxFileDto {
 }
 
 /**
+ * The narrow ack an `fs.write` call gets back — never the raw `FsNode`,
+ * same reasoning as `SandboxFileDto`. `fs.delete` acks with `null` instead;
+ * there's nothing to report besides success.
+ */
+export interface SandboxWriteResultDto {
+  id: string;
+  name: string;
+  size: number;
+  modifiedAt: number;
+}
+
+/**
  * Methods the bridge dispatches. Kept as a closed union so an unknown
  * `method` is a request-time validation failure, not a runtime surprise.
  *
@@ -46,13 +58,13 @@ export interface SandboxFileDto {
  * document doesn't inherit custom properties. The payload is opaque here on
  * purpose: the protocol has no idea what a PDF page is, and shouldn't.
  */
-export type SandboxMethod = "fs.read" | "notifications.notify" | "window.setTitle" | "ui.setState";
+export type SandboxMethod = "fs.read" | "fs.write" | "fs.delete" | "notifications.notify" | "window.setTitle" | "ui.setState";
 
 /**
  * Every valid `SandboxMethod`, for request-time validation against the
  * closed union (`rpc.ts` has no other way to check membership at runtime).
  */
-export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "notifications.notify", "window.setTitle", "ui.setState"];
+export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "fs.write", "fs.delete", "notifications.notify", "window.setTitle", "ui.setState"];
 
 export type SandboxErrorCode = "capability_denied" | "invalid_request" | "not_found" | "internal";
 

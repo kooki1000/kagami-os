@@ -53,7 +53,7 @@ describe("parseSandboxRequest", () => {
   });
 
   it("rejects an unknown method", () => {
-    expect(parseSandboxRequest({ kind: "kagami.sandbox.request", id: "req-1", method: "fs.write" })).toBeNull();
+    expect(parseSandboxRequest({ kind: "kagami.sandbox.request", id: "req-1", method: "fs.rename" })).toBeNull();
   });
 
   it("rejects a non-string method", () => {
