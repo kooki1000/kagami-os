@@ -1,6 +1,6 @@
 import type { NodeMap } from "@/system/fs/fsStore";
 import { describe, expect, it } from "vitest";
-import { canReadFsNode, hasCapability, isMethodAuthorized } from "./capabilities";
+import { canReadFsNode, canWriteFsNode, hasCapability, isMethodAuthorized } from "./capabilities";
 
 function node(id: string, parentId: string | null) {
   return { id, parentId, name: id, type: "file", createdAt: 0, modifiedAt: 0 } as unknown as NodeMap[string];
@@ -58,6 +58,37 @@ describe("canReadFsNode", () => {
   });
 });
 
+describe("canWriteFsNode", () => {
+  it("matches the exact granted scope id", () => {
+    expect(canWriteFsNode(["fs.write:documents"], "documents", nodes)).toBe(true);
+  });
+
+  it("matches a direct descendant of the granted scope", () => {
+    expect(canWriteFsNode(["fs.write:documents"], "reportDoc", nodes)).toBe(true);
+  });
+
+  it("matches a nested (grandchild) descendant of the granted scope", () => {
+    expect(canWriteFsNode(["fs.write:documents"], "nestedFile", nodes)).toBe(true);
+  });
+
+  it("refuses a node outside the granted scope", () => {
+    expect(canWriteFsNode(["fs.write:documents"], "desktopFile", nodes)).toBe(false);
+  });
+
+  it("refuses when only fs.read is granted for the same scope", () => {
+    expect(canWriteFsNode(["fs.read:documents"], "reportDoc", nodes)).toBe(false);
+  });
+
+  it("refuses when no fs.write capability is granted at all", () => {
+    expect(canWriteFsNode(["notifications"], "reportDoc", nodes)).toBe(false);
+    expect(canWriteFsNode([], "reportDoc", nodes)).toBe(false);
+  });
+
+  it("refuses a target id that doesn't exist in the node map", () => {
+    expect(canWriteFsNode(["fs.write:documents"], "doesNotExist", nodes)).toBe(false);
+  });
+});
+
 describe("malformed capability strings fail closed", () => {
   it("ignores an empty string", () => {
     expect(hasCapability([""], "notifications")).toBe(false);
@@ -84,6 +115,30 @@ describe("isMethodAuthorized", () => {
 
   it("refuses fs.read with a missing id param", () => {
     expect(isMethodAuthorized(["fs.read:documents"], "fs.read", {}, nodes)).toBe(false);
+  });
+
+  it("authorizes fs.write within scope, against parentId not id", () => {
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.write", { parentId: "documents" }, nodes)).toBe(true);
+  });
+
+  it("refuses fs.write outside scope", () => {
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.write", { parentId: "desktop" }, nodes)).toBe(false);
+  });
+
+  it("refuses fs.write with a missing parentId param", () => {
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.write", {}, nodes)).toBe(false);
+  });
+
+  it("authorizes fs.delete within scope, against id", () => {
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.delete", { id: "reportDoc" }, nodes)).toBe(true);
+  });
+
+  it("refuses fs.delete outside scope", () => {
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.delete", { id: "desktopFile" }, nodes)).toBe(false);
+  });
+
+  it("refuses fs.delete with a missing id param", () => {
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.delete", {}, nodes)).toBe(false);
   });
 
   it("authorizes notifications.notify only when granted", () => {
