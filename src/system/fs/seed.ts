@@ -1,5 +1,6 @@
 import type { FsNode } from "./types";
 import {
+  APPS_ID,
   DESKTOP_ID,
   DOCUMENTS_ID,
   DOWNLOADS_ID,
@@ -85,6 +86,7 @@ const SPECS: SeedSpec[] = [
   { id: DOWNLOADS_ID, parentId: HOME_ID, name: "Downloads", type: "folder", age: 40_000 },
   { id: PICTURES_ID, parentId: HOME_ID, name: "Pictures", type: "folder", age: 40_000 },
   { id: TRASH_ID, parentId: ROOT_ID, name: "Trash", type: "folder", age: 40_000 },
+  { id: APPS_ID, parentId: ROOT_ID, name: "Apps", type: "folder", age: 40_000 },
   { parentId: DOCUMENTS_ID, name: "ideas.md", type: "file", mimeType: "text/markdown", content: ideasMd, age: 1400 },
   { parentId: DOCUMENTS_ID, name: "todo.md", type: "file", mimeType: "text/markdown", content: todoMd, age: 1200 },
   { parentId: DOCUMENTS_ID, name: "Projects", type: "folder", age: 9000 },
