@@ -34,6 +34,9 @@ function makeDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
           throw new Error(`Not a file: ${id}`);
         return node;
       }),
+      writeFile: vi.fn(async (parentId: string, name: string, content: string, mimeType?: string) =>
+        fileNode({ id: `${parentId}/${name}`, parentId, name, content, mimeType, modifiedAt: 1 })),
+      delete: vi.fn(async () => {}),
     },
     blobStore: {} as BlobStore,
     getNodes: () => nodes,
@@ -43,7 +46,7 @@ function makeDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
   };
 }
 
-const context: SandboxContext = { appId: "sandbox-demo", windowId: "win-1", capabilities: ["fs.read:documents", "notifications"] };
+const context: SandboxContext = { appId: "sandbox-demo", windowId: "win-1", capabilities: ["fs.read:documents", "fs.write:documents", "notifications"] };
 
 function request(method: SandboxRequest["method"], params?: unknown): SandboxRequest {
   return { kind: "kagami.sandbox.request", id: "req-1", method, params };
@@ -93,6 +96,145 @@ describe("dispatchSandboxRequest — fs.read", () => {
     if (response.ok)
       throw new Error("expected not_found response");
     expect(response.error.code).toBe("not_found");
+  });
+});
+
+describe("dispatchSandboxRequest — fs.write", () => {
+  it("creates a new file under a granted-scope folder, returning a narrow DTO", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(
+      request("fs.write", { parentId: "documents", name: "new.txt", content: "hi" }),
+      context,
+      deps,
+    );
+    expect(response.ok).toBe(true);
+    if (!response.ok)
+      throw new Error("expected ok response");
+    expect(deps.fileSystem.writeFile).toHaveBeenCalledWith("documents", "new.txt", "hi", undefined);
+    expect(response.data).toMatchObject({ name: "new.txt", size: 2, modifiedAt: 1 });
+    expect(response.data).not.toHaveProperty("content");
+  });
+
+  it("refuses and does not call writeFile when the destination is outside the granted scope", async () => {
+    const deps = makeDeps();
+    const logDenied = vi.fn();
+    const response = await dispatchSandboxRequest(
+      request("fs.write", { parentId: "desktop", name: "new.txt", content: "hi" }),
+      context,
+      deps,
+      logDenied,
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected denied response");
+    expect(response.error.code).toBe("capability_denied");
+    expect(deps.fileSystem.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the app has no fs.write capability at all", async () => {
+    const deps = makeDeps();
+    const readOnlyContext: SandboxContext = { ...context, capabilities: ["fs.read:documents"] };
+    const response = await dispatchSandboxRequest(
+      request("fs.write", { parentId: "documents", name: "new.txt", content: "hi" }),
+      readOnlyContext,
+      deps,
+    );
+    expect(response.ok).toBe(false);
+    expect(deps.fileSystem.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing name as invalid_request", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("fs.write", { parentId: "documents", content: "hi" }), context, deps);
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected invalid_request response");
+    expect(response.error.code).toBe("invalid_request");
+  });
+
+  it("rejects non-string content as invalid_request", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("fs.write", { parentId: "documents", name: "new.txt", content: 42 }), context, deps);
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected invalid_request response");
+    expect(response.error.code).toBe("invalid_request");
+  });
+
+  it("maps a non-folder parentId to not_found without calling writeFile", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(
+      request("fs.write", { parentId: "reportDoc", name: "new.txt", content: "hi" }),
+      context,
+      deps,
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected not_found response");
+    expect(response.error.code).toBe("not_found");
+    expect(deps.fileSystem.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("maps a writeFile rejection to not_found rather than internal", async () => {
+    const deps = makeDeps({
+      fileSystem: {
+        readFile: vi.fn(),
+        writeFile: vi.fn(async () => {
+          throw new Error("disk full");
+        }),
+        delete: vi.fn(),
+      },
+    });
+    const response = await dispatchSandboxRequest(
+      request("fs.write", { parentId: "documents", name: "new.txt", content: "hi" }),
+      context,
+      deps,
+    );
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected not_found response");
+    expect(response.error.code).toBe("not_found");
+  });
+});
+
+describe("dispatchSandboxRequest — fs.delete", () => {
+  it("routes an authorized delete through fileSystem.delete, never a raw deleteForever", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("fs.delete", { id: "reportDoc" }), context, deps);
+    expect(response.ok).toBe(true);
+    expect(deps.fileSystem.delete).toHaveBeenCalledWith("reportDoc");
+  });
+
+  it("refuses and does not call delete when the target is outside the granted scope", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("fs.delete", { id: "desktopFile" }), context, deps);
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected denied response");
+    expect(response.error.code).toBe("capability_denied");
+    expect(deps.fileSystem.delete).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the app has no fs.write capability at all", async () => {
+    const deps = makeDeps();
+    const readOnlyContext: SandboxContext = { ...context, capabilities: ["fs.read:documents"] };
+    const response = await dispatchSandboxRequest(request("fs.delete", { id: "reportDoc" }), readOnlyContext, deps);
+    expect(response.ok).toBe(false);
+    expect(deps.fileSystem.delete).not.toHaveBeenCalled();
+  });
+
+  it("maps a nonexistent id to not_found via the getNodes() pre-check, rather than a silent fake success", async () => {
+    const deps = makeDeps();
+    // Granted by exact scope match on an id that names no real node — the
+    // capability check alone can't rule this out (it doesn't require the
+    // scope to resolve to an existing node), so the handler must.
+    const ghostContext: SandboxContext = { ...context, capabilities: ["fs.write:ghostId"] };
+    const response = await dispatchSandboxRequest(request("fs.delete", { id: "ghostId" }), ghostContext, deps);
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected not_found response");
+    expect(response.error.code).toBe("not_found");
+    expect(deps.fileSystem.delete).not.toHaveBeenCalled();
   });
 });
 

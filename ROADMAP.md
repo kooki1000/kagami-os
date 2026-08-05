@@ -482,6 +482,34 @@ it is a decision as much as a feature — see §6.7.
 appears in the dock, opens a window, reads only what it was granted, and
 uninstalls cleanly.
 
+**Work breakdown** (in the style of Appendix B — ordered, PR-sized, each with
+its own acceptance criterion; bundle format is a single self-contained
+`entry.html`/`entry.js` per app, not a multi-file resource-resolved folder;
+the install/manage UI is a new Settings pane, not a dock-visible app, per
+§6.2's closed D-area list):
+
+| ID   | Task                                                                                                                                               | Size | Depends on       | Accept                                                                                                                                                                                                                                                  |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D8.1 | ✅ **`fs.write`/`fs.delete` bridge capability, T6-safe by construction** — shipped 2026-08-05, `src/system/sandbox/{types,capabilities,bridge}.ts` | S/M  | none             | A granted app can save and delete a file it created; capability denial and trash-safety (T6) are unit-tested                                                                                                                                            |
+| D8.2 | VFS conventions: hidden `/Apps` folder + `manifest.json` schema/validator                                                                          | S    | none             | `parseAppManifest` round-trips a valid manifest and fails closed on every malformed shape                                                                                                                                                               |
+| D8.3 | Feature flag: `third_party_apps`                                                                                                                   | S    | none             | Flag off ⇒ dock/registry/Settings byte-identical to today                                                                                                                                                                                               |
+| D8.4 | Dynamic registry + generic VFS-fed runtime host                                                                                                    | L    | D8.2, D8.3       | A manually-placed bundle under `/Apps` appears in the dock and opens a window rendering its `entry.html`. Hardest task — needs its own short design pass (how a VFS-stored, not build-time-known, script executes under the closed CSP) before starting |
+| D8.5 | Install flow: sideload + first-run consent screen                                                                                                  | M/L  | D8.1, D8.2, D8.4 | Installing a bundle from outside the repo makes it launchable with no reload                                                                                                                                                                            |
+| D8.6 | Settings "Apps" pane: list installed apps + uninstall                                                                                              | M    | D8.5             | Uninstall leaves nothing in the VFS or the registry                                                                                                                                                                                                     |
+| D8.7 | Capability revocation reaching a running window                                                                                                    | S/M  | D8.4, D8.6       | Revoking `fs.read` in Settings makes an already-open window's next call return `capability_denied`, no reload                                                                                                                                           |
+| D8.8 | Reference third-party test app + install→run→uninstall→revoke E2E                                                                                  | M    | D8.1–D8.7        | Both exit-criteria bullets above are backed by passing E2E assertions                                                                                                                                                                                   |
+
+D8.1 shipped first because it needed no open product decision (D8.2/D8.4/D8.5
+each do), touches only `src/system/sandbox/`, and closes the debt §10 item 5
+calls out by name: `fs.write:<scope>` authorizes both writing under a folder
+and deleting within it (one verb, not two — confirmed choice), `fs.delete`
+routes through `FileSystemProvider.delete` rather than the raw
+`fsStore.deleteForever`, and `handleFsWrite` rejects a non-folder `parentId`
+before calling `writeFile` (tightened here since this is the first time that
+path is reachable from untrusted input). `fsStore.deleteForever` itself is
+unchanged by design — the bridge can't reach it at all, so hardening it too
+was left out as a separate, optional follow-up rather than folded in.
+
 ### Below the line — distribution and sync
 
 Deliberately unscheduled; revisit once steps 13–17 land. Detail in §3.X.2 and
@@ -825,12 +853,12 @@ ungranted capability and is refused).
    picker shipped in step 15, and `design/color.ts`'s `checkAccentContrast`
    is that note in executable form. It has since been reused by D4's syntax
    palette test, which is the shape any future colour decision should take.
-5. **Start step 17 (the app SDK).** Steps 13–16 are all closed. Two things
-   from D4's work are worth carrying in: the bridge still has **no `fs.write`
-   capability** of any shape (§6.9 is where that surfaced), and it needs one
-   before a third-party app can be anything but a viewer; and T6 —
-   `deleteForever` enforcing trash-only at its call sites rather than in
-   itself — becomes load-bearing the moment the fs API is exposed.
+5. ~~**Start step 17 (the app SDK).**~~ — ✅ **D8.1 shipped 2026-08-05**,
+   closing both carry-ins from D4's work in one PR: the bridge gained
+   `fs.write`/`fs.delete` (§6.9's gap), and T6 is closed for the bridge
+   specifically — `fs.delete` routes through `FileSystemProvider.delete`
+   rather than the raw `deleteForever`, which `BridgeDeps` can't even
+   reach. See Step 17's work breakdown (§4) for D8.2–D8.8, still open.
 6. **Fix the flaky specs before they get ignored** (R8). Two are known to
    fail intermittently under full-suite parallel load and pass in isolation:
    `src/system/fs/blobIntegrity.test.ts`'s "does not collect a blob whose
