@@ -20,7 +20,7 @@ export interface FlagDef {
   default: boolean;
 }
 
-export type FlagId = "e2e_crash" | "app_sandbox";
+export type FlagId = "e2e_crash" | "app_sandbox" | "third_party_apps";
 
 export const FLAGS: readonly FlagDef[] = [
   {
@@ -33,6 +33,12 @@ export const FLAGS: readonly FlagDef[] = [
     id: "app_sandbox",
     label: "App sandbox",
     description: "Dev-only: registers a demo app that runs inside the capability-scoped iframe sandbox (step 16a), for testing the bridge. Off by default; never ship on.",
+    default: false,
+  },
+  {
+    id: "third_party_apps",
+    label: "Third-party apps",
+    description: "Dev-only: gates the installable-app registry, install flow, and Settings management pane (step 17). Off by default until the SDK is ready to ship.",
     default: false,
   },
 ];
