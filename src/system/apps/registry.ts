@@ -50,3 +50,19 @@ const byId = new Map(apps.map(app => [app.id, app]));
 export function getApp(id: string): AppManifest | undefined {
   return byId.get(id);
 }
+
+/**
+ * Step 17 (D8.4): adds installed third-party apps to the lookup `getApp`
+ * resolves against, called once at boot after the VFS is ready and the
+ * `/Apps` scan (`installedApps.ts`) resolves — gated behind the
+ * `third_party_apps` flag by that call site, not here. Deliberately doesn't
+ * touch the exported `apps` array: every consumer except Settings' two
+ * startup-config lists only ever does a by-id lookup (`getApp`), so this is
+ * enough for an installed app to appear in the dock once launched or
+ * pinned. Settings picking these up too is D8.6's concern, once there's a
+ * management pane to show them in.
+ */
+export function registerInstalledApps(installed: readonly AppManifest[]): void {
+  for (const app of installed)
+    byId.set(app.id, app);
+}
