@@ -208,8 +208,12 @@ function exportFilename(now = new Date()): string {
  * Unzip `bytes` off the main thread, mirroring `download.ts`'s
  * `zipInWorker`. Not unit-testable under Vitest's Node environment (no real
  * Worker) — covered by `planImport`'s tests plus in-browser verification.
+ * Exported for reuse by `system/apps/installBundle.ts` (step 17, D8.5) —
+ * unzipping an app bundle is the same generic operation as unzipping a disk
+ * export, and `importZipWorker.ts` is already fully generic, so this avoids
+ * a second `new Worker(new URL(...))` call site for the same worker module.
  */
-function unzipInWorker(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
+export function unzipInWorker(bytes: Uint8Array): Promise<Record<string, Uint8Array>> {
   const worker = new Worker(new URL("./importZipWorker.ts", import.meta.url), { type: "module" });
   return runWorkerJob(worker, bytes, "Unzip worker failed");
 }
