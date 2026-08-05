@@ -439,10 +439,13 @@ focused instance without the shell knowing app internals.
   from Documents (PDF), and worth understanding as a pair. G2's sandbox is
   for renderers that _interpret or execute_ untrusted content; a syntax
   highlighter tokenizes text into styled spans and evaluates nothing. The
-  deciding constraint is concrete rather than philosophical: the bridge
-  exposes no `fs.write` capability at all, so a sandboxed editor could read
-  but never save. See `ROADMAP.md` §6's decision, the counterpart to
-  decision 8's argument for Notes.
+  deciding constraint was concrete rather than philosophical: at the time,
+  the bridge exposed no `fs.write` capability at all, so a sandboxed editor
+  could read but never save. Step 17 has since added one (below), but
+  decision 9 rested on two further, independent legs — nothing executes, and
+  a `srcdoc` frame can't inherit the shell's design tokens — so `fs.write`
+  existing doesn't reopen where Code renders. See `ROADMAP.md` §6's decision,
+  the counterpart to decision 8's argument for Notes.
 
   CodeMirror 6 is the engine, with one `import()` per language
   (`languageSupport.ts`) so Vite emits a chunk each — a `.py` file never
@@ -682,6 +685,21 @@ row didn't anticipate: the blocker wasn't highlighting but mime resolution —
 `.json`, `.ts`, `.py` and `.yaml` had no associated app at all and failed
 with "Can't open this file". See the VFS section's mime-type note.
 
-**Next:** step 17, the third-party app SDK (D8) — generalizing 16a's bridge
-from first-party to third-party, where `fs.write` and a consent model become
-real work rather than something first-party apps could route around.
+**Step 17 (the third-party app SDK, D8) is underway.** Its first slice landed
+2026-08-05: `fs.write`/`fs.delete` joined the bridge's method vocabulary
+(`src/system/sandbox/{types,capabilities,bridge}.ts`), gated by a new
+`fs.write:<scope>` capability that authorizes both writing under a folder and
+deleting a node within it — the same self-or-descendant scoping `fs.read:<scope>`
+already used. `fs.delete` routes through `FileSystemProvider.delete`, never
+the raw `fsStore.deleteForever`, which is what closes T6 (the debt-register
+item — the trash-only guard living only at call sites) for the bridge
+specifically: `BridgeDeps.fileSystem` only ever exposes a
+`Pick<FileSystemProvider, ...>`, so the still-unguarded `deleteForever`
+is structurally unreachable from a sandboxed app.
+
+**Still open, the rest of the step:** the hidden `/Apps` VFS convention and a
+`manifest.json` schema, a dynamic app registry fed from installed bundles
+instead of `registry.ts`'s static array, the install/consent flow, a Settings
+management pane, live capability revocation, and a reference third-party app
+proving the whole install→run→uninstall→revoke lifecycle end to end — see
+`ROADMAP.md`'s Step 17 backlog.
