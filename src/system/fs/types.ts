@@ -68,6 +68,14 @@ export const DOCUMENTS_ID = "documents";
 export const DOWNLOADS_ID = "downloads";
 export const PICTURES_ID = "pictures";
 export const TRASH_ID = "trash";
+/**
+ * Step 17 (D8): installed third-party app bundles live here, one subfolder
+ * per app id, so they inherit persistence/export/import for free. A sibling
+ * of `Home`/`Trash` under `ROOT_ID` rather than a child of `Home` — same
+ * precedent Trash already set for a system folder nothing seeds a sidebar
+ * shortcut to or expects a user to browse into casually.
+ */
+export const APPS_ID = "apps";
 
 export const SYSTEM_IDS: ReadonlySet<string> = new Set([
   ROOT_ID,
@@ -77,6 +85,7 @@ export const SYSTEM_IDS: ReadonlySet<string> = new Set([
   DOWNLOADS_ID,
   PICTURES_ID,
   TRASH_ID,
+  APPS_ID,
 ]);
 
 /**
