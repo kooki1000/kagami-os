@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { isTauri } from "./system/platform";
+import { publicUrl } from "./system/publicUrl";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
@@ -20,6 +21,6 @@ createRoot(document.getElementById("root")!).render(
 // a real build exists anyway.
 if (import.meta.env.PROD && !isTauri() && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js");
+    void navigator.serviceWorker.register(publicUrl("sw.js"));
   });
 }

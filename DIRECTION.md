@@ -319,13 +319,16 @@ records _why_ the native build is shaped the way it is.
    confirm current plugin APIs (fs scope, dialog, store) against Tauri v2
    docs at implementation time rather than from memory — plugin surfaces
    shift between versions.
-4. **Distribution burden.** ✅ **Decided: deferred, deliberately.** Nothing
-   distribution-shaped — public deploy, tagged releases, contributor
-   onboarding, signed installers — starts until `ROADMAP.md` §2's definition
-   of finished is met. The product gets finished before it gets distributed.
-   One exception is worth taking immediately: the repository is public with
-   no LICENSE, which legally means all rights reserved. That is hygiene, not
-   distribution.
+4. **Distribution burden.** ✅ **Decided: deferred, with one exception.**
+   Tagged releases, contributor onboarding and signed installers still wait
+   until `ROADMAP.md` §2's definition of finished is met. The exception is
+   the web build, which went up on GitHub Pages on 2026-11-26 so people can
+   try it without cloning anything. It's a static folder with no server
+   behind it, so the only thing to maintain is one workflow
+   (`.github/workflows/pages.yml`); see `ARCHITECTURE.md`'s Hosting section
+   for what that does and doesn't give us. Separately, the repository is
+   public with no LICENSE, which legally means all rights reserved. That is
+   hygiene, not distribution, and it's still open.
 5. **How far the app suite grows.** ✅ **Decided: the holes are filled, and
    the list is closed.** Markdown preview, Notes' inline WYSIWYG, PDF, the
    small utilities and the code editor have all shipped (`ROADMAP.md` §6.2).

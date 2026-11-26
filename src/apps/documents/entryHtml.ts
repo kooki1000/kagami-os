@@ -1,3 +1,5 @@
+import { publicUrl } from "@/system/publicUrl";
+
 /**
  * Builds the `srcdoc` document for the Documents app (step 16b, D6) — the
  * PDF-viewing counterpart to `sandboxDemo`'s `demoEntry.ts`, except this one
@@ -75,7 +77,7 @@ export function buildDocumentsEntryHtml(fileId: string | null): string {
 </head>
 <body${fileIdAttr}>
   <canvas id="page" hidden></canvas>
-  <script src="/sandbox/documents.js"></script>
+  <script src="${publicUrl("sandbox/documents.js")}"></script>
 </body>
 </html>`;
 }

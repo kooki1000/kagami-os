@@ -323,15 +323,21 @@ isn't a fresh investigation:
   as cross-browser proof. In the native build, the Tauri fs plugin makes
   folder sync straightforward on all three platforms.
 
-#### X.3 Distribution — deferred by decision
+#### X.3 Distribution — mostly deferred
 
-A public deploy, tagged releases, a changelog, contributor onboarding, and
-signed native installers (N5) all wait until §2's definition is met. The
-product gets finished before it gets distributed.
+Tagged releases, a changelog, contributor onboarding, and signed native
+installers (N5) wait until §2's definition is met. The product gets finished
+before it gets distributed.
 
-One exception is worth taking immediately: **the repository is public and has
-no LICENSE**, which legally means all rights reserved — nobody may fork it or
-contribute to it. That is hygiene, not distribution.
+The web build is the exception. It's been live on GitHub Pages since
+2026-11-26 (`.github/workflows/pages.yml`), because a static demo costs one
+workflow and lets anyone try the app. That also settles the "preview deploys"
+half of H6's CI/CD item for `main`; per-PR preview URLs and versioned
+releases are still open.
+
+The other open item: **the repository is public and has no LICENSE**, which
+legally means all rights reserved — nobody may fork it or contribute to it.
+That is hygiene, not distribution.
 
 ## 4. Roadmap
 

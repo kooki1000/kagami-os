@@ -1,0 +1,90 @@
+name: Pages
+
+# Publishes the web build as a live demo at
+# https://<owner>.github.io/<repo>/. The build runs on pull requests too, so a
+# change that breaks the subpath build fails before it merges; only pushes to
+# main (or a manual run) deploy.
+#
+# One-time repo setting: Settings → Pages → Source = "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build for Pages
+    runs-on: ubuntu-latest
+    env:
+      # Project Pages are served from /<repo>/. src/system/publicUrl.ts and
+      # vite.config.ts read this; see ARCHITECTURE.md ("Hosting").
+      VITE_BASE: /${{ github.event.repository.name }}/
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Cheap guard against a root-absolute URL sneaking back in: the built
+      # page must point at the subpath, never at the site root.
+      - name: Check the build is subpath-aware
+        run: |
+          grep -q "src=\"${VITE_BASE}assets/" dist/index.html
+          if grep -qE '(src|href)="/(assets|icons|manifest)' dist/index.html; then
+            echo "dist/index.html has a root-absolute URL"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      # The sandboxed apps load their script by URL, so a page that loads but
+      # can't reach /sandbox/ is a broken deploy. Check both.
+      - name: Smoke test the live site
+        env:
+          SITE: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null "$SITE"
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null "${SITE}sandbox/documents.js"
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null "${SITE}sw.js"

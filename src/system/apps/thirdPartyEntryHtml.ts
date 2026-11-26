@@ -1,3 +1,5 @@
+import { publicUrl } from "@/system/publicUrl";
+
 /**
  * Encodes bytes to base64 in fixed-size chunks — `String.fromCharCode(...bytes)`
  * blows the call stack on a large `Uint8Array` spread as arguments (an entry
@@ -30,7 +32,7 @@ export function buildThirdPartyEntryHtml(entryBytes: Uint8Array): string {
 <html>
 <head><meta charset="utf-8" /></head>
 <body data-entry-source="${entrySourceBase64}">
-<script src="/sandbox/third-party-loader.js"></script>
+<script src="${publicUrl("sandbox/third-party-loader.js")}"></script>
 </body>
 </html>`;
 }

@@ -38,7 +38,8 @@ const pkgVersion = (
  * the production bundle emits no inline scripts. Injected build-only — the
  * dev server needs inline/eval for HMR. `frame-ancestors` and HSTS can't be
  * set from a meta tag; enforce those as response headers at the CDN/server
- * on deploy.
+ * on deploy. (GitHub Pages can't set headers, so the demo ships without
+ * `frame-ancestors`; see ARCHITECTURE.md's Hosting section.)
  */
 const CSP = [
   "default-src 'self'",
@@ -73,6 +74,10 @@ function cspMeta(): Plugin {
 }
 
 export default defineConfig({
+  // `/` everywhere except the GitHub Pages demo, which is served from
+  // `/<repo>/`; .github/workflows/pages.yml sets VITE_BASE for that build.
+  // Hand-built URLs to `public/` files go through `src/system/publicUrl.ts`.
+  base: process.env.VITE_BASE ?? "/",
   plugins: [react(), tailwindcss(), cspMeta()],
   // Injected build-time so About (SettingsApp) shows the real package
   // version instead of a string that only ever gets more stale
