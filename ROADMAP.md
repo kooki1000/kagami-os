@@ -2,7 +2,8 @@
 
 **Status:** revised November 2026
 **Baseline:** phases 1–12 and steps 13–16 shipped; step 17 (the app SDK)
-half shipped; native N-1 and N-2 shipped.
+half shipped; native N-1 and N-2 shipped; the web build live at
+[kooki1000.github.io/kagami-os](https://kooki1000.github.io/kagami-os/).
 
 This document says what "finished" means for Kagami, lists the gap between
 that and `main`, and puts the remaining work in order. Feature items carry
@@ -55,7 +56,8 @@ several weeks, needs its own design note.
   Documents (PDF, sandboxed), Media Player, Terminal, Calculator, Clock,
   Paint, Settings, Welcome (a first-run tour), and Browser in the native
   build.
-- **Platform.** Installable PWA with an offline service worker; a Tauri
+- **Platform.** Installable PWA with an offline service worker, deployed to
+  GitHub Pages from `main` (`.github/workflows/pages.yml`); a Tauri
   shell with disk-backed adapters under `$APPDATA/disk`; a capability
   sandbox (`src/system/sandbox/`) that runs Documents and installed
   third-party bundles.
@@ -209,11 +211,20 @@ If it's picked up:
   as cross-browser proof. B18 builds the one-way half of this and is a
   reasonable first step.
 
-#### X.3 Distribution — deferred
+#### X.3 Distribution — mostly deferred
 
-Public deploy, tagged releases, a changelog, contributor onboarding and
-signed installers (N5) wait until §2 is met. The exception is the LICENSE,
-which is hygiene rather than distribution (§6.3).
+Tagged releases, a changelog, contributor onboarding and signed installers
+(N5) wait until §2 is met. The product gets finished before it gets
+distributed.
+
+The web build is the exception. It has been live on GitHub Pages since
+2026-11-26, because a static demo costs one workflow and lets anyone try the
+app. Pull requests build it and pushes to `main` deploy it; per-PR preview
+URLs and versioned releases are still open. `ARCHITECTURE.md`'s Hosting
+section covers what Pages does and doesn't give us.
+
+The LICENSE is the other open item, and it's hygiene rather than
+distribution (§6.3).
 
 ---
 
@@ -234,6 +245,7 @@ feature runs on.
 | Step 15     | Area U: customization and per-app depth, plus Notes' markdown preview (D1) and WYSIWYG editor (D9)                                 |
 | Step 16     | 16a the capability sandbox; 16b Documents (D6), Calculator, Clock and Paint (D7), Code (D4)                                        |
 | N-1, N-2    | Tauri shell with disk adapters; the native Browser and its depth pass                                                              |
+| Web demo    | The web build on GitHub Pages, servable from a subpath via `VITE_BASE` and `publicUrl()` (2026-11-26)                              |
 
 ### Step 17 — Finish the app SDK _(≈ 3–4 weeks)_
 
@@ -298,8 +310,8 @@ dragged out of Files lands on the host desktop.
 ### After step 21
 
 H2 (i18n), the H3 remainder, D11 leftovers and C3, in whatever order demand
-suggests. Then §2 is met, and distribution (§3.X.3) becomes the next
-decision.
+suggests. Then §2 is met, and the rest of distribution (§3.X.3: releases,
+installers, contributor onboarding) becomes the next decision.
 
 ### Native track
 
@@ -413,17 +425,18 @@ Puter naming or assets. `docs/design-system.md` has the values.
 
 Reviewed at the start of each step.
 
-| #   | Risk                                                                                                                                    | Likelihood | Impact | Mitigation                                                                                                                            |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **The browser evicts local data.** Safari evicts IndexedDB for non-installed sites after ~7 days of disuse, and there is no other copy  | Medium     | High   | Persistent storage is requested; export exists. Step 18 makes backups complete (B13), visible (B14) and, on Chromium, automatic (B18) |
-| R4  | **Steps slip.** One person, and step 17 is still the largest remaining step                                                             | High       | Medium | Every step ends shippable; scope moves to the next step rather than quality dropping                                                  |
-| R5  | **Customization breaks the design**                                                                                                     | Low        | Medium | The contrast validator and derived duotone (§6.5); presets stay the default                                                           |
-| R6  | **Drift toward macOS trade dress** as features approach OS parity                                                                       | Medium     | Medium | The guardrails in §6 and `docs/design-system.md`'s drift register                                                                     |
-| R7  | **Sandbox escape or injected content.** Step 17 adds four bridge methods and a picker, each a new path from untrusted code to the shell | Medium     | High   | Every method gets a refusal test when ungranted; capability checks stay in the shell, never the frame; D10 revisits §6.8 explicitly   |
-| R8  | **Flaky tests get ignored.** CI's `retries: 2` hides intermittent failures                                                              | Medium     | Medium | `e2e/window-resize.spec.ts`'s near-edge test under WebKit was the known case; confirm or fix it before step 18 adds backup specs      |
-| R9  | **Native distribution burden** — signing, notarization, per-OS builds and auto-update cost what the web build gives for free            | —          | —      | Deferred with N5                                                                                                                      |
-| R10 | **Dual-target rot** — `if (native)` checks scattered through components                                                                 | Low        | Medium | Every check goes through `isTauri()` (`system/platform.ts`)                                                                           |
-| R11 | **Chromium-only features split the experience.** B18, F5 and F7 exist on one engine                                                     | Medium     | Low    | Each ships with a working fallback on the others (B14, Download); docs never promise them on Firefox or Safari                        |
+| #   | Risk                                                                                                                                                                                                                  | Likelihood | Impact | Mitigation                                                                                                                            |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | **The browser evicts local data.** Safari evicts IndexedDB for non-installed sites after ~7 days of disuse, and there is no other copy                                                                                | Medium     | High   | Persistent storage is requested; export exists. Step 18 makes backups complete (B13), visible (B14) and, on Chromium, automatic (B18) |
+| R4  | **Steps slip.** One person, and step 17 is still the largest remaining step                                                                                                                                           | High       | Medium | Every step ends shippable; scope moves to the next step rather than quality dropping                                                  |
+| R5  | **Customization breaks the design**                                                                                                                                                                                   | Low        | Medium | The contrast validator and derived duotone (§6.5); presets stay the default                                                           |
+| R6  | **Drift toward macOS trade dress** as features approach OS parity                                                                                                                                                     | Medium     | Medium | The guardrails in §6 and `docs/design-system.md`'s drift register                                                                     |
+| R7  | **Sandbox escape or injected content.** Step 17 adds four bridge methods and a picker, each a new path from untrusted code to the shell                                                                               | Medium     | High   | Every method gets a refusal test when ungranted; capability checks stay in the shell, never the frame; D10 revisits §6.8 explicitly   |
+| R8  | **Flaky tests get ignored.** CI's `retries: 2` hides intermittent failures                                                                                                                                            | Medium     | Medium | `e2e/window-resize.spec.ts`'s near-edge test under WebKit was the known case; confirm or fix it before step 18 adds backup specs      |
+| R9  | **Native distribution burden** — signing, notarization, per-OS builds and auto-update cost what the web build gives for free                                                                                          | —          | —      | Deferred with N5                                                                                                                      |
+| R10 | **Dual-target rot** — `if (native)` checks scattered through components                                                                                                                                               | Low        | Medium | Every check goes through `isTauri()` (`system/platform.ts`)                                                                           |
+| R11 | **Chromium-only features split the experience.** B18, F5 and F7 exist on one engine                                                                                                                                   | Medium     | Low    | Each ships with a working fallback on the others (B14, Download); docs never promise them on Firefox or Safari                        |
+| R12 | **The demo shares storage with sibling sites.** IndexedDB and `localStorage` are scoped to `kooki1000.github.io`, not the `/kagami-os/` path, so any other project site under the account can read and overwrite them | Low        | Medium | Don't publish other Pages sites under the account without checking this; a custom domain (with `VITE_BASE=/`) removes it              |
 
 R2 (area U unbounded) and R3 (dependency policy) are closed: U shipped, and
 CodeMirror and pdf.js both installed under the release-age policy.
@@ -494,6 +507,9 @@ clean, no new lint or type suppressions.
 
 - **Versions.** Steps release as minors; 1.0 when §2 is met, at step 21's
   exit. Tags can start before distribution does.
+- **Deploys.** Every push to `main` deploys the web demo, so `main` is what
+  visitors run. A change that only makes sense with a later one stays behind
+  a flag until that one lands.
 - **Flags.** `src/system/flags.ts`; the SDK ships dark behind
   `third_party_apps` until step 17's exit.
 - **Branches.** Trunk-based, short-lived `<type>/<slug>` branches, `main`

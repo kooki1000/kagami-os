@@ -1,3 +1,5 @@
+import { publicUrl } from "@/system/publicUrl";
+
 /**
  * The `srcdoc` document for the sandbox demo app (step 16a). Its own JS
  * loads via a real `<script src>` to a same-origin static asset
@@ -37,6 +39,6 @@ export const DEMO_ENTRY_HTML = `<!doctype html>
     <button id="escape-btn" type="button">Try localStorage / cookies / fetch</button>
     <pre id="escape-result" data-testid="escape-result"></pre>
   </section>
-  <script src="/sandbox/demo-app.js"></script>
+  <script src="${publicUrl("sandbox/demo-app.js")}"></script>
 </body>
 </html>`;

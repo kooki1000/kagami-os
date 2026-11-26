@@ -316,8 +316,9 @@ it isn't what limits usefulness today, so I'd keep it at the end of the list.
 - **New built-in apps.** A calendar or a to-do app would be the obvious
   candidates, but §6.2 closed the list, and P14 to P17 are a better route:
   they make it possible for those apps to exist without being in the repo.
-- **Anything deployment-shaped.** A public demo is being worked on separately
-  (`feat/github-pages-demo`), and releases stay below the line.
+- **Anything deployment-shaped.** The web demo went up on GitHub Pages while
+  this review was being written (`.github/workflows/pages.yml`). Releases
+  and installers stay below the line.
 - **Mobile layouts.** §6.1 settled this as desktop-first.
 
 ## 9. Where each item went

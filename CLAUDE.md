@@ -19,8 +19,10 @@ customization (area U), the capability sandbox and the apps that needed it.
 D8.6–D8.12 left, and the LICENSE in §6.3 is its prerequisite). Steps 18–21
 follow: a backup safety net, version history and undo, content search and
 note links, and host-OS integration. `docs/improvement-proposals.md` holds
-the reasoning behind them. Anything distribution-shaped — public deploy,
-releases, signed installers — is deliberately below that line.
+the reasoning behind them. Releases and signed installers are deliberately
+below that line. The one exception is the web demo on GitHub Pages
+(`.github/workflows/pages.yml`, live since 2026-11-26), which `DIRECTION.md`
+§9 (item 4) records.
 
 Two rules the app suite is now governed by: the D-area list is **closed**
 (§6.2) — a new app is a new decision, not an extension of "fill the obvious
@@ -70,6 +72,10 @@ Firefox, and WebKit.
 CI (`.github/workflows/ci.yml`) runs two jobs on every push/PR to `main`:
 `pnpm audit --audit-level=high` → lint → typecheck → unit tests (job
 `verify`), and Playwright e2e (job `e2e`) — both pinned to Node 22.23.1.
+`pages.yml` builds the site with `VITE_BASE=/kagami-os/` on every PR and
+deploys it on pushes to `main`. The Pages build is served from a subpath, so
+a URL to a `public/` file must go through `publicUrl()`
+(`src/system/publicUrl.ts`), never a literal `/sandbox/...`.
 
 ## Architecture
 
@@ -223,7 +229,8 @@ a node has a `contentRef`.
   linting.
 - The production build injects a strict CSP via a Vite plugin
   (`vite.config.ts`); `frame-ancestors`/HSTS must be set as real response
-  headers at deploy time, not in the meta tag.
+  headers at deploy time, not in the meta tag. GitHub Pages can't set
+  headers, so the demo ships without `frame-ancestors`.
 - Feature flags: `src/system/flags.ts`, build-time `VITE_FLAG_*` env vars,
   overridable per device in Settings › About or via `localStorage
 kagami:flag:<id>`.
