@@ -25,6 +25,7 @@ import { setCapabilityGranted, useAppGrantsStore } from "@/system/apps/appGrants
 import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps/installBundle";
 import { resolveInstalledAppBundles } from "@/system/apps/installedApps";
 import { launchApp } from "@/system/apps/launch";
+import { reloadInstalledApps } from "@/system/apps/loadInstalledApps";
 import { candidateAppsForMime } from "@/system/apps/openFile";
 import { apps, getApp, getInstalledApps } from "@/system/apps/registry";
 import { uninstallApp } from "@/system/apps/uninstallApp";
@@ -1259,10 +1260,11 @@ function BackupSection() {
     setImporting(true);
     try {
       const plan = await importDisk(file, { replaceAll });
+      await reloadInstalledApps();
       const fileCount = plan.nodes.filter(n => n.type === "file").length;
       notify({
         title: "Disk restored",
-        body: `${fileCount} ${fileCount === 1 ? "file" : "files"} imported from “${file.name}”.`,
+        body: `${fileCount} ${fileCount === 1 ? "file" : "files"} imported from “${file.name}”${plan.desktopState ? ", with your settings" : ""}.`,
       });
     }
     catch (error) {
@@ -1280,9 +1282,11 @@ function BackupSection() {
   return (
     <Row label="Backup">
       <p className="mb-3 text-12/relaxed text-ink-2">
-        Export everything in Files — every file and folder, including the
-        Trash — as a single zip you can keep somewhere safe. Importing
-        replaces the entire disk with what’s in the zip.
+        Export everything — every file and folder including the Trash, plus
+        your look, dock, desktop layout, app preferences and installed-app
+        permissions — as a single zip you can keep somewhere safe. Importing
+        replaces the entire disk, and those settings, with what’s in the zip.
+        Backups made before settings were included restore files only.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <button

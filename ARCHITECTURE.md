@@ -695,6 +695,33 @@ stay lean and stable:
 - New shell/app interaction seams land with an E2E scenario in the same PR,
   mirroring the unit-test rule below.
 
+## Whole-desktop backup (`src/system/backup/desktopState.ts`, `src/apps/files/exportImport.ts`)
+
+An export (B13) is the disk plus the state that makes it feel like yours. The
+zip carries the existing manifest (now version 2) and a second dot-prefixed
+entry, `.kagami-desktop-state.json`, holding the raw `localStorage` payload
+(`{ state, version }`) of every persisted store: settings, dock, desktop
+layout, theme, view prefs, `appGrantsStore`, and the terminal, code, notes and
+browser prefs. Import writes each payload back and calls the store's
+`persist.rehydrate()`, so the store's own `migrate` upgrades an old backup,
+then `reloadInstalledApps()` rescans the restored `/Apps`. Session-scoped state,
+feature-flag overrides and the disk's own contents stay out of the snapshot.
+
+Two things the design depends on:
+
+- **Node ids are preserved.** Desktop icon positions, favourites, pins and
+  the wallpaper file are all keyed by node id, so restoring them over a disk
+  whose ids were re-minted would orphan every one. The v2 manifest records each
+  file's and folder's id and `planImport` reuses them. An archive's ids are
+  untrusted: one is kept only if it is a plain token, isn't the root or a
+  well-known folder id, and isn't already claimed; otherwise it gets a fresh
+  one. Version-1 archives keep working and get fresh ids and no settings.
+- **The snapshot is untrusted input too.** Only the ten known storage keys are
+  read, each must parse to a persisted payload under 2 MB, and `appGrantsStore`
+  must be a map of capability-string lists. Restored grants bypass the install
+  consent screen by design (the roadmap's exit criterion is that they come back
+  intact), so importing a backup is as trusting as installing the apps in it.
+
 ## Hosting (GitHub Pages)
 
 The web build is a folder of static files, so it runs anywhere that can serve
