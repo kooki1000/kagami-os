@@ -1,8 +1,8 @@
 # Kagami OS — Product Direction
 
-**Status:** direction set · revised July 2026
-**Baseline:** phases 1–12 shipped, native N-1/N-2 shipped (see
-`ARCHITECTURE.md` § Phase status)
+**Status:** direction set July 2026 · facts refreshed November 2026
+**Baseline:** steps 1–16 shipped, step 17 (the app SDK) in progress, native
+N-1/N-2 shipped (see `ARCHITECTURE.md` § Phase status)
 
 This is the "where is Kagami going and why" document. `ARCHITECTURE.md`
 describes what exists; `ROADMAP.md` enumerates the feature backlog and
@@ -23,23 +23,23 @@ If you read only one section, read [§2 The shift](#2-the-shift) and
 
 ## 1. Where we are
 
-Kagami OS today is a **browser-based desktop environment** — a windowing
-shell, a virtual file system, and a suite of built-in apps, running entirely
-client-side. Phases 1–12 are shipped: the shell, window manager, VFS with a
-content-addressed blob store, the app suite (Files, Notes, Viewer, Terminal,
-Media Player, Settings), desktop icons, session restore, ⌘K search, an
-accessibility pass, and PWA/offline packaging. On the native track, N-1
-(Tauri shell, `isTauri()`, disk-backed adapters) and N-2 (the built-in
-Browser) have shipped too.
+Kagami OS is a **browser-based desktop environment**: a windowing shell, a
+virtual file system and a suite of built-in apps, running entirely
+client-side. The shell, window manager and VFS (with a content-addressed blob
+store) are mature. The app suite is Files, Notes, Code, Viewer, Documents,
+Media Player, Terminal, Calculator, Clock, Paint and Settings, each taken
+past a first pass in step 15, and the desktop is customizable within the
+design system. A capability sandbox runs the PDF viewer and installed
+third-party bundles. On the native track, N-1 (Tauri shell, `isTauri()`,
+disk-backed adapters) and N-2 (the built-in Browser) have shipped.
 
-Its defining qualities today are that it is **coherent** (one design
-language, from the "Lagoon" prototype) and **locked down** (a strict CSP,
-no untrusted code paths, everything `'self'`).
+It is **coherent** (one design language, from the "Lagoon" prototype) and
+**locked down** (a strict CSP, untrusted content only inside the sandbox).
 
-Its defining _weakness_ is depth. The shell is mature; most of the apps
-inside it are first passes, and the desktop is barely customizable. That is
-the gap `ROADMAP.md` area U and step 15 exist to close, and it outranks
-every new capability on the list.
+What it lacks now is the layer around the apps: backups that cover the whole
+desktop, a way back from an overwritten file, search inside files, and an
+SDK someone outside the repo can actually write against. `ROADMAP.md` steps
+17–21 cover those.
 
 ## 2. The shift
 
@@ -151,8 +151,8 @@ filesystem access.
 
 Each bet is independently shippable, ordered so the contained,
 high-confidence work comes first and each unlocks the next. **Bets 1 and 2
-have shipped**; Bet 3 is now committed (§5.3) and scheduled as `ROADMAP.md`
-steps 16a and 17.
+have shipped.** Bet 3 is committed (§5.3): its sandbox shipped in step 16a,
+and the SDK is `ROADMAP.md` step 17, half done.
 
 ### 5.1 Bet 1 — Native shell + isolated filesystem — ✅ _shipped (N-1)_
 
@@ -181,21 +181,13 @@ demonstrates why the native tier is worth installing.
 > written — including its account of what the decision costs, now a cost
 > being accepted rather than weighed.
 >
-> The sandbox comes **before** the apps that need it. PDF rendering handles
-> untrusted content, so it lands inside the sandbox as its first consumer,
-> hardening the bridge before any third-party code touches it. Notes'
-> markdown preview (`ROADMAP.md` D1) turned out not to need this: it shipped
-> as a closed, fixed-vocabulary renderer with no generic-HTML code path, so
-> it isn't "untrusted content" in the sense this bet worried about — see
-> `ROADMAP.md` §6 decision 8. D9's WYSIWYG editor kept that guarantee, and
-> the code editor (D4) ships outside the sandbox for a related reason plus a
-> concrete one: the bridge has no `fs.write` capability, so a sandboxed
-> editor could read but never save (§6 decision 9). Between them, decisions 8
-> and 9 are what actually define where the line sits — the sandbox is for
-> renderers that _interpret or execute_ what they display.
->
-> That gap is also the first real piece of step 17's work: a third-party app
-> that cannot write is a viewer, not an app.
+> The sandbox came **before** the apps that need it. PDF rendering handles
+> untrusted content, so Documents was its first consumer and hardened the
+> bridge before any third-party code touched it. Notes' editor and the code
+> editor stay outside it: neither interprets or executes what it displays
+> (`ROADMAP.md` §6 decisions 8 and 9, which together set where the line
+> sits). Step 17 then gave the bridge `fs.write` and `fs.delete`, so a
+> third-party app can save, not only view.
 
 The biggest lift, and a genuine fork in what Kagami _is_. Third-party apps
 cannot be bundled TypeScript loaded into our own React tree — they must be
@@ -206,9 +198,9 @@ third-party-app SDK already in `ROADMAP.md`, now with a native angle.
 
 What it forces, and why it is a _decision_ rather than just a feature:
 
-- The strict CSP has to **open up** for a `frame-src` of foreign origins and
-  a sandboxed-iframe host — a real change to the security posture (§4 keeps
-  the CSP strict everywhere else).
+- The strict CSP has to **open up** with a `frame-src` for the
+  sandboxed-iframe host, a real change to the security posture (§4 keeps the
+  CSP strict everywhere else).
 - "The app list is a TypeScript array" becomes "there is an app registry, an
   SDK contract, a permission system, and an install/uninstall UI" — most of
   what makes a platform a platform.
@@ -271,16 +263,18 @@ What survives:
   operational cost, and it keeps "yours anywhere" reachable without
   contradicting §2. It sits below the line until the product is finished.
 - **The third-party sandbox** (§5.3), which was always the `G2`/`D8` work and
-  is now scheduled rather than hypothetical.
+  has since shipped.
 
 Until then, the honest multi-device answer is export and import: a user's
-whole disk round-trips through a zip file they keep.
+disk round-trips through a zip file they keep. `ROADMAP.md` step 18 widens
+that zip to the whole desktop (settings and app grants too) and adds an
+import that merges into a folder instead of replacing everything.
 
 ## 8. Technical approach — _as built_
 
-This began as a sketch for Bet 1 and is now a description of shipped code:
-every bullet below except the last landed in N-1/N-2. It is kept because it
-records _why_ the native build is shaped the way it is.
+This began as a sketch for Bet 1. Every bullet below except the last
+describes shipped code; it's kept because it records _why_ the native build
+is shaped the way it is.
 
 - **Scaffold:** add Tauri v2 to the existing frontend (not a fresh
   `create-tauri-app` scaffold). `@tauri-apps/cli` + the `fs` plugin; a
@@ -296,10 +290,10 @@ records _why_ the native build is shaped the way it is.
   exercised in Playwright, not vitest's `node` environment.
 - **Seam wiring:** `isTauri() ? createTauriAdapter() : createIdbAdapter()`
   at `fsStore.ts` and the equivalent in `blobStore.ts`.
-- **CSP:** the build-time meta-tag CSP (`vite.config.ts`) still applies
-  inside the webview; Tauri plugin calls go over IPC, not `fetch`, so this
-  likely needs no change — verify empirically in `tauri dev` and add only
-  the specific directive the webview asks for if a violation appears.
+- **CSP:** `tauri.conf.json` sets `"csp": null`, so Tauri injects nothing of
+  its own and the build-time meta-tag CSP (`vite.config.ts`) is the one that
+  applies inside the webview. Plugin calls go over IPC, not `fetch`, so it
+  needed no new directive.
 - **Still not built, and now deliberately deferred (§9.4):** the desktop
   build/release pipeline (code signing, notarization, auto-update, per-OS
   matrix — `ci.yml` still has no build/artifact job), and desktop e2e
@@ -313,8 +307,9 @@ records _why_ the native build is shaped the way it is.
    baseline.** It is the zero-install way in, and with distribution deferred
    it is also the only way anyone will ever try Kagami without a Rust
    toolchain. The seam makes keeping both cheap.
-2. **Is Bet 3 a committed goal?** ✅ **Decided: yes** — see §5.3. Steps 16a
-   and 17 in `ROADMAP.md` schedule it, and §6's CSP exception is the price.
+2. **Is Bet 3 a committed goal?** ✅ **Decided: yes** — see §5.3. Step 16a
+   shipped the sandbox, step 17 is the SDK, and §6's CSP exception is the
+   price.
 3. **Tauri v2 plugin specifics.** Still open, and still the right instinct:
    confirm current plugin APIs (fs scope, dialog, store) against Tauri v2
    docs at implementation time rather than from memory — plugin surfaces
@@ -331,4 +326,5 @@ records _why_ the native build is shaped the way it is.
    small utilities and the code editor have all shipped (`ROADMAP.md` §6.2).
    A spreadsheet or a drawing app would be a new decision, as would depth
    inside an existing app that crosses the sandbox line in §6.9; §6's
-   "coherence over sprawl" remains the tie-breaker.
+   "coherence over sprawl" remains the tie-breaker. New kinds of app should
+   arrive through the SDK instead.

@@ -15,9 +15,12 @@ for the parked bring-your-own-storage alternative. Don't propose a backend.
 
 Steps 14–16 are done (`ROADMAP.md` §4): stability, app depth and
 customization (area U), the capability sandbox and the apps that needed it.
-**Step 17, the third-party app SDK, is what's next.** Anything
-distribution-shaped — public deploy, releases, signed installers — is
-deliberately below that line.
+**Step 17, the third-party app SDK, is in progress** (D8.1–D8.5 shipped;
+D8.6–D8.12 left, and the LICENSE in §6.3 is its prerequisite). Steps 18–21
+follow: a backup safety net, version history and undo, content search and
+note links, and host-OS integration. `docs/improvement-proposals.md` holds
+the reasoning behind them. Anything distribution-shaped — public deploy,
+releases, signed installers — is deliberately below that line.
 
 Two rules the app suite is now governed by: the D-area list is **closed**
 (§6.2) — a new app is a new decision, not an extension of "fill the obvious
@@ -73,9 +76,9 @@ CI (`.github/workflows/ci.yml`) runs two jobs on every push/PR to `main`:
 `ARCHITECTURE.md` is the living design doc — read it before any
 non-trivial change; update it when a change alters one of the seams below.
 `ROADMAP.md` tracks the phased feature backlog, and
-`docs/review-backlog.md` holds bugs from the last review pass (with repros
-and proposed fixes) — as of step 14 every entry in it is resolved, so read it
-as a record of what was fixed and why, not as open work.
+`docs/review-backlog.md` is a closed record of the last review pass — every
+entry is resolved, with where its fix landed — so read it as history, not as
+open work.
 `docs/security-advisories.md`
 records dependency vulnerability alerts that were investigated and
 deliberately left open (with the reasoning and a revisit condition) — check
@@ -167,7 +170,8 @@ Binding constraints from the prototype:
 ### Cross-app plumbing
 
 - **"Open with"**: windows carry an optional `payload`; `system/apps/openFile.ts`
-  maps MIME type → app (`text/*` → Notes, `image/*` → Viewer) and reuses an
+  maps MIME type → app (code and structured data → Code, PDF → Documents,
+  other `text/*` → Notes, `image/*` → Viewer, audio/video → Player) and reuses an
   existing window for a file already open where possible.
 - **App-defined menu commands**: shell commands use `CommandId` (handled by
   `system/commands.ts`); app-specific menu items use `appCommand` strings

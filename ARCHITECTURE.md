@@ -136,7 +136,8 @@ Pure state + actions, no React imports, so it is unit-testable headlessly
 `import('/src/system/windows/windowStore.ts')`).
 
 - `OsWindow`: id, appId, title, `rect`, `restoreRect`, `mode`
-  (`normal | maximized | snapped-left | snapped-right`), `minimized`,
+  (`normal | maximized | snapped-<zone>`, where a `SnapZone` is an edge
+  half or a quarter), `minimized`,
   `zIndex`, `minSize`, `screenId` (always `'main'` for now — the seam for
   multi-monitor later).
 - Focus uses a **monotonic `nextZ` counter**; focusing a window just bumps
@@ -199,9 +200,11 @@ bar:
   the restore if the file no longer exists). An app with neither hook still
   gets its window position/mode restored; it just reopens bare.
 
-Apps live in `src/apps/<app-id>/` with an `index.ts` exporting the manifest.
-Files, Notes, Viewer, Terminal, and Settings are all real; Welcome is the
-onboarding window. (`ComingSoon` remains as a scaffold for future apps.)
+Apps live in `src/apps/<app-id>/` with an `index.ts` exporting the manifest:
+Files, Notes, Code, Viewer, Documents, Player, Terminal, Calculator, Clock,
+Paint, Settings, Welcome (the first-run tour), Browser (native only), plus
+`devcrash` and `sandboxDemo` as development fixtures. Installed third-party
+apps join the same registry at boot (see Capability sandbox below).
 
 ## Session restore (`system/windows/sessionStore.ts`)
 
@@ -227,12 +230,9 @@ reload, localStorage-backed:
 - Notes syncs its window's `payload` on every selection change (an effect
   calling `setWindowPayload`), not just at launch — otherwise picking a note
   from its own sidebar (as opposed to opening one from Files) would never
-  update what gets restored. Viewer has no in-app "switch file" action, so
-  it doesn't need the same treatment. Player's Next/Previous also changes
-  its current file without updating `payload` — a known, pre-existing gap
-  independent of this feature — so a restored Player window can reopen
-  whichever track it was last launched or explicitly reopened with, not
-  necessarily whatever was mid-playback.
+  update what gets restored. Player's Next/Previous doesn't do this yet, so
+  a restored Player reopens the track it was launched with rather than the
+  one playing (`ROADMAP.md` T13).
 - Restored windows get fresh ids — nothing across a reload depends on id
   stability.
 
@@ -280,8 +280,10 @@ reload, localStorage-backed:
 ## Virtual file system (`src/system/fs/`)
 
 A tree of `FsNode`s (`{ id, parentId, name, type, mimeType?, content?,
-createdAt, modifiedAt, trashedFrom?, label?, iconGlyph?, iconTint? }`) held
-in `useFsStore` (Zustand), with two seams around it:
+contentRef?, createdAt, modifiedAt, trashedFrom?, label?, iconGlyph?,
+iconTint? }`) held in `useFsStore` (Zustand). Small text lives inline in
+`content`; anything over 64 KB is a `contentRef` into the content-addressed
+`BlobStore` (`docs/blob-architecture.md`). Two seams sit around the tree:
 
 - **`StorageAdapter`** (persistence seam): `loadAll` / `putMany` /
   `removeMany`. The web implementation is raw IndexedDB (`idbAdapter.ts`)
@@ -357,8 +359,10 @@ menus (shared `components/ui/ContextMenu`), and a two-step Empty Trash.
 
 Windows carry an optional `payload` (window store) delivered to the app
 component as `AppWindowProps.payload`. `system/apps/openFile.ts` owns the
-built-in mime-family → app table (`text/*` → Notes, `image/*` → Viewer,
-`audio|video/*` → Player) and opens a file by launching its app with a
+built-in defaults in two tables, exact types before families: code and
+structured data (`text/javascript`, `application/json`, …) → Code,
+`application/pdf` → Documents, then `text/*` → Notes, `image/*` → Viewer,
+`audio|video/*` → Player. It opens a file by launching its app with a
 `{ fileId }` payload — reusing an existing window when one already shows
 that file. Single-instance apps (Notes) adopt a fresh payload into their
 selection via a render-time state adjustment; multi-instance apps (Viewer,
@@ -368,9 +372,10 @@ Files' "Open With ▸" context-menu submenu (B11) generalizes that table: a
 user's choice persists as a per-exact-mime-type override in
 `settingsStore.fileAssociations` (localStorage), which `appIdForFile` checks
 before falling back to the built-in family default. `candidateAppsForFile`
-lists the app(s) capable of opening a given file — today every family still
-has exactly one candidate, but the list shape is what lets a future second
-app for the same type show up as a real choice instead of a no-op menu.
+lists the apps capable of opening a given file. Text is the case with a real
+choice today, since Notes and Code can each open the other's types; the
+same list is where an installed app will appear once manifests can declare
+file types (`ROADMAP.md` D8.11).
 `ContextMenu` grew nested-submenu support (`ContextMenuEntry.children`) for
 this; the flyout renders through a `createPortal` to `<body>` rather than
 inline, because the top-level menu's `translateY(-100%)` (used when it opens
@@ -496,7 +501,9 @@ what keeps them unit-testable without mounting anything (phase 8).
 
 ## Settings (`src/apps/settings/` + `src/system/settings/`)
 
-Three sections wired to live state:
+Panes, in sidebar order: Appearance, Dock, Desktop, Default Apps, Apps
+(behind `third_party_apps`), Menu Bar, Startup, Shortcuts, General (search
+engine, Trash policy, backup) and About. The two with the most machinery:
 
 - **Appearance** — theme preference (`themeStore`, light/dark/auto), then
   the **look** as the primary control: three curated directions
@@ -521,15 +528,15 @@ Three sections wired to live state:
   `wallpaperDim` is a scrim opacity `Desktop.tsx` renders behind its icons,
   separate from window chrome's own glass `backdrop-filter`.
 
-- **Dock** — size (`DockSize` → tile px) and position (bottom/left/right);
-  the `Dock` component reads both and relayouts (column vs row, hover-lift
-  direction, tooltip/dot placement) from a per-position table.
-- **About** — version/build/engine panel; original-work + attribution note.
+- **General › Backup** — full-disk export and import
+  (`apps/files/exportImport.ts`). The zip holds the VFS tree and its blobs
+  only, not the `localStorage` stores below; `ROADMAP.md` B13 widens it.
 
 Persistence: `settingsStore`, `themeStore` (preference only, `resolved`
-recomputed on rehydrate), and `dockStore` (pins + size + position) each use
-zustand's `persist` middleware against localStorage — independent of the
-IndexedDB fs adapter, since these are small UI prefs, not documents.
+recomputed on rehydrate), `dockStore`, `desktopLayoutStore`,
+`viewPrefsStore`, `appGrantsStore` and the per-app prefs stores each use
+zustand's `persist` middleware against localStorage, independent of the
+IndexedDB fs adapter.
 
 ## Notifications + keyboard shortcuts
 
@@ -559,6 +566,62 @@ IndexedDB fs adapter, since these are small UI prefs, not documents.
   window — it opens `SearchOverlay` from anywhere, including an empty
   desktop. Menu-item shortcut labels render through `formatShortcut`
   (`lib/format.ts`), showing `Ctrl+…` off Mac.
+
+## Capability sandbox and installed apps (`src/system/sandbox/`, `src/system/apps/`)
+
+Untrusted content renders in an `<iframe sandbox="allow-scripts">` with an
+opaque origin: no cookies, storage or network. It talks to the shell over a
+promise-based postMessage RPC (`rpc.ts`), and **every call is checked against
+granted capabilities in the shell** (`capabilities.ts`), never in the frame.
+The CSP opens a `frame-src` for this host and nothing else. Which renderers
+belong in here is settled by `ROADMAP.md` §6 decisions 8 and 9: the sandbox
+is for things that interpret or execute what they display. Documents (PDF)
+is the first-party consumer; `sandboxDemo` is the test fixture.
+
+**Methods** (`SANDBOX_METHODS` in `types.ts`):
+
+- `fs.read`, gated by `fs.read:<nodeId>`, which covers that node and its
+  descendants.
+- `fs.write` and `fs.delete`, both gated by `fs.write:<nodeId>`: one grant
+  authorizes writing under a folder and deleting within it. `fs.delete`
+  goes through `FileSystemProvider.delete`. `BridgeDeps` only exposes a
+  `Pick` of the provider, so the unguarded `fsStore.deleteForever` is
+  unreachable from a frame (closes T6 for the bridge).
+- `notifications.notify`, gated by `notifications`.
+- `window.setTitle` and `ui.setState`, ungated, because they only reach the
+  frame's own window. `ui.setState` lets a host component draw real chrome
+  from the frame's view state, which is how Documents' toolbar lives in
+  React.
+
+Shell → frame events: `appCommand` (menu items routed to the frame) and
+`theme`, which pushes design tokens. A `srcdoc` document inherits no custom
+properties and an opaque-origin frame paints opaque, so this is the only way
+a frame can follow the user's look. `SandboxedAppHost` watches `<html>` with
+a `MutationObserver` because a look, accent or material change rewrites the
+tokens without flipping light/dark.
+
+**Installed apps** (step 17, behind the `third_party_apps` flag):
+
+- A bundle is a zip with `manifest.json` (validated fail-closed by
+  `manifestSchema.ts`) and one entry script. The entry is always JavaScript,
+  never HTML, because `script-src` has no `'unsafe-inline'`.
+- `installBundle.ts` parses the zip; `InstallAppDialog.tsx` shows exactly
+  what the manifest requests; only an explicit "Install" writes the bundle
+  into the hidden `/Apps` folder and records what was approved in
+  `appGrantsStore`, kept separate from the manifest's own wishlist.
+- At boot, `loadInstalledApps.ts` scans `/Apps` and `registerInstalledApps`
+  adds each to the registry's by-id lookup, so the dock, menu bar and
+  windows treat it like any other app. `ThirdPartyAppHost` runs it.
+
+**A pattern worth remembering.** The first version had the shell create the
+entry script's `blob:` URL and pass it to the frame as `<script src>`. A
+`blob:` URL is scoped to the document that created it, and an opaque-origin
+frame can't dereference one from the shell's origin (Chromium: "Not allowed
+to load local resource"). `e2e/install-app.spec.ts` caught it once it ran a
+real installed app. The fix, `thirdPartyLoaderEntry.ts`, is a small loader
+served from `/sandbox/third-party-loader.js` that builds the `blob:` URL
+inside the frame from base64 bytes, the same trick `sandboxEntry.ts` uses for
+pdf.js's worker.
 
 ## Testing + persistence hardening
 
@@ -654,93 +717,8 @@ with navigation, load state, find results and downloads reported back as
 are in `docs/browser-depth.md`. Remaining: N-3 (signed/notarized distribution,
 desktop e2e via `tauri-driver`).
 
-**Next:** `ROADMAP.md` steps 13–17 — realigned docs, a stability pass over
-the review backlog, app depth and customization (area U), the capability
-sandbox and the apps that need it, then the third-party app SDK. The online
-track that used to sit here is retired (`ROADMAP.md` §3.X.1): Kagami is
-local-first with no server.
-
-Steps 13–15 and step 16a (the capability sandbox — `src/system/sandbox/`, an
-`<iframe sandbox="allow-scripts">` + capability-checked postMessage bridge)
-are done. The bridge's vocabulary grew twice in 2026-08 for the same reason:
-a sandboxed app whose chrome is drawn by the _shell_ rather than hand-rolled
-in the frame. `ui.setState` (frame → shell) reports the frame's own view
-state so a host component can render a real toolbar — the payload stays
-opaque to the bridge, and the host that asked for it narrows the shape. The
-`theme` event (shell → frame) pushes named design tokens, because a `srcdoc`
-document inherits no custom properties **and** an opaque-origin iframe cannot
-be made transparent (its canvas paints opaque whatever the embedded document
-sets) — so a frame rendering any surface has no other way to follow the
-user's appearance. Neither needs a capability: like `window.setTitle`, they
-only reach the frame's own window. `SandboxedAppHost` watches `<html>` with a
-`MutationObserver` rather than subscribing to the theme store, since a look,
-a custom accent or a material level all rewrite the tokens without flipping
-light/dark.
-
-Step 16b is **complete**. D6 (PDF viewing, `src/apps/documents/`) shipped
-2026-08-01 as the sandbox's first real (non-demo) consumer; D7 (small
-utilities — Calculator, Clock, Paint) shipped 2026-08-02, needing no sandbox;
-and D4 (the code editor, `src/apps/code/`) shipped 2026-08-04, deliberately
-outside the sandbox — the reasoning is under the app's entry above and in
-`ROADMAP.md` §6.
-
-D4 closed the second half of the step's exit criterion ("every file type the
-VFS can hold opens in an app that handles it properly") in a way the roadmap
-row didn't anticipate: the blocker wasn't highlighting but mime resolution —
-`.json`, `.ts`, `.py` and `.yaml` had no associated app at all and failed
-with "Can't open this file". See the VFS section's mime-type note.
-
-**Step 17 (the third-party app SDK, D8) is underway.** D8.1–D8.5 landed
-2026-08-05:
-
-- `fs.write`/`fs.delete` joined the bridge's method vocabulary
-  (`src/system/sandbox/{types,capabilities,bridge}.ts`), gated by a new
-  `fs.write:<scope>` capability that authorizes both writing under a folder
-  and deleting a node within it — the same self-or-descendant scoping
-  `fs.read:<scope>` already used. `fs.delete` routes through
-  `FileSystemProvider.delete`, never the raw `fsStore.deleteForever`, which
-  is what closes T6 (the debt-register item — the trash-only guard living
-  only at call sites) for the bridge specifically: `BridgeDeps.fileSystem`
-  only ever exposes a `Pick<FileSystemProvider, ...>`, so the
-  still-unguarded `deleteForever` is structurally unreachable from a
-  sandboxed app.
-- A hidden `Apps` system folder (`src/system/fs/{types,systemFolders}.ts`,
-  backfilled onto existing installs the same way B1's blob migration is)
-  and `AppBundleManifest`/`parseAppManifest` (`system/apps/manifestSchema.ts`)
-  — a fail-closed validator for a third-party `manifest.json`, mirroring
-  `sandbox/rpc.ts`'s never-throw convention.
-- The registry (`system/apps/registry.ts`) gained `registerInstalledApps`,
-  which mutates its `byId` lookup directly rather than making the exported
-  `apps` array reactive — every consumer but Settings' two startup-config
-  lists only ever does a by-id `getApp()` lookup, so this is enough for an
-  installed app to appear in the dock once launched or pinned, with no
-  change to `Dock`/`MenuBar`/`Window.tsx`. `ThirdPartyAppHost` and
-  `buildThirdPartyEntryHtml` (`system/apps/`) turn one scanned bundle into a
-  running sandboxed window.
-- The install flow (`system/apps/installBundle.ts`, a new Settings "Apps"
-  pane) parses an uploaded zip, shows a consent screen listing exactly what
-  it requests (`apps/settings/InstallAppDialog.tsx`), and only writes
-  anything — to `/Apps`, and to a new `appGrantsStore` recording what was
-  actually approved, kept deliberately separate from a manifest's own
-  unreviewed `capabilities` wishlist — after an explicit "Install" click.
-
-**A real bug found and fixed along the way**, worth remembering as a
-pattern: the first pass at D8.4 had the _shell_ build the entry script's
-`blob:` URL and hand the frame that URL as a `<script src>`. It looked
-right and wasn't — `e2e/install-app.spec.ts` caught it once it exercised a
-real installed app rather than a hand-placed fixture (Chromium: "Not
-allowed to load local resource"). A `blob:` URL is scoped to the document
-that created it; an opaque-origin frame can't dereference one the shell's
-real origin created — the same restriction `SandboxFileDto`'s doc comment
-already named for file _reads_, not yet carried over to script _loading_.
-`thirdPartyLoaderEntry.ts` fixes it the way `sandboxEntry.ts` already
-works around the identical problem for pdf.js's worker: a small,
-app-agnostic bundle loaded via a real `<script src="/sandbox/third-party-loader.js">`
-builds the `blob:` URL itself, same-realm, from entry-script bytes carried
-in as base64 markup rather than executable text.
-
-**Still open, the rest of the step:** a Settings pane listing installed
-apps with uninstall (D8.6), live capability revocation reaching an
-already-open window (D8.7), and a reference third-party app proving the
-whole install→run→uninstall→revoke lifecycle end to end (D8.8) — see
-`ROADMAP.md`'s Step 17 backlog.
+**Steps 13–16** are done: realigned docs, the review backlog closed, area U
+(depth and customization), the capability sandbox (16a), and Documents, the
+small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.5 in
+(described under Capability sandbox above); D8.6–D8.12 and steps 18–21 are
+in `ROADMAP.md` §4.
