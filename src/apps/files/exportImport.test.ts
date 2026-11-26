@@ -290,3 +290,46 @@ describe("planImport — node ids (B13)", () => {
     expect(plan.desktopState).toEqual(snapshot);
   });
 });
+
+describe("planImport — merge mode (B15)", () => {
+  async function mergePlan() {
+    const nodes = indexNodes([
+      ...baseDisk(),
+      folder({ id: "album", parentId: PICTURES_ID, name: "Album" }),
+      file({ id: "pic", parentId: "album", name: "a.svg", mimeType: "image/svg+xml", content: "<svg/>" }),
+      file({ id: "t1", parentId: TRASH_ID, name: "deleted.txt", mimeType: "text/plain", content: "gone" }),
+    ]);
+    const snapshot = { format: 1 as const, stores: { "kagami-dock": JSON.stringify({ state: {}, version: 0 }) } };
+    const entries = await buildExportEntries(nodes, createMemoryBlobStore(), snapshot);
+    return planImport(entries, makeCounter(), { merge: true });
+  }
+
+  it("turns well-known folders into plain ones with fresh ids", async () => {
+    const plan = await mergePlan();
+    const ids = plan.nodes.map(n => n.id);
+    for (const reserved of [HOME_ID, DOCUMENTS_ID, DESKTOP_ID, TRASH_ID])
+      expect(ids).not.toContain(reserved);
+    expect(plan.nodes.find(n => n.name === "Documents")!.type).toBe("folder");
+    expect(plan.nodes.find(n => n.name === "Trash")!.parentId).toBe(ROOT_ID);
+  });
+
+  it("ignores the archive's own node ids", async () => {
+    const plan = await mergePlan();
+    const ids = plan.nodes.map(n => n.id);
+    expect(ids).not.toContain("album");
+    expect(ids).not.toContain("pic");
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("leaves the desktop state behind", async () => {
+    expect((await mergePlan()).desktopState).toBeNull();
+  });
+
+  it("keeps the tree shape: trashed items land under the imported Trash folder", async () => {
+    const plan = await mergePlan();
+    const trash = plan.nodes.find(n => n.name === "Trash")!;
+    expect(plan.nodes.find(n => n.name === "deleted.txt")!.parentId).toBe(trash.id);
+    const album = plan.nodes.find(n => n.name === "Album")!;
+    expect(plan.nodes.find(n => n.name === "a.svg")!.parentId).toBe(album.id);
+  });
+});

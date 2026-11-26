@@ -722,6 +722,13 @@ Two things the design depends on:
   consent screen by design (the roadmap's exit criterion is that they come back
   intact), so importing a backup is as trusting as installing the apps in it.
 
+**Import into a folder (B15).** `importDiskInto` unpacks the same archive as
+a new `Imported <date>` folder under Home instead of over the disk. It runs
+`planImport` in merge mode: well-known folders become plain folders, the
+archive's own node ids are ignored, and the desktop snapshot is left behind, so
+nothing collides with or alters what's already here. `fsStore.addNodes` writes
+the blobs then the nodes, removing nothing.
+
 ## Hosting (GitHub Pages)
 
 The web build is a folder of static files, so it runs anywhere that can serve

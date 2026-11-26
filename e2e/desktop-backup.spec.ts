@@ -77,4 +77,37 @@ test.describe("Whole-desktop backup (B13)", () => {
     await expect(page.getByRole("switch", { name: "Allow Hello World to use notifications" })).not.toBeChecked();
     await expect(page.getByRole("switch", { name: "Allow Hello World to use fs.write:hello-world-data" })).toBeChecked();
   });
+
+  // B15 — the other way to bring a backup in: add it, don't restore it.
+  test("importing into a folder adds the files and changes nothing else", async ({ page, browserName }) => {
+    test.skip(browserName === "webkit", "Playwright's WebKit driver can't read a completed download's bytes back in this environment");
+
+    await boot(page);
+    await openApp(page, "settings");
+    await page.getByRole("button", { name: "General" }).click();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Export disk" }).click(),
+    ]);
+    const zipPath = await download.path();
+    expect(zipPath).toBeTruthy();
+
+    // A setting changed after the backup was made: a restore would undo it, a merge mustn't.
+    await page.getByRole("button", { name: "Menu Bar" }).click();
+    await page.getByRole("switch", { name: "Show seconds in the clock" }).click();
+    await page.getByRole("button", { name: "General" }).click();
+
+    // The second file input is "Import into a folder"; the first is the destructive restore.
+    await page.locator("input[type=\"file\"]").nth(1).setInputFiles(zipPath!);
+    await expect(page.getByText("Backup imported")).toBeVisible();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+
+    // Files opens on the new folder, which holds the exported tree as plain folders.
+    await expect(page.locator("[data-node-name=\"Home\"]")).toBeVisible();
+    await expect(page.locator("[data-node-name=\"Trash\"]")).toBeVisible();
+
+    await openApp(page, "settings");
+    await page.getByRole("button", { name: "Menu Bar" }).click();
+    await expect(page.getByRole("switch", { name: "Show seconds in the clock" })).toBeChecked();
+  });
 });
