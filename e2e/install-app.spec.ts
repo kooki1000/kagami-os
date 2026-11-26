@@ -54,4 +54,32 @@ test.describe("Install a third-party app (step 17, D8.5)", () => {
     await expect(page.getByText("Couldn't install app")).toBeVisible();
     await expect(page.getByText("already installed")).toBeVisible();
   });
+
+  test("uninstalling removes the app and lets it be installed again (D8.6)", async ({ page }) => {
+    await boot(page);
+    await openApp(page, "settings");
+    await page.getByRole("button", { name: "Apps", exact: true }).click();
+
+    await page.locator("input[type=\"file\"]").first().setInputFiles("e2e/fixtures/hello-world-app.zip");
+    await page.getByRole("button", { name: "Install", exact: true }).click();
+    await expect(page.getByText("\"Hello World\" installed")).toBeVisible();
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(page.frameLocator("iframe[title=\"hello-world\"]").locator("#hello")).toBeVisible();
+
+    // Settings is single-instance, so its dock tile raises it above the app's window.
+    await openApp(page, "settings");
+    // The Apps pane lists it with what it was granted; Uninstall needs a second click.
+    await page.getByRole("button", { name: "Uninstall Hello World" }).click();
+    await page.getByRole("button", { name: "Confirm uninstall of Hello World" }).click();
+    await expect(page.getByText("\"Hello World\" uninstalled")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Uninstall Hello World" })).toHaveCount(0);
+    // Its open window went with it.
+    await expect(page.locator("iframe[title=\"hello-world\"]")).toHaveCount(0);
+
+    // Gone from the registry and the VFS, so the same bundle installs cleanly again.
+    await page.locator("input[type=\"file\"]").first().setInputFiles("e2e/fixtures/hello-world-app.zip");
+    await page.getByRole("button", { name: "Install", exact: true }).click();
+    await expect(page.getByText("\"Hello World\" installed")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Uninstall Hello World" })).toBeVisible();
+  });
 });

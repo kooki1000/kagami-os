@@ -612,6 +612,13 @@ tokens without flipping light/dark.
 - At boot, `loadInstalledApps.ts` scans `/Apps` and `registerInstalledApps`
   adds each to the registry's by-id lookup, so the dock, menu bar and
   windows treat it like any other app. `ThirdPartyAppHost` runs it.
+- Settings › Apps (D8.6) lists what's on disk with each app's grants, and
+  `uninstallApp.ts` removes one: open windows, the `/Apps/<id>` folder
+  (deleted outright, not trashed), the registry entry, the grant, and the
+  dock pin, startup launch, remembered size and file-type defaults that
+  named it. The registry refuses a bundle whose id is a built-in's
+  (`isBuiltInAppId`): its by-id map is last-write-wins, so such a bundle
+  would otherwise replace the built-in app everywhere.
 
 **A pattern worth remembering.** The first version had the shell create the
 entry script's `blob:` URL and pass it to the frame as `<script src>`. A
@@ -755,6 +762,6 @@ desktop e2e via `tauri-driver`).
 
 **Steps 13–16** are done: realigned docs, the review backlog closed, area U
 (depth and customization), the capability sandbox (16a), and Documents, the
-small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.5 in
-(described under Capability sandbox above); D8.6–D8.12 and steps 18–21 are
+small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.6 in
+(described under Capability sandbox above); D8.7–D8.12 and steps 18–21 are
 in `ROADMAP.md` §4.

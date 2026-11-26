@@ -3,6 +3,7 @@ import type { SegmentOption } from "@/components/ui/Segmented";
 import type { WallpaperTone } from "@/design/color";
 import type { UiScale } from "@/design/tokens";
 import type { ParsedBundle } from "@/system/apps/installBundle";
+import type { InstalledAppBundle } from "@/system/apps/installedApps";
 import type { AppWindowProps } from "@/system/apps/types";
 import type { DesktopIconSize } from "@/system/desktop/desktopLayout";
 import type { DockPosition, DockSize } from "@/system/dock/dockStore";
@@ -12,7 +13,7 @@ import type { MenuBarStatusItem, ReduceMotionPreference } from "@/system/setting
 import type { ChordDescriptor } from "@/system/shortcuts";
 import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, Puzzle, SlidersHorizontal } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SEARCH_ENGINES } from "@/apps/browser/searchEngines";
 import { exportDisk, importDisk } from "@/apps/files/exportImport";
 import { Segmented } from "@/components/ui/Segmented";
@@ -20,10 +21,13 @@ import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { formatShortcut } from "@/lib/format";
+import { useAppGrantsStore } from "@/system/apps/appGrantsStore";
 import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps/installBundle";
+import { resolveInstalledAppBundles } from "@/system/apps/installedApps";
 import { launchApp } from "@/system/apps/launch";
 import { candidateAppsForMime } from "@/system/apps/openFile";
-import { apps, getApp } from "@/system/apps/registry";
+import { apps, getApp, getInstalledApps } from "@/system/apps/registry";
+import { uninstallApp } from "@/system/apps/uninstallApp";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { useDockStore } from "@/system/dock/dockStore";
 import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
@@ -812,6 +816,9 @@ function DefaultAppsSection() {
   );
 }
 
+/** How long an Uninstall button stays armed before it disarms itself. */
+const UNINSTALL_CONFIRM_MS = 4000;
+
 type InstallState
   = | { phase: "idle" }
     | { phase: "parsing" }
@@ -819,16 +826,44 @@ type InstallState
     | { phase: "installing"; bundle: ParsedBundle };
 
 /**
- * Step 17 (D8.5) — sideload a bundle and walk through its consent screen.
- * No list of already-installed apps yet: that, plus uninstall, is D8.6's
- * pane, built on the same `appGrantsStore`/`registry.ts` this section
- * already writes to. Errors (an invalid archive, an id already installed)
- * report through a toast rather than inline state, matching
- * `BackupSection`'s export/import error handling above.
+ * Step 17 (D8.5, D8.6) — sideload a bundle and walk through its consent
+ * screen, then list what's installed with what each app was granted and an
+ * Uninstall button (`uninstallApp.ts` does the removal). The list is read
+ * from the VFS rather than the registry, so it shows what's actually on
+ * disk, and is re-read after every install or uninstall. Errors (an invalid
+ * archive, an id already installed) report through a toast rather than
+ * inline state, matching `BackupSection`'s export/import error handling.
  */
 function AppsSection() {
   const [state, setState] = useState<InstallState>({ phase: "idle" });
+  const [installed, setInstalled] = useState<InstalledAppBundle[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const grants = useAppGrantsStore(s => s.grants);
+  const { armed: armedUninstall, arm: armUninstall, disarm: disarmUninstall } = useArmedConfirm<string>(UNINSTALL_CONFIRM_MS);
+
+  async function refreshInstalled(): Promise<void> {
+    setInstalled(await resolveInstalledAppBundles(useFsStore.getState().nodes, blobStore));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveInstalledAppBundles(useFsStore.getState().nodes, blobStore).then((list) => {
+      if (!cancelled)
+        setInstalled(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleUninstall(bundle: InstalledAppBundle): Promise<void> {
+    disarmUninstall();
+    const ok = await uninstallApp(bundle.manifest.id);
+    await refreshInstalled();
+    notify(ok
+      ? { title: `"${bundle.manifest.name}" uninstalled` }
+      : { title: "Couldn't uninstall app", body: "It's no longer installed.", tone: "danger" });
+  }
 
   async function handlePick(e: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = e.target.files?.[0] ?? null;
@@ -858,6 +893,7 @@ function AppsSection() {
     try {
       await commitInstall(bundle);
       setState({ phase: "idle" });
+      await refreshInstalled();
       notify({
         title: `"${bundle.manifest.name}" installed`,
         action: { label: "Open", run: () => launchApp(bundle.manifest.id) },
@@ -891,6 +927,41 @@ function AppsSection() {
         {parsing ? "Reading bundle…" : "Install App…"}
       </button>
       <input ref={inputRef} type="file" accept=".zip" hidden onChange={e => void handlePick(e)} />
+
+      {installed && installed.length > 0 && (
+        <div className="mt-4">
+          <ListRow>
+            {installed.map((bundle, i) => {
+              const { manifest } = bundle;
+              const granted = grants[manifest.id] ?? [];
+              const confirming = armedUninstall === manifest.id;
+              return (
+                <ListRowItem key={manifest.id} index={i} length={installed.length}>
+                  <div className="min-w-0">
+                    <div className="truncate text-12 font-medium text-ink">{manifest.name}</div>
+                    <div className="text-11 text-ink-2">
+                      {"Version "}
+                      {manifest.version}
+                      {" · "}
+                      {granted.length > 0 ? `Can use ${granted.join(", ")}` : "No capabilities"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`${confirming ? "Confirm uninstall of" : "Uninstall"} ${manifest.name}`}
+                    className={`flex-none rounded-btn px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11 font-medium ${
+                      confirming ? "bg-accent-strong text-white" : "text-ink-2 hover:bg-ph hover:text-ink"
+                    }`}
+                    onClick={() => (confirming ? void handleUninstall(bundle) : armUninstall(manifest.id))}
+                  >
+                    {confirming ? "Confirm" : "Uninstall"}
+                  </button>
+                </ListRowItem>
+              );
+            })}
+          </ListRow>
+        </div>
+      )}
 
       {(state.phase === "consent" || state.phase === "installing") && (
         <InstallAppDialog
@@ -970,6 +1041,8 @@ function StartupSection() {
   const restoreSessionOnBoot = useSettingsStore(s => s.restoreSessionOnBoot);
   const setRestoreSessionOnBoot = useSettingsStore(s => s.setRestoreSessionOnBoot);
   const startupApps = useSettingsStore(s => s.startupApps);
+  // Installed third-party apps aren't in `apps`; the section remounts on every visit, so reading the registry here is current.
+  const startupCandidates = [...apps, ...getInstalledApps()];
   const setStartupAppEnabled = useSettingsStore(s => s.setStartupAppEnabled);
   const defaultWindowSize = useSettingsStore(s => s.defaultWindowSize);
   const clearDefaultWindowSize = useSettingsStore(s => s.clearDefaultWindowSize);
@@ -992,8 +1065,8 @@ function StartupSection() {
       </Row>
       <Row label="Open at startup">
         <ListRow>
-          {apps.map((app, i) => (
-            <ListRowItem key={app.id} index={i} length={apps.length}>
+          {startupCandidates.map((app, i) => (
+            <ListRowItem key={app.id} index={i} length={startupCandidates.length}>
               <span className="text-12 text-ink">{app.name}</span>
               <Switch
                 checked={startupApps.includes(app.id)}

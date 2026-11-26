@@ -10,6 +10,8 @@ import { parseAppManifest } from "./manifestSchema";
 export interface InstalledAppBundle {
   manifest: AppBundleManifest;
   entryNodeId: string;
+  /** The `/Apps/<id>` folder holding the bundle — what uninstalling removes. */
+  folderId: string;
 }
 
 /**
@@ -43,7 +45,7 @@ export async function resolveInstalledAppBundles(nodes: NodeMap, blobStore: Blob
       const entryNode = siblings.find(n => n.type === "file" && n.name === manifest.entry);
       if (!entryNode)
         continue;
-      bundles.push({ manifest, entryNodeId: entryNode.id });
+      bundles.push({ manifest, entryNodeId: entryNode.id, folderId: folder.id });
     }
     catch {
       // Malformed JSON, missing bytes, or a corrupt blob — skip this bundle.

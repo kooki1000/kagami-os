@@ -41,7 +41,7 @@ describe("resolveInstalledAppBundles", () => {
     ]);
     const result = await resolveInstalledAppBundles(nodes, createMemoryBlobStore());
     expect(result).toEqual([
-      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry" },
+      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry", folderId: "cool-app" },
     ]);
   });
 
@@ -93,7 +93,7 @@ describe("resolveInstalledAppBundles", () => {
     ]);
     const result = await resolveInstalledAppBundles(nodes, createMemoryBlobStore());
     expect(result).toEqual([
-      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry" },
+      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry", folderId: "cool-app" },
     ]);
   });
 
