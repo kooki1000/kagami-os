@@ -19,7 +19,7 @@ import {
 export type ReduceMotionPreference = "system" | "on" | "off";
 
 /** Optional menu-bar status items (U7) — whether each appears at all, independent of the clock's own format toggles below. */
-export type MenuBarStatusItem = "offline" | "search" | "appearance" | "notifications" | "clock";
+export type MenuBarStatusItem = "offline" | "search" | "appearance" | "notifications" | "clock" | "storage";
 
 const DEFAULT_STATUS_ITEMS: Record<MenuBarStatusItem, boolean> = {
   offline: true,
@@ -27,6 +27,8 @@ const DEFAULT_STATUS_ITEMS: Record<MenuBarStatusItem, boolean> = {
   appearance: true,
   notifications: true,
   clock: true,
+  // C5 — opt-in: it only earns its space for someone watching a full disk.
+  storage: false,
 };
 
 export interface WindowSize {
@@ -116,6 +118,18 @@ interface SettingsStore {
   /** Per-app "Remember this size" override, consulted by launchApp before an app's own `defaultSize`. */
   defaultWindowSize: Record<string, WindowSize>;
 
+  // B14 — backup reminder. Additive, so no persist-version bump: a payload
+  // without these merges with the defaults below.
+  /** When the disk was last exported (ms since epoch); `null` if never. */
+  lastBackupAt: number | null;
+  /** Days without a backup before the one-time reminder; `0` turns it off. */
+  backupReminderDays: number;
+  /** First time the reminder check ran, the clock's start for someone who has never backed up. */
+  backupTrackingSince: number | null;
+  /** The baseline (last backup, else tracking start) a reminder was already sent for, so it fires once per stretch. */
+  backupRemindedFor: number | null;
+
+  setBackupReminderDays: (days: number) => void;
   setLook: (id: string) => void;
   /** Overrides the look's wallpaper design; `null` goes back to inheriting it. */
   setWallpaperStyle: (id: string | null) => void;
@@ -234,12 +248,18 @@ export const useSettingsStore = create<SettingsStore>()(
       startupApps: [],
       defaultWindowSize: {},
 
+      lastBackupAt: null,
+      backupReminderDays: 7,
+      backupTrackingSince: null,
+      backupRemindedFor: null,
+
       // Picking a look is a "use this instead" action — it clears whatever
       // custom override was layered on top, otherwise the click would appear
       // to do nothing while the custom accent/design kept winning in
       // themeVariables. A custom wallpaper *image* survives on purpose: it's
       // the user's own file, not a tweak to a preset, and the fine-tune
       // section has its own Clear for it.
+      setBackupReminderDays: days => set({ backupReminderDays: Math.max(0, Math.round(days)) }),
       setLook: id => set({ lookId: id, customAccentHex: null, wallpaperStyleId: null }),
       setWallpaperStyle: id => set({ wallpaperStyleId: id }),
       setMaterialLevel: level => set({ materialLevel: level }),

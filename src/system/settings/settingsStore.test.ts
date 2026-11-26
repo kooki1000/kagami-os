@@ -256,7 +256,7 @@ describe("u6 motion & window feel", () => {
 });
 
 describe("settingsStore — menu bar & clock (U7)", () => {
-  it("defaults to the pre-U7 clock behavior: 12-hour, no seconds, date shown, every status item on", async () => {
+  it("defaults to the pre-U7 clock behavior: 12-hour, no seconds, date shown, every status item on but the opt-in storage meter", async () => {
     const { useSettingsStore } = await import("./settingsStore");
     const state = useSettingsStore.getState();
     expect(state.clockHour12).toBe(true);
@@ -268,6 +268,7 @@ describe("settingsStore — menu bar & clock (U7)", () => {
       appearance: true,
       notifications: true,
       clock: true,
+      storage: false,
     });
   });
 

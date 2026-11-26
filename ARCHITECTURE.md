@@ -641,6 +641,22 @@ served from `/sandbox/third-party-loader.js` that builds the `blob:` URL
 inside the frame from base64 bytes, the same trick `sandboxEntry.ts` uses for
 pdf.js's worker.
 
+## Backup reminder and storage meter (`src/system/backup/`, `src/system/storage/`)
+
+Both answer risk R1 (the browser can evict local data and there is no other
+copy). `backupReminder.ts` records `lastBackupAt` when `exportDiskAndRecord`
+finishes (Settings' Export disk button and the reminder's own "Export now"
+share it), shows it under Settings › General › Backup, and at boot
+(`checkBackupReminder`, from `App.tsx`) notifies once per stretch without a
+backup: the clock starts at the last backup, or at first boot for someone who
+has never exported, and `backupRemindedFor` stops a repeat until a newer
+backup moves the start. It does nothing in the native build, where the disk
+is a real folder. `storageEstimate.ts` wraps `navigator.storage.estimate()`
+for the Settings meter, the opt-in menu-bar item (`storage` in
+`statusItems`, off by default) and a warning before Files uploads more than
+the quota has left. The browser's figures are approximate, so the UI says
+"about" and never blocks a write.
+
 ## Testing + persistence hardening
 
 `pnpm test` (Vitest, `node` environment — no jsdom/RTL needed since the

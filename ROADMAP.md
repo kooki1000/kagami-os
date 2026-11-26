@@ -115,7 +115,6 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 | ID  | Feature                                                                                                                                                                                                                    | Size | Notes                                                                             |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------- |
 | B9b | **Content search** — the second half of B9. An in-memory inverted index over text content, built in a Worker at boot and updated from `fsStore.commit()`; ⌘K results show a one-line snippet                               | M/L  | B9 deferred this until B1 shipped. It has. The index is reused by D10's backlinks |
-| B14 | **Backup reminder** — record `lastBackupAt`, show it in the Backup row, notify once past a threshold (default 7 days, Safari's eviction window). Off in the native build                                                   | S    | Addresses R1 directly                                                             |
 | B16 | **Version history for text files** — on save, keep the previous content hash if it's more than a few minutes old (cap 20 per node); blob GC treats them as live; "Revert to…" in Get Info and both editors                 | L    | Needs T11. Content addressing makes old versions nearly free                      |
 | B17 | **Undo for file operations** — an inverse-op stack in the fs store for move, rename, drag-and-drop and paste; ⌘Z in Files and on the desktop when no text field has focus. The existing trash-undo toasts move onto it     | M    |                                                                                   |
 | B18 | **Automatic backup folder** — on Chromium, a `showDirectoryPicker` handle stored in IndexedDB; Kagami writes a rolling backup zip there on a schedule and keeps the last few. The native build does the same through Tauri | M/L  | One-way, never reads back, so it isn't §3.X.2 sync. Firefox and Safari keep B14   |
@@ -125,7 +124,6 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 | ID  | Feature                                                                                                                                                                    | Size | Notes                                                                  |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------- |
 | C3  | **Window overview** — zoomed-out grid of open windows, click to focus                                                                                                      | L    | Nice to have, not load-bearing. Unscheduled                            |
-| C5  | **Storage meter** — usage against quota from `navigator.storage.estimate()` in Settings › General and as an optional menu-bar item; warn before a large write would fail   | S    | Nothing in `src/` calls `estimate()` yet                               |
 | C7  | **Multi-monitor** — populate `OsWindow.screenId` from the Window Management API                                                                                            | XL   | Deferred. The seam exists so nothing blocks on it                      |
 | C9  | **Commands in ⌘K** — list the focused app's enabled menu items and the shell commands next to file results ("New Note", "Empty Trash", "Toggle Dark Mode", Settings panes) | S/M  | Menus are already data; `shortcuts.ts` already runs them. No new model |
 
@@ -267,8 +265,7 @@ Files, reads only what it was granted, and uninstalls cleanly.
 
 ### Step 18 — Safety net _(≈ 1–1.5 weeks)_
 
-B14, C5, B13, B15, then B18. The first two are small and touch nothing step
-17 touches, so they can land between D8 PRs rather than waiting for it.
+B18 is what remains (B13–B15 and C5 shipped 2026-11-26).
 
 **Exit:** a backup made on one machine restores on another with the look,
 dock, desktop layout and installed-app grants intact; a backup can be merged
@@ -319,7 +316,6 @@ sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 ```text
 LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
 D8.9 ► D8.11        D8.10 is unblocked
-B14, C5 ─ any time ─► B13 ► B15 ► B18
 T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
 §2 met ──────────────► distribution (X.3)
 ```
@@ -519,8 +515,7 @@ clean, no new lint or type suppressions.
 1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
    can't finish without it.
 2. **D8.10, then D8.12.** Both are unblocked. D8.9 (publishing the SDK) waits on the license in item 1.
-3. **B14 and C5 between D8 PRs.** Each is about half a day, and together
-   they close most of R1's visibility gap.
+3. **B18, the automatic backup folder.** The rest of step 18 (B13–B15, C5) is in.
 4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
    WebKit in a loop; fix it or record why it's flaky before more specs pile
    onto CI's retries.

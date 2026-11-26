@@ -10,6 +10,7 @@ import { WindowLayer } from "./components/shell/WindowLayer";
 import { uiScaleMultipliers } from "./design/tokens";
 import { launchApp } from "./system/apps/launch";
 import { loadInstalledApps } from "./system/apps/loadInstalledApps";
+import { checkBackupReminder } from "./system/backup/backupReminder";
 import { useFsStore } from "./system/fs/fsStore";
 import { lookById, themeVariables } from "./system/settings/palettes";
 import { useSettingsStore } from "./system/settings/settingsStore";
@@ -125,6 +126,9 @@ export default function App() {
         url.searchParams.delete("fresh");
         window.history.replaceState(null, "", url);
       }
+      // B14: nudge once if the disk hasn't been exported lately.
+      checkBackupReminder();
+
       // U9: restoreSessionOnBoot (default on) gates the restore call itself —
       // off, this is exactly like `?fresh`, a boot with no prior session.
       const restoreOnBoot = useSettingsStore.getState().restoreSessionOnBoot;
