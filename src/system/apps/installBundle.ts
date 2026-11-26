@@ -8,7 +8,7 @@ import { setGrantedCapabilities } from "./appGrantsStore";
 import { buildInstalledAppManifest } from "./installedAppManifest";
 import { resolveInstalledAppBundles } from "./installedApps";
 import { parseAppManifest } from "./manifestSchema";
-import { registerInstalledApps } from "./registry";
+import { isBuiltInAppId, registerInstalledApps } from "./registry";
 
 export class InvalidBundleError extends Error {}
 
@@ -76,6 +76,8 @@ export async function parseBundleZip(file: File): Promise<ParsedBundle> {
  * data directory?) and isn't implied by "make install work."
  */
 export async function commitInstall({ manifest, entryBytes }: ParsedBundle): Promise<void> {
+  if (isBuiltInAppId(manifest.id))
+    throw new InvalidBundleError(`"${manifest.id}" is the id of a built-in app, so this bundle can't be installed.`);
   const nodes = useFsStore.getState().nodes;
   const existing = await resolveInstalledAppBundles(nodes, blobStore);
   if (existing.some(bundle => bundle.manifest.id === manifest.id))
@@ -89,5 +91,5 @@ export async function commitInstall({ manifest, entryBytes }: ParsedBundle): Pro
   const entryNode = await fileSystem.writeFile(folder.id, manifest.entry, new TextDecoder().decode(entryBytes), "text/javascript");
 
   setGrantedCapabilities(manifest.id, manifest.capabilities);
-  registerInstalledApps([buildInstalledAppManifest({ manifest, entryNodeId: entryNode.id })]);
+  registerInstalledApps([buildInstalledAppManifest({ manifest, entryNodeId: entryNode.id, folderId: folder.id })]);
 }
