@@ -73,6 +73,10 @@ function cspMeta(): Plugin {
 }
 
 export default defineConfig({
+  // `/` everywhere except the GitHub Pages demo, which is served from
+  // `/<repo>/`; .github/workflows/pages.yml sets VITE_BASE for that build.
+  // Hand-built URLs to `public/` files go through `src/system/publicUrl.ts`.
+  base: process.env.VITE_BASE ?? "/",
   plugins: [react(), tailwindcss(), cspMeta()],
   // Injected build-time so About (SettingsApp) shows the real package
   // version instead of a string that only ever gets more stale
