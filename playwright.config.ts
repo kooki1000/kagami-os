@@ -15,7 +15,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : undefined,
+  // Half the cores. A single worker ran the suite serially; measured locally
+  // on 4 cores, chromium dropped from 4.1 min to 1.4 min at 100% with no
+  // flakes. Firefox/WebKit are heavier, so keep headroom — retries are the
+  // backstop.
+  workers: isCI ? "50%" : undefined,
   reporter: isCI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL,
