@@ -614,6 +614,42 @@ stay lean and stable:
 - New shell/app interaction seams land with an E2E scenario in the same PR,
   mirroring the unit-test rule below.
 
+## Hosting (GitHub Pages)
+
+The web build is a folder of static files, so it runs anywhere that can serve
+one. The live demo is at `https://kooki1000.github.io/kagami-os/`, published
+by `.github/workflows/pages.yml`: pull requests build it, pushes to `main`
+build and deploy it, and the deploy ends with a `curl` of the page, the
+sandbox script and the service worker.
+
+The thing to know is that the demo isn't served from the site root. Project
+Pages live at `/<repo>/`, and three places used to assume `/`:
+
+- **Vite's `base`** comes from `VITE_BASE` (`vite.config.ts`), `/` by default.
+  Vite rewrites everything it processes itself: the `<script>` and `<link>`
+  tags in `index.html`, chunk imports, `?url` imports.
+- **URLs to `public/` files written by hand** go through `publicUrl()`
+  (`src/system/publicUrl.ts`), which prefixes `import.meta.env.BASE_URL`. That
+  covers the service worker registration and the `<script src>` in each
+  sandbox iframe's `srcdoc` (`documents.js`, `third-party-loader.js`, the demo
+  app). A literal `"/sandbox/..."` here still works on the dev server and
+  fails only on Pages, which is why the workflow's build check exists.
+- **The web manifest** uses relative URLs (`start_url: "./"`, `icons/...`),
+  which resolve against the manifest's own location at any base.
+
+Things the demo doesn't have, because GitHub Pages doesn't offer them:
+
+- **Response headers.** The CSP is a `<meta>` tag, which can't express
+  `frame-ancestors`, so anyone can frame the demo. HSTS is already on for
+  `github.io`.
+- **Storage isolation from sibling sites.** IndexedDB and localStorage are
+  scoped to the origin (`kooki1000.github.io`), not the path. Another project
+  site under the same account shares them with Kagami. A custom domain would
+  fix that, and would also mean setting `VITE_BASE` to `/`.
+
+Session restore, the service worker's cache and every store key are
+unaffected: none of them include the path.
+
 ## Phase status
 
 1. ✅ Shell skeleton (tokens, wallpaper, menu bar, dock, light/dark)

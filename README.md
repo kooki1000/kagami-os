@@ -1,65 +1,125 @@
 # Kagami OS
 
 [![CI](https://github.com/kooki1000/kagami-os/actions/workflows/ci.yml/badge.svg)](https://github.com/kooki1000/kagami-os/actions/workflows/ci.yml)
+[![Pages](https://github.com/kooki1000/kagami-os/actions/workflows/pages.yml/badge.svg)](https://github.com/kooki1000/kagami-os/actions/workflows/pages.yml)
 
-A browser-based desktop environment — windowing shell, virtual file system,
-and a suite of built-in apps, all client-side. Built with React, TypeScript,
-Vite, Zustand, and Tailwind v4.
+Kagami is a desktop that runs in a browser tab. It has windows you can drag,
+snap and resize, a dock, a menu bar, a file system, and a handful of apps. All
+of it runs on your machine. There is no server, no account and no telemetry,
+and nothing you create leaves the browser.
 
-Kagami is **local-first**: no account, no server, no telemetry. Your files
-stay on your machine.
+**Try it: [kooki1000.github.io/kagami-os](https://kooki1000.github.io/kagami-os/)**
 
-It runs two ways from one codebase. The website is the zero-install
-baseline; a **native desktop app** (Tauri) adds a real isolated filesystem
-on disk and a built-in browser — progressive enhancement, not a pivot away
-from the web. See [`DIRECTION.md`](DIRECTION.md).
+It's built with React 19, TypeScript, Vite, Zustand and Tailwind v4.
 
-## Getting started
+## What you can do in the demo
 
-Requires **Node 22.23.1** (LTS "jod") and **pnpm**. With
-[nvm](https://github.com/nvm-sh/nvm):
+Open Files and drop something in. Double-click opens it in the app that fits:
+plain text and Markdown in Notes, source code in Code, images in the Viewer,
+PDFs in Documents, and audio or video in the Player. Downloading a folder
+gives you a zip.
+
+- **Files** has folders, multi-select, copy and paste, a Trash with undo, and
+  Get Info. Uploads and downloads handle real binary files, not just text.
+- **Notes** is a rich-text editor. **Code** is a CodeMirror editor with syntax
+  highlighting for the common languages.
+- **Terminal** knows about two dozen commands (`ls`, `cat`, `grep`, `find`,
+  `wc` and so on) and works on the same files you see in Files. It never
+  executes code.
+- **Paint**, **Calculator** and **Clock** are in the dock too.
+- **Settings** changes the theme, the accent colour, the wallpaper and the dock.
+  Pick one accent and the rest of the desktop follows it.
+
+`⌘K` searches across apps and files. `⌃⌥` plus an arrow key snaps the focused
+window. Close the tab and reopen it, and your windows come back where you left
+them.
+
+### Where your data lives
+
+Files are stored in your browser's IndexedDB, and settings in localStorage.
+Both belong to the site you opened, so clearing site data deletes them, and a
+different browser or device starts empty. To keep a copy, use **Settings ›
+General › Backup › Export disk**, which writes everything (Trash included) to one zip.
+Importing a zip replaces the whole disk.
+
+### What the demo can't do
+
+- **The Browser app** needs the native desktop build. A normal web page can't
+  embed other sites, so the web version shows a short explanation instead.
+- **Response headers.** GitHub Pages doesn't let a site set its own, so the
+  Content-Security-Policy ships as a `<meta>` tag. That covers scripts, styles
+  and connections, but not `frame-ancestors`, which browsers only honor as a
+  header. Anyone can embed the demo in an iframe.
+
+The full e2e suite runs on Chromium, Firefox and WebKit, so Chrome, Firefox
+and Safari are the supported browsers.
+[`docs/browser-support-matrix.md`](docs/browser-support-matrix.md) lists the
+known differences between them.
+
+## Running it locally
+
+You need **Node 22.23.1** and **pnpm**. With [nvm](https://github.com/nvm-sh/nvm):
 
 ```bash
-nvm use            # reads .nvmrc → 22.23.1
+nvm use            # reads .nvmrc
 corepack enable    # or: npm i -g pnpm
 pnpm install
 pnpm dev           # http://localhost:5173
 ```
 
-> `.npmrc` sets `engine-strict`, so the pinned Node version is enforced on
-> install. The repo is tested on Node 22.23.1; other versions may fail.
+The repo pins Node on purpose (`.npmrc` sets `engine-strict`). Other versions
+may fail at install time, and on Node 20 the linter crashes outright.
 
-## Scripts
+| Command                         | What it does                                      |
+| ------------------------------- | ------------------------------------------------- |
+| `pnpm dev`                      | Vite dev server with hot reload                   |
+| `pnpm build`                    | Typecheck, then a production build into `dist/`   |
+| `pnpm typecheck`                | Type-check only                                   |
+| `pnpm lint` / `pnpm lint:fix`   | ESLint                                            |
+| `pnpm test` / `pnpm test:watch` | Vitest unit tests                                 |
+| `pnpm test:e2e`                 | Playwright, in Chromium, Firefox and WebKit       |
+| `pnpm bench`                    | Vitest benchmarks                                 |
+| `pnpm tauri dev` / `build`      | The native desktop shell (needs a Rust toolchain) |
 
-| Command                         | What it does                                     |
-| ------------------------------- | ------------------------------------------------ |
-| `pnpm dev`                      | Vite dev server with HMR                         |
-| `pnpm build`                    | Typecheck (`tsc --noEmit`) then production build |
-| `pnpm typecheck`                | Type-check only                                  |
-| `pnpm lint` / `pnpm lint:fix`   | ESLint (antfu config)                            |
-| `pnpm test` / `pnpm test:watch` | Vitest unit suites                               |
-| `pnpm tauri dev`                | Boots the native (Tauri) shell against Vite      |
-| `pnpm tauri build`              | Builds the native desktop app                    |
+The first time you run the e2e suite, `pnpm exec playwright install` fetches
+the browsers. The suite runs against a production build, and Playwright reuses
+a preview server already listening on port 4173. If you've left an old one
+running, you'll be testing an old build.
 
-`pnpm tauri dev`/`build` additionally require a Rust toolchain
-([rustup](https://rustup.rs)) — the web scripts above don't.
+## How the demo gets published
 
-## Continuous integration
+`.github/workflows/pages.yml` builds the site and deploys it to GitHub Pages.
+Pull requests get the build but not the deploy, so a change that breaks the
+Pages build fails before it merges. Every push to `main` deploys, then fetches
+the live site as a smoke test.
 
-Every push and pull request to `main` runs lint → typecheck → unit tests on
-Node 22.23.1 (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+Project Pages are served from `/kagami-os/`, not from the root. The build reads
+the path from `VITE_BASE` (the workflow sets it to the repository name), and it
+defaults to `/` everywhere else. To reproduce the Pages build on your machine:
 
-## Project docs
+```bash
+VITE_BASE=/kagami-os/ pnpm build
+VITE_BASE=/kagami-os/ pnpm preview   # http://localhost:4173/kagami-os/
+```
 
-- [`DIRECTION.md`](DIRECTION.md) — the dual-runtime principle and the
-  guardrails that keep the native-desktop track coherent.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the shell's moving parts and the two
-  seams (app manifest pattern, storage adapter) that future features hook into.
-- [`ROADMAP.md`](ROADMAP.md) — feature backlog and the step-by-step plan
-  toward a finished local-first desktop, plus the parallel native track.
+If you fork the repo, enable it under **Settings › Pages › Source: GitHub
+Actions** and the same workflow will publish your copy.
+
+## Docs
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) explains how the shell fits together.
+  Start here before changing anything non-trivial.
+- [`DIRECTION.md`](DIRECTION.md) covers why there's both a web build and a
+  native one, and the rules that keep them from drifting apart.
+- [`ROADMAP.md`](ROADMAP.md) has the backlog and the order things get built in.
+- [`docs/design-system.md`](docs/design-system.md) is the design guide: colour
+  tokens, type, radii, and the places the code has drifted from them.
+- [`docs/security-advisories.md`](docs/security-advisories.md) lists dependency
+  alerts that were looked at and deliberately left open, with the reasoning.
 
 ## Feature flags
 
-Dark-shipping is gated by `src/system/flags.ts` (build-time `VITE_FLAG_*` env
-vars, overridable per device in **Settings › About › Feature flags** or via
-`localStorage` `kagami:flag:<id>`).
+Unfinished work can land behind a flag. A flag defaults to whatever
+`src/system/flags.ts` says, a `VITE_FLAG_<ID>` environment variable overrides
+that at build time, and you can flip it per browser under **Settings › About ›
+Feature flags** (or set `localStorage` key `kagami:flag:<id>`).

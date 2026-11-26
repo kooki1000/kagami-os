@@ -38,7 +38,8 @@ const pkgVersion = (
  * the production bundle emits no inline scripts. Injected build-only — the
  * dev server needs inline/eval for HMR. `frame-ancestors` and HSTS can't be
  * set from a meta tag; enforce those as response headers at the CDN/server
- * on deploy.
+ * on deploy. (GitHub Pages can't set headers, so the demo ships without
+ * `frame-ancestors`; see ARCHITECTURE.md's Hosting section.)
  */
 const CSP = [
   "default-src 'self'",
