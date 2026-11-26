@@ -18,6 +18,7 @@ jobs:
   verify:
     name: Lint · Typecheck · Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -34,10 +35,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Fail on high/critical advisories (caught the vitest CVE); lower
-      # severities stay visible without blocking on transient dev-dep noise.
-      # pnpm-workspace.yaml's auditConfig.ignoreGhsas carries one temporary
-      # exception — see docs/security-advisories.md for why.
+      # High/critical only; exceptions: docs/security-advisories.md.
       - name: Security audit
         run: pnpm audit --audit-level=high
 
@@ -53,8 +51,16 @@ jobs:
   e2e:
     name: E2E (Playwright) (${{ matrix.project }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Prebuilt browsers + OS deps (no apt-get). Keep the tag in sync with
+    # @playwright/test.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --ipc=host
+    env:
+      PLAYWRIGHT_IMAGE_VERSION: 1.61.1
     strategy:
-      # One job per engine so the three run concurrently instead of serially.
+      # One job per engine, run concurrently.
       fail-fast: false
       matrix:
         project: [chromium, firefox, webkit]
@@ -73,22 +79,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Playwright browser binaries
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Playwright browser + OS deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps ${{ matrix.project }}
-
-      - name: Install Playwright OS deps only (browser cache hit)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps ${{ matrix.project }}
+      - name: Check Playwright image matches the locked version
+        run: |
+          installed="$(pnpm exec playwright --version | awk '{print $2}')"
+          if [ "$installed" != "$PLAYWRIGHT_IMAGE_VERSION" ]; then
+            echo "::error::@playwright/test is $installed but the e2e container image is v$PLAYWRIGHT_IMAGE_VERSION. Update the image tag and PLAYWRIGHT_IMAGE_VERSION in .github/workflows/ci.yml to match."
+            exit 1
+          fi
 
       - name: Run E2E tests
+        # Firefox won't launch from the container's default HOME.
+        env:
+          HOME: /root
         run: pnpm exec playwright test --project=${{ matrix.project }}
 
       - name: Upload report
@@ -99,10 +101,7 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # Branch protection requires a status check named "E2E (Playwright)", but
-  # the job above matrixes into per-engine contexts ("E2E (Playwright)
-  # (chromium)" etc.) that never post under the plain name. This job posts
-  # under the exact required name once, aggregating the matrix's outcome.
+  # Posts the plain "E2E (Playwright)" check that branch protection requires.
   e2e-required:
     name: E2E (Playwright)
     needs: e2e
