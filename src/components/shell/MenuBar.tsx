@@ -121,6 +121,9 @@ export function MenuBar() {
   const setPreference = useThemeStore(s => s.setPreference);
   const toggleResolved = useThemeStore(s => s.toggleResolved);
   const unreadCount = useNotificationStore(selectUnreadCount);
+  // The badge's visible text must be part of the button's accessible name
+  // (WCAG 2.5.3, axe `label-content-name-mismatch`), so both read from here.
+  const unreadBadge = unreadCount > 9 ? "9+" : unreadCount > 0 ? String(unreadCount) : "";
   const centerOpen = useNotificationStore(s => s.centerOpen);
   const openCenter = useNotificationStore(s => s.openCenter);
   const closeCenter = useNotificationStore(s => s.closeCenter);
@@ -381,14 +384,14 @@ export function MenuBar() {
           {statusItems.notifications && (
             <button
               type="button"
-              aria-label="Notifications"
+              aria-label={unreadBadge ? `Notifications, ${unreadBadge} unread` : "Notifications"}
               className="relative grid place-items-center rounded-md p-0.5 hover:bg-ph"
               onClick={() => (centerOpen ? closeCenter() : openCenter())}
             >
               <Bell className="size-[calc(13px*var(--ui-scale))]" />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-3 rounded-full bg-accent-2 px-[calc(3px*var(--ui-scale))] text-center text-[calc(8px*var(--ui-scale))]/3 font-bold text-white tabular-nums">
-                  {unreadCount > 9 ? "9+" : unreadCount}
+                  {unreadBadge}
                 </span>
               )}
             </button>
