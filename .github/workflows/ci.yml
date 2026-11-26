@@ -55,12 +55,8 @@ jobs:
     name: E2E (Playwright) (${{ matrix.project }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The official Playwright image ships all three browsers and their OS
-    # libraries, so there is no apt-get step. The previous "playwright
-    # install-deps" step ran apt-get in every job and took 8-12 minutes on slow
-    # mirror days (vs ~20 seconds normally), which dominated whole runs. The
-    # image tag must match @playwright/test in package.json (pinned exactly);
-    # bump both together — the check step below fails fast if they drift.
+    # Prebuilt browsers + OS deps (no apt-get). Keep the tag in sync with
+    # @playwright/test.
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --ipc=host
@@ -95,8 +91,7 @@ jobs:
           fi
 
       - name: Run E2E tests
-        # Inside the container Actions points HOME at /github/home, which root
-        # doesn't own, and Firefox refuses to launch from such a HOME.
+        # Firefox won't launch from the container's default HOME.
         env:
           HOME: /root
         run: pnpm exec playwright test --project=${{ matrix.project }}
