@@ -7,6 +7,11 @@ adapter interface**) plus the shell's moving parts.
 
 ## Design tokens
 
+`docs/design-system.md` is the full design guide — every token's value, the
+rule governing its use, the component recipes, and a register of where the
+codebase has drifted from the system. This section is the map of where the
+machinery lives; read the guide before adding a color, radius or type size.
+
 Source of truth is the Claude Design prototype `KagamiOS.html` ("Lagoon"
 direction). Its values live in two places, deliberately kept in sync:
 

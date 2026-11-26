@@ -124,6 +124,12 @@ seeding) — see `windowStore.test.ts` / `fsStore.test.ts` for the pattern.
 
 ### Design tokens — do not drift toward macOS defaults
 
+**`docs/design-system.md` is the design guide** — exact token values, the
+`--accent` vs `--accent-strong` accessibility contract, the radius/type/motion
+vocabularies, component recipes, and a drift register. Read it before adding a
+color, radius, type size or new surface; the summary below is a map, not a
+substitute.
+
 Source of truth is the "Lagoon" Claude Design prototype. Values live in two
 places kept in sync: `src/styles/global.css` (CSS custom properties, themed
 via `:root[data-theme='dark']`, mapped to Tailwind utilities via `@theme
