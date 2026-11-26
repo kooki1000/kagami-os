@@ -15,8 +15,8 @@ for the parked bring-your-own-storage alternative. Don't propose a backend.
 
 Steps 14–16 are done (`ROADMAP.md` §4): stability, app depth and
 customization (area U), the capability sandbox and the apps that needed it.
-**Step 17, the third-party app SDK, is in progress** (D8.1–D8.7 shipped;
-D8.8–D8.12 left, and the LICENSE in §6.3 is its prerequisite). Steps 18–21
+**Step 17, the third-party app SDK, is in progress** (D8.1–D8.8 shipped;
+D8.9–D8.12 left, and the LICENSE in §6.3 is its prerequisite). Steps 18–21
 follow: a backup safety net, version history and undo, content search and
 note links, and host-OS integration. `docs/improvement-proposals.md` holds
 the reasoning behind them. Releases and signed installers are deliberately
