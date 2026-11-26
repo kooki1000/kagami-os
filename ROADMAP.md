@@ -112,14 +112,12 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 
 ### B. File system and data safety
 
-| ID  | Feature                                                                                                                                                                                                                                               | Size | Notes                                                                                                   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------- |
-| B9b | **Content search** — the second half of B9. An in-memory inverted index over text content, built in a Worker at boot and updated from `fsStore.commit()`; ⌘K results show a one-line snippet                                                          | M/L  | B9 deferred this until B1 shipped. It has. The index is reused by D10's backlinks                       |
-| B13 | **Whole-desktop backup** — the export gains a `settings.json` entry with every persisted store's state and zustand `version` (settings, dock, desktop layout, theme, view prefs, per-app prefs, `appGrantsStore`); import runs each store's `migrate` | M    | `EXPORT_MANIFEST_VERSION` → 2; version-1 zips still import as disk-only. Session-scoped stores stay out |
-| B15 | **Import into a folder** — a second import action that unpacks under `Home/Imported <date>` via `uniqueChildName` instead of replacing the disk; system-folder ids in the zip are ignored                                                             | M    | The answer to "two machines" is a zip, and today that zip can only overwrite                            |
-| B16 | **Version history for text files** — on save, keep the previous content hash if it's more than a few minutes old (cap 20 per node); blob GC treats them as live; "Revert to…" in Get Info and both editors                                            | L    | Needs T11. Content addressing makes old versions nearly free                                            |
-| B17 | **Undo for file operations** — an inverse-op stack in the fs store for move, rename, drag-and-drop and paste; ⌘Z in Files and on the desktop when no text field has focus. The existing trash-undo toasts move onto it                                | M    |                                                                                                         |
-| B18 | **Automatic backup folder** — on Chromium, a `showDirectoryPicker` handle stored in IndexedDB; Kagami writes a rolling backup zip there on a schedule and keeps the last few. The native build does the same through Tauri                            | M/L  | One-way, never reads back, so it isn't §3.X.2 sync. Firefox and Safari keep B14                         |
+| ID  | Feature                                                                                                                                                                                                                    | Size | Notes                                                                             |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------- |
+| B9b | **Content search** — the second half of B9. An in-memory inverted index over text content, built in a Worker at boot and updated from `fsStore.commit()`; ⌘K results show a one-line snippet                               | M/L  | B9 deferred this until B1 shipped. It has. The index is reused by D10's backlinks |
+| B16 | **Version history for text files** — on save, keep the previous content hash if it's more than a few minutes old (cap 20 per node); blob GC treats them as live; "Revert to…" in Get Info and both editors                 | L    | Needs T11. Content addressing makes old versions nearly free                      |
+| B17 | **Undo for file operations** — an inverse-op stack in the fs store for move, rename, drag-and-drop and paste; ⌘Z in Files and on the desktop when no text field has focus. The existing trash-undo toasts move onto it     | M    |                                                                                   |
+| B18 | **Automatic backup folder** — on Chromium, a `showDirectoryPicker` handle stored in IndexedDB; Kagami writes a rolling backup zip there on a schedule and keeps the last few. The native build does the same through Tauri | M/L  | One-way, never reads back, so it isn't §3.X.2 sync. Firefox and Safari keep B14   |
 
 ### C. Shell and window manager
 
@@ -134,11 +132,11 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 The list of apps is closed (§6.2). What's left is the SDK and the leftovers
 inside existing apps.
 
-| ID  | Feature                                                                                                                                                                                                             | Size | Notes                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
-| D8  | **Third-party app SDK** — D8.1–D8.5 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent). Remaining tasks are in step 17              | XL   | See §4                                                                                              |
-| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                   | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
-| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13) | M    | Take these opportunistically; none blocks a step                                                    |
+| ID  | Feature                                                                                                                                                                                                                                                                 | Size | Notes                                                                                               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
+| D8  | **Third-party app SDK** — D8.1–D8.8 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent, the Apps pane and uninstall, live revocation, the reference app). Remaining tasks are in step 17 | XL   | See §4                                                                                              |
+| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                                                                       | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
+| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13)                                                     | M    | Take these opportunistically; none blocks a step                                                    |
 
 ### F. Platform
 
@@ -247,17 +245,14 @@ feature runs on.
 
 ### Step 17 — Finish the app SDK _(≈ 3–4 weeks)_
 
-D8.1–D8.5 shipped 2026-08-05. The exit criterion has always been "an app
+D8.1–D8.5 shipped 2026-08-05, D8.6–D8.8 on 2026-11-26. The exit criterion has always been "an app
 written outside this repository", and the reference app in D8.8 proves the
 mechanics but not that an outsider could write one. D8.9–D8.12 close that.
 
 | ID    | Task                                                                                                                                                                                                                                                                                                         | Size | Depends on | Accept                                                                                                              |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| D8.6  | Settings "Apps" pane: list installed apps, uninstall                                                                                                                                                                                                                                                         | M    | —          | Uninstall leaves nothing in the VFS, the registry or `appGrantsStore`                                               |
-| D8.7  | Revocation reaches a running window                                                                                                                                                                                                                                                                          | S/M  | D8.6       | Revoking `fs.read` makes an open window's next call return `capability_denied`, no reload                           |
-| D8.8  | Reference app and an install → run → revoke → uninstall e2e                                                                                                                                                                                                                                                  | M    | D8.7       | Passing on all three engines                                                                                        |
-| D8.9  | **Author docs and starter** — `docs/app-sdk.md` (bundle format, manifest fields, every bridge method and its capability, error codes, the security model); the client published as one copyable file with its types; D8.8's app doubles as the template                                                      | M    | D8.8       | Someone following only the doc builds and installs a working app                                                    |
-| D8.10 | **Private data folder** — every installed app gets `Apps/<id>/data` with read and write and no consent prompt; uninstall removes it                                                                                                                                                                          | S    | D8.6       | An app persists state across reloads without requesting any fs scope                                                |
+| D8.9  | **Author docs and starter** — `docs/app-sdk.md` (bundle format, manifest fields, every bridge method and its capability, error codes, the security model); the client published as one copyable file with its types; D8.8's app doubles as the template                                                      | M    | —          | Someone following only the doc builds and installs a working app                                                    |
+| D8.10 | **Private data folder** — every installed app gets `Apps/<id>/data` with read and write and no consent prompt; uninstall removes it                                                                                                                                                                          | S    | —          | An app persists state across reloads without requesting any fs scope                                                |
 | D8.11 | **Installed apps open files** — a `fileTypes` manifest field feeding `openFile.ts` and the Default Apps pane (never the default on install), plus a per-file grant: opening a file with an app grants access to that one node for that window, and `fs.pick` shows a shell-drawn picker that grants the same | M    | D8.9       | An installed viewer appears in Open With and reads only the file it was handed; negative tests for every other node |
 | D8.12 | **Menus and dock badges over the bridge** — a `menus.set` method validated against `MenuSection`, items carrying `appCommand` strings; a badge method for the dock tile. Both were in 16a's scope and never landed                                                                                           | S/M  | D8.4       | A sandboxed app's menus show in the menu bar and its chords dispatch                                                |
 
@@ -270,7 +265,7 @@ Files, reads only what it was granted, and uninstalls cleanly.
 
 ### Step 18 — Safety net _(≈ 1–1.5 weeks)_
 
-B13, B15, then B18 (B14 and C5 shipped 2026-11-26).
+B18 is what remains (B13–B15 and C5 shipped 2026-11-26).
 
 **Exit:** a backup made on one machine restores on another with the look,
 dock, desktop layout and installed-app grants intact; a backup can be merged
@@ -320,8 +315,7 @@ sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 
 ```text
 LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
-D8.6 ► D8.7 ► D8.8 ► D8.9 ► D8.11        D8.10 needs D8.6 only
-B13 ► B15 ► B18
+D8.9 ► D8.11        D8.10 is unblocked
 T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
 §2 met ──────────────► distribution (X.3)
 ```
@@ -520,9 +514,8 @@ clean, no new lint or type suppressions.
 
 1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
    can't finish without it.
-2. **D8.6, the Apps pane.** The next task in step 17.
-3. **B13, the whole-desktop backup.** B14 and C5 are in, so the next safety-net
-   step is making the export complete.
+2. **D8.10, then D8.12.** Both are unblocked. D8.9 (publishing the SDK) waits on the license in item 1.
+3. **B18, the automatic backup folder.** The rest of step 18 (B13–B15, C5) is in.
 4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
    WebKit in a loop; fix it or record why it's flaky before more specs pile
    onto CI's retries.

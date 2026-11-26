@@ -52,6 +52,20 @@ export function getApp(id: string): AppManifest | undefined {
 }
 
 /**
+ * Ids the built-in suite owns. An installed bundle may never take one:
+ * `byId` is last-write-wins, so a bundle whose manifest says `"id": "notes"`
+ * would otherwise silently replace Notes everywhere the shell looks an app
+ * up, and uninstalling it would then delete the built-in's entry.
+ */
+const builtInIds: ReadonlySet<string> = new Set([...apps.map(app => app.id), "devcrash", "sandboxDemo"]);
+
+export function isBuiltInAppId(id: string): boolean {
+  return builtInIds.has(id);
+}
+
+const installed = new Map<string, AppManifest>();
+
+/**
  * Step 17 (D8.4): adds installed third-party apps to the lookup `getApp`
  * resolves against, called once at boot after the VFS is ready and the
  * `/Apps` scan (`installedApps.ts`) resolves — gated behind the
@@ -59,10 +73,27 @@ export function getApp(id: string): AppManifest | undefined {
  * touch the exported `apps` array: every consumer except Settings' two
  * startup-config lists only ever does a by-id lookup (`getApp`), so this is
  * enough for an installed app to appear in the dock once launched or
- * pinned. Settings picking these up too is D8.6's concern, once there's a
- * management pane to show them in.
+ * pinned. Settings' startup list reads `getInstalledApps()` as well.
+ *
+ * A manifest whose id collides with a built-in is ignored.
  */
-export function registerInstalledApps(installed: readonly AppManifest[]): void {
-  for (const app of installed)
+export function registerInstalledApps(list: readonly AppManifest[]): void {
+  for (const app of list) {
+    if (builtInIds.has(app.id))
+      continue;
     byId.set(app.id, app);
+    installed.set(app.id, app);
+  }
+}
+
+/** D8.6: the inverse of `registerInstalledApps`. Never touches a built-in. */
+export function unregisterInstalledApp(id: string): void {
+  if (!installed.delete(id))
+    return;
+  byId.delete(id);
+}
+
+/** Installed third-party apps, in registration order. */
+export function getInstalledApps(): AppManifest[] {
+  return [...installed.values()];
 }

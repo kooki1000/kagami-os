@@ -612,6 +612,24 @@ tokens without flipping light/dark.
 - At boot, `loadInstalledApps.ts` scans `/Apps` and `registerInstalledApps`
   adds each to the registry's by-id lookup, so the dock, menu bar and
   windows treat it like any other app. `ThirdPartyAppHost` runs it.
+- Settings › Apps (D8.6) lists what's on disk with each app's grants, and
+  `uninstallApp.ts` removes one: open windows, the `/Apps/<id>` folder
+  (deleted outright, not trashed), the registry entry, the grant, and the
+  dock pin, startup launch, remembered size and file-type defaults that
+  named it. The registry refuses a bundle whose id is a built-in's
+  (`isBuiltInAppId`): its by-id map is last-write-wins, so such a bundle
+  would otherwise replace the built-in app everywhere.
+- Revocation is live (D8.7). Each requested capability has a switch in
+  Settings › Apps (`setCapabilityGranted`, which can restore what the manifest
+  asked for but never widen past it). `ThirdPartyAppHost` subscribes to
+  `appGrantsStore` and `SandboxedAppHost` syncs it into the context every
+  bridge call reads, so a revoked capability is denied on the open window's
+  next call with no reload.
+- `examples/scratchpad/` is the reference app (D8.8): a manifest and one
+  commented entry script that use every bridge method an app is likely to
+  want. `e2e/app-lifecycle.spec.ts` zips it from those files and runs
+  install → run → revoke → uninstall, so it can't rot. D8.9 makes it the
+  starter.
 
 **A pattern worth remembering.** The first version had the shell create the
 entry script's `blob:` URL and pass it to the frame as `<script src>`. A
@@ -693,6 +711,40 @@ stay lean and stable:
 - New shell/app interaction seams land with an E2E scenario in the same PR,
   mirroring the unit-test rule below.
 
+## Whole-desktop backup (`src/system/backup/desktopState.ts`, `src/apps/files/exportImport.ts`)
+
+An export (B13) is the disk plus the state that makes it feel like yours. The
+zip carries the existing manifest (now version 2) and a second dot-prefixed
+entry, `.kagami-desktop-state.json`, holding the raw `localStorage` payload
+(`{ state, version }`) of every persisted store: settings, dock, desktop
+layout, theme, view prefs, `appGrantsStore`, and the terminal, code, notes and
+browser prefs. Import writes each payload back and calls the store's
+`persist.rehydrate()`, so the store's own `migrate` upgrades an old backup,
+then `reloadInstalledApps()` rescans the restored `/Apps`. Session-scoped state,
+feature-flag overrides and the disk's own contents stay out of the snapshot.
+
+Two things the design depends on:
+
+- **Node ids are preserved.** Desktop icon positions, favourites, pins and
+  the wallpaper file are all keyed by node id, so restoring them over a disk
+  whose ids were re-minted would orphan every one. The v2 manifest records each
+  file's and folder's id and `planImport` reuses them. An archive's ids are
+  untrusted: one is kept only if it is a plain token, isn't the root or a
+  well-known folder id, and isn't already claimed; otherwise it gets a fresh
+  one. Version-1 archives keep working and get fresh ids and no settings.
+- **The snapshot is untrusted input too.** Only the ten known storage keys are
+  read, each must parse to a persisted payload under 2 MB, and `appGrantsStore`
+  must be a map of capability-string lists. Restored grants bypass the install
+  consent screen by design (the roadmap's exit criterion is that they come back
+  intact), so importing a backup is as trusting as installing the apps in it.
+
+**Import into a folder (B15).** `importDiskInto` unpacks the same archive as
+a new `Imported <date>` folder under Home instead of over the disk. It runs
+`planImport` in merge mode: well-known folders become plain folders, the
+archive's own node ids are ignored, and the desktop snapshot is left behind, so
+nothing collides with or alters what's already here. `fsStore.addNodes` writes
+the blobs then the nodes, removing nothing.
+
 ## Hosting (GitHub Pages)
 
 The web build is a folder of static files, so it runs anywhere that can serve
@@ -771,6 +823,6 @@ desktop e2e via `tauri-driver`).
 
 **Steps 13–16** are done: realigned docs, the review backlog closed, area U
 (depth and customization), the capability sandbox (16a), and Documents, the
-small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.5 in
-(described under Capability sandbox above); D8.6–D8.12 and steps 18–21 are
+small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.8 in
+(described under Capability sandbox above); D8.9–D8.12 and steps 18–21 are
 in `ROADMAP.md` §4.

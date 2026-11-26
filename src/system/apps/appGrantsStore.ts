@@ -26,6 +26,9 @@ interface AppGrantsStore {
   clearGrant: (appId: string) => void;
 }
 
+/** Stable empty list, so a selector for an app with no grant doesn't hand React a fresh `[]` every render. */
+export const NO_GRANTS: readonly string[] = [];
+
 export const useAppGrantsStore = create<AppGrantsStore>()(
   persist(
     set => ({
@@ -45,6 +48,26 @@ export const useAppGrantsStore = create<AppGrantsStore>()(
 /** What `appId` is currently granted — `[]` if it was never installed through the consent flow. */
 export function getGrantedCapabilities(appId: string): string[] {
   return useAppGrantsStore.getState().grants[appId] ?? [];
+}
+
+/**
+ * D8.7 — flips one capability on or off for an installed app. `requested` is
+ * the manifest's own list: a grant can be narrowed and later restored, but
+ * never widened past what the app asked for and the consent screen showed,
+ * so a capability outside `requested` is ignored. The change is live — a
+ * running window reads this store on every bridge call
+ * (`ThirdPartyAppHost`), so a revocation lands on that window's next call.
+ */
+export function setCapabilityGranted(appId: string, requested: readonly string[], capability: string, granted: boolean): void {
+  if (!requested.includes(capability))
+    return;
+  const current = getGrantedCapabilities(appId);
+  if (current.includes(capability) === granted)
+    return;
+  setGrantedCapabilities(
+    appId,
+    granted ? [...current, capability] : current.filter(cap => cap !== capability),
+  );
 }
 
 /** Records what the user approved for `appId` — called once, by `commitInstall` after the consent screen's "Install" click. */
