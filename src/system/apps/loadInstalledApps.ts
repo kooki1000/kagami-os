@@ -3,7 +3,7 @@ import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
 import { buildInstalledAppManifest } from "./installedAppManifest";
 import { resolveInstalledAppBundles } from "./installedApps";
-import { registerInstalledApps } from "./registry";
+import { getInstalledApps, registerInstalledApps, unregisterInstalledApp } from "./registry";
 
 /**
  * Boot-time orchestration for step 17's dynamic registry: scan `/Apps`,
@@ -19,4 +19,15 @@ export async function loadInstalledApps(): Promise<void> {
     return;
   const bundles = await resolveInstalledAppBundles(useFsStore.getState().nodes, blobStore);
   registerInstalledApps(bundles.map(buildInstalledAppManifest));
+}
+
+/**
+ * B13: after an import replaces the disk, what's installed is whatever the
+ * restored `/Apps` holds, not what was registered a moment ago. Drops every
+ * installed app from the registry and scans again.
+ */
+export async function reloadInstalledApps(): Promise<void> {
+  for (const app of getInstalledApps())
+    unregisterInstalledApp(app.id);
+  await loadInstalledApps();
 }

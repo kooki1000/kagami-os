@@ -15,7 +15,7 @@ import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, Puzzle, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SEARCH_ENGINES } from "@/apps/browser/searchEngines";
-import { exportDisk, importDisk } from "@/apps/files/exportImport";
+import { exportDisk, importDisk, importDiskInto } from "@/apps/files/exportImport";
 import { Segmented } from "@/components/ui/Segmented";
 import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
@@ -25,6 +25,7 @@ import { setCapabilityGranted, useAppGrantsStore } from "@/system/apps/appGrants
 import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps/installBundle";
 import { resolveInstalledAppBundles } from "@/system/apps/installedApps";
 import { launchApp } from "@/system/apps/launch";
+import { reloadInstalledApps } from "@/system/apps/loadInstalledApps";
 import { candidateAppsForMime } from "@/system/apps/openFile";
 import { apps, getApp, getInstalledApps } from "@/system/apps/registry";
 import { uninstallApp } from "@/system/apps/uninstallApp";
@@ -33,7 +34,7 @@ import { useDockStore } from "@/system/dock/dockStore";
 import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
-import { PICTURES_ID } from "@/system/fs/types";
+import { HOME_ID, PICTURES_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import {
   lookById,
@@ -1226,6 +1227,35 @@ function BackupSection() {
   const { armed: pendingImport, arm: armImport, disarm: disarmImport } = useArmedConfirm<File>(IMPORT_CONFIRM_MS);
   const [importing, setImporting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mergeInputRef = useRef<HTMLInputElement>(null);
+  const [merging, setMerging] = useState(false);
+
+  /** B15: unpack into a new folder under Home — non-destructive, so no confirm step. */
+  async function handleMerge(e: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (!file)
+      return;
+    setMerging(true);
+    try {
+      const { fileCount, folder } = await importDiskInto(file, useFsStore.getState(), HOME_ID);
+      notify({
+        title: "Backup imported",
+        body: `${fileCount} ${fileCount === 1 ? "file" : "files"} from “${file.name}” are in Home/${folder.name}.`,
+        action: { label: "Open", run: () => launchApp("files", { payload: { folderId: folder.id } }) },
+      });
+    }
+    catch (error) {
+      notify({
+        title: "Import failed",
+        body: error instanceof Error ? error.message : "The backup couldn’t be imported.",
+        tone: "danger",
+      });
+    }
+    finally {
+      setMerging(false);
+    }
+  }
 
   async function handleExport(): Promise<void> {
     setExporting(true);
@@ -1259,10 +1289,11 @@ function BackupSection() {
     setImporting(true);
     try {
       const plan = await importDisk(file, { replaceAll });
+      await reloadInstalledApps();
       const fileCount = plan.nodes.filter(n => n.type === "file").length;
       notify({
         title: "Disk restored",
-        body: `${fileCount} ${fileCount === 1 ? "file" : "files"} imported from “${file.name}”.`,
+        body: `${fileCount} ${fileCount === 1 ? "file" : "files"} imported from “${file.name}”${plan.desktopState ? ", with your settings" : ""}.`,
       });
     }
     catch (error) {
@@ -1280,9 +1311,13 @@ function BackupSection() {
   return (
     <Row label="Backup">
       <p className="mb-3 text-12/relaxed text-ink-2">
-        Export everything in Files — every file and folder, including the
-        Trash — as a single zip you can keep somewhere safe. Importing
-        replaces the entire disk with what’s in the zip.
+        Export everything — every file and folder including the Trash, plus
+        your look, dock, desktop layout, app preferences and installed-app
+        permissions — as a single zip you can keep somewhere safe. Importing
+        replaces the entire disk, and those settings, with what’s in the zip.
+        Backups made before settings were included restore files only. To
+        bring a backup's files over without replacing anything, import it into
+        a folder: it lands in Home as “Imported” plus the date.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -1313,6 +1348,15 @@ function BackupSection() {
               : "Import disk…"}
         </button>
         <input ref={inputRef} type="file" accept=".zip" hidden onChange={handlePick} />
+        <button
+          type="button"
+          disabled={merging}
+          className="rounded-btn bg-ph px-[calc(10px*var(--ui-scale))] py-[calc(6px*var(--ui-scale))] text-11.5 font-medium text-ink hover:bg-ph-2 disabled:opacity-50"
+          onClick={() => mergeInputRef.current?.click()}
+        >
+          {merging ? "Importing…" : "Import into a folder…"}
+        </button>
+        <input ref={mergeInputRef} type="file" accept=".zip" hidden onChange={e => void handleMerge(e)} />
       </div>
     </Row>
   );

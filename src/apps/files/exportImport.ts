@@ -1,5 +1,7 @@
+import type { DesktopStateSnapshot } from "@/system/backup/desktopState";
 import type { FsStore, NodeMap } from "@/system/fs/fsStore";
 import type { BlobStore, FsNode } from "@/system/fs/types";
+import { applyDesktopState, collectDesktopState, DESKTOP_STATE_ENTRY, parseDesktopState } from "@/system/backup/desktopState";
 import { sha256Hex } from "@/system/fs/blobHash";
 import { isSystemNode, pathOf } from "@/system/fs/fsStore";
 import { BLOB_INLINE_THRESHOLD, ROOT_ID } from "@/system/fs/types";
@@ -16,14 +18,23 @@ import { runWorkerJob } from "./workerJob";
  */
 export const MANIFEST_ENTRY = ".kagami-export-manifest.json";
 
-export const EXPORT_MANIFEST_VERSION = 1;
+/**
+ * v2 (B13) adds each node's id, so a restore reproduces the ids the
+ * persisted stores (desktop layout, favourites, pins, wallpaper) refer to,
+ * and a sibling `DESKTOP_STATE_ENTRY` with those stores' own state. v1
+ * archives are still accepted: they import as a disk with fresh ids and no
+ * desktop state.
+ */
+export const EXPORT_MANIFEST_VERSION = 2;
 
 export interface ExportManifest {
-  version: typeof EXPORT_MANIFEST_VERSION;
+  version: number;
   /** Zip-relative path (no leading slash) -> metadata, one entry per file in the archive. */
-  files: Record<string, { mimeType?: string; createdAt: number; modifiedAt: number }>;
+  files: Record<string, { id?: string; mimeType?: string; createdAt: number; modifiedAt: number }>;
   /** Zip-relative path -> well-known node id, for system folders only. */
   systemFolders: Record<string, string>;
+  /** Zip-relative path -> node id, for every other folder (v2). */
+  folderIds?: Record<string, string>;
 }
 
 /** A node's path, zip-entry-shaped: root dropped, names joined with "/". */
@@ -39,16 +50,19 @@ function relativePath(nodes: NodeMap, id: string): string {
 export function buildExportManifest(nodes: NodeMap): ExportManifest {
   const files: ExportManifest["files"] = {};
   const systemFolders: ExportManifest["systemFolders"] = {};
+  const folderIds: Record<string, string> = {};
   for (const node of Object.values(nodes)) {
     if (node.id === ROOT_ID)
       continue;
     const path = relativePath(nodes, node.id);
     if (node.type === "file")
-      files[path] = { mimeType: node.mimeType, createdAt: node.createdAt, modifiedAt: node.modifiedAt };
+      files[path] = { id: node.id, mimeType: node.mimeType, createdAt: node.createdAt, modifiedAt: node.modifiedAt };
     else if (isSystemNode(node.id))
       systemFolders[path] = node.id;
+    else
+      folderIds[path] = node.id;
   }
-  return { version: EXPORT_MANIFEST_VERSION, files, systemFolders };
+  return { version: EXPORT_MANIFEST_VERSION, files, systemFolders, folderIds };
 }
 
 /**
@@ -57,9 +71,11 @@ export function buildExportManifest(nodes: NodeMap): ExportManifest {
  * walks Trash too (it hangs directly off root, same as Home) — no
  * special-casing needed there, just the root id instead of one folder.
  */
-export async function buildExportEntries(nodes: NodeMap, store: BlobStore): Promise<Record<string, Uint8Array>> {
+export async function buildExportEntries(nodes: NodeMap, store: BlobStore, desktopState?: DesktopStateSnapshot): Promise<Record<string, Uint8Array>> {
   const entries = await buildZipEntries(ROOT_ID, nodes, store, "");
   entries[MANIFEST_ENTRY] = new TextEncoder().encode(JSON.stringify(buildExportManifest(nodes)));
+  if (desktopState)
+    entries[DESKTOP_STATE_ENTRY] = new TextEncoder().encode(JSON.stringify(desktopState));
   return entries;
 }
 
@@ -77,6 +93,8 @@ export interface ImportPlan {
   nodes: FsNode[];
   /** Deduped by hash — content-addressed the same way a fresh upload would be. */
   blobs: ImportBlob[];
+  /** The archive's persisted-store snapshot (v2), if it has a readable one. */
+  desktopState: DesktopStateSnapshot | null;
 }
 
 function splitPath(path: string): { parentPath: string; name: string } {
@@ -118,6 +136,8 @@ function collectFolderPaths(filePaths: string[], explicitFolderPaths: string[]):
 export async function planImport(
   entries: Record<string, Uint8Array>,
   makeId: () => string = () => crypto.randomUUID(),
+  /** B15: unpack as plain content to add somewhere, not as a disk to restore — see `importDiskInto`. */
+  { merge = false }: { merge?: boolean } = {},
 ): Promise<ImportPlan> {
   const manifestBytes = entries[MANIFEST_ENTRY];
   if (!manifestBytes)
@@ -130,17 +150,34 @@ export async function planImport(
   catch {
     throw new InvalidArchiveError("This file isn't a Kagami disk export.");
   }
-  if (manifest.version !== EXPORT_MANIFEST_VERSION)
+  if (manifest.version !== 1 && manifest.version !== EXPORT_MANIFEST_VERSION)
     throw new InvalidArchiveError("This export was made by an incompatible version of Kagami.");
 
+  // A merge brings the content over and nothing else: the well-known folder
+  // ids are ignored (an exported Desktop becomes a plain folder named Desktop),
+  // so are the archive's own node ids, and the desktop state stays behind.
+  const systemFolders = merge ? {} : manifest.systemFolders;
   const filePaths = Object.keys(manifest.files);
   const explicitFolderPaths = Object.keys(entries)
     .filter(key => key !== MANIFEST_ENTRY && key.endsWith("/"))
     .map(key => key.slice(0, -1));
   const folderPaths = collectFolderPaths(filePaths, [
     ...explicitFolderPaths,
-    ...Object.keys(manifest.systemFolders),
+    ...Object.keys(systemFolders),
   ]);
+
+  // Ids an archive declares are untrusted input: keep one only if it's a
+  // plain token, isn't the root or a well-known folder's id (those come from
+  // `systemFolders`), and nothing else has claimed it. Anything else gets a
+  // fresh id, so a hostile archive can't alias or shadow a system node.
+  const claimed = new Set<string>(Object.values(systemFolders));
+  function idFor(declared: unknown): string {
+    if (!merge && typeof declared === "string" && /^[\w-]{1,64}$/.test(declared) && declared !== ROOT_ID && !isSystemNode(declared) && !claimed.has(declared)) {
+      claimed.add(declared);
+      return declared;
+    }
+    return makeId();
+  }
 
   const now = Date.now();
   const idByPath = new Map<string, string>([["", ROOT_ID]]);
@@ -150,7 +187,7 @@ export async function planImport(
 
   for (const path of folderPaths) {
     const { parentPath, name } = splitPath(path);
-    const id = manifest.systemFolders[path] ?? makeId();
+    const id = systemFolders[path] ?? idFor(manifest.folderIds?.[path]);
     idByPath.set(path, id);
     nodes.push({
       id,
@@ -162,16 +199,16 @@ export async function planImport(
     });
   }
 
-  interface FileMeta { bytes: Uint8Array; parentId: string; name: string; mimeType?: string; createdAt: number; modifiedAt: number }
+  interface FileMeta { id: string; bytes: Uint8Array; parentId: string; name: string; mimeType?: string; createdAt: number; modifiedAt: number }
   const metaByPath = new Map<string, FileMeta>();
   const binaryPaths: string[] = [];
   for (const path of filePaths) {
     const bytes = entries[path];
     if (!bytes)
       throw new InvalidArchiveError(`Missing bytes for "${path}" in the archive.`);
-    const { mimeType, createdAt, modifiedAt } = manifest.files[path];
+    const { id, mimeType, createdAt, modifiedAt } = manifest.files[path];
     const { parentPath, name } = splitPath(path);
-    metaByPath.set(path, { bytes, parentId: idByPath.get(parentPath) ?? ROOT_ID, name, mimeType, createdAt, modifiedAt });
+    metaByPath.set(path, { id: idFor(id), bytes, parentId: idByPath.get(parentPath) ?? ROOT_ID, name, mimeType, createdAt, modifiedAt });
     if (!(mimeType?.startsWith("text/") && bytes.byteLength <= BLOB_INLINE_THRESHOLD))
       binaryPaths.push(path);
   }
@@ -183,20 +220,20 @@ export async function planImport(
 
   const blobsByHash = new Map<string, ImportBlob>();
   for (const path of filePaths) {
-    const { bytes, parentId, name, mimeType, createdAt, modifiedAt } = metaByPath.get(path)!;
+    const { id, bytes, parentId, name, mimeType, createdAt, modifiedAt } = metaByPath.get(path)!;
     const hash = hashByPath.get(path);
 
     if (hash === undefined) {
-      nodes.push({ id: makeId(), parentId, name, type: "file", mimeType, content: new TextDecoder().decode(bytes), createdAt, modifiedAt });
+      nodes.push({ id, parentId, name, type: "file", mimeType, content: new TextDecoder().decode(bytes), createdAt, modifiedAt });
       continue;
     }
 
     if (!blobsByHash.has(hash))
       blobsByHash.set(hash, { hash, bytes, mimeType });
-    nodes.push({ id: makeId(), parentId, name, type: "file", mimeType, contentRef: { hash, size: bytes.byteLength, mimeType }, createdAt, modifiedAt });
+    nodes.push({ id, parentId, name, type: "file", mimeType, contentRef: { hash, size: bytes.byteLength, mimeType }, createdAt, modifiedAt });
   }
 
-  return { nodes, blobs: [...blobsByHash.values()] };
+  return { nodes, blobs: [...blobsByHash.values()], desktopState: merge ? null : parseDesktopState(entries[DESKTOP_STATE_ENTRY]) };
 }
 
 /** `kagami-disk-2026-07-25.zip` — sortable, collision-unlikely default filename. */
@@ -224,7 +261,7 @@ export function unzipInWorker(bytes: Uint8Array): Promise<Record<string, Uint8Ar
  * scope) off the main thread and trigger a "Save As" for the archive.
  */
 export async function exportDisk(nodes: NodeMap, store: BlobStore): Promise<void> {
-  const entries = await buildExportEntries(nodes, store);
+  const entries = await buildExportEntries(nodes, store, collectDesktopState());
   const zipped = await zipInWorker(entries);
   triggerDownload(new Blob([zipped as Uint8Array<ArrayBuffer>], { type: "application/zip" }), exportFilename());
 }
@@ -241,5 +278,40 @@ export async function importDisk(file: File, fs: Pick<FsStore, "replaceAll">): P
   const unzipped = await unzipInWorker(bytes);
   const plan = await planImport(unzipped);
   await fs.replaceAll(plan.nodes, plan.blobs);
+  // After the disk, so the stores' node ids already resolve; before anything
+  // re-renders from them.
+  if (plan.desktopState)
+    await applyDesktopState(plan.desktopState);
   return plan;
+}
+
+export interface MergeResult {
+  /** How many files landed. */
+  fileCount: number;
+  /** The new folder holding them. */
+  folder: FsNode;
+}
+
+/** `Imported 2026-11-26` — the folder a merge unpacks into. */
+export function importFolderName(now = new Date()): string {
+  return `Imported ${now.toISOString().slice(0, 10)}`;
+}
+
+/**
+ * B15: unpack a Kagami export into a new folder under Home instead of over
+ * the disk. The right action for "bring over my notes from the other
+ * machine": nothing is removed, no system folder or desktop setting is
+ * touched, and every id is fresh so nothing collides with what's already
+ * here. Throws `InvalidArchiveError` before creating anything if the zip
+ * isn't an export.
+ */
+export async function importDiskInto(file: File, fs: Pick<FsStore, "createFolder" | "addNodes">, parentId: string): Promise<MergeResult> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const plan = await planImport(await unzipInWorker(bytes), undefined, { merge: true });
+  const folder = fs.createFolder(parentId, importFolderName());
+  const nodes = plan.nodes
+    .filter(node => node.id !== ROOT_ID)
+    .map(node => (node.parentId === ROOT_ID ? { ...node, parentId: folder.id } : node));
+  await fs.addNodes(nodes, plan.blobs);
+  return { fileCount: nodes.filter(node => node.type === "file").length, folder };
 }

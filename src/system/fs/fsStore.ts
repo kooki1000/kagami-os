@@ -463,6 +463,12 @@ export interface FsStore {
    * new tree doesn't gets swept.
    */
   replaceAll: (nodes: FsNode[], blobs: { hash: string; bytes: Uint8Array; mimeType?: string }[]) => Promise<void>;
+  /**
+   * Add already-built nodes alongside what's there — the import-into-a-folder
+   * half of B15. Same blob-before-node ordering as `replaceAll`, nothing is
+   * removed. The caller owns the nodes' ids and parents.
+   */
+  addNodes: (nodes: FsNode[], blobs: { hash: string; bytes: Uint8Array; mimeType?: string }[]) => Promise<void>;
 }
 
 let initPromise: Promise<void> | null = null;
@@ -804,6 +810,14 @@ export const useFsStore = create<FsStore>()((set, get) => {
       if (ids.length)
         removeIds(ids);
       return ids.length;
+    },
+
+    async addNodes(nodes, blobs) {
+      await Promise.all(blobs.map(async ({ hash, bytes, mimeType }) => {
+        if (!(await blobStore.has(hash)))
+          await blobStore.put(hash, new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mimeType }));
+      }));
+      commit(nodes);
     },
 
     async replaceAll(nodes, blobs) {
