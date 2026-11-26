@@ -95,6 +95,10 @@ jobs:
           fi
 
       - name: Run E2E tests
+        # Inside the container Actions points HOME at /github/home, which root
+        # doesn't own, and Firefox refuses to launch from such a HOME.
+        env:
+          HOME: /root
         run: pnpm exec playwright test --project=${{ matrix.project }}
 
       - name: Upload report
