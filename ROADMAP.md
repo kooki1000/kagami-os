@@ -1,1080 +1,515 @@
-# Kagami OS — Feature Backlog & Roadmap
+# Kagami OS — Roadmap
 
-**Status:** direction reset · July 2026
-**Baseline:** phases 1–12 complete, native N-1/N-2 shipped (see
-`ARCHITECTURE.md` § Phase status)
+**Status:** revised November 2026
+**Baseline:** phases 1–12 and steps 13–16 shipped; step 17 (the app SDK)
+half shipped; native N-1 and N-2 shipped.
 
-This document defines what "finished" means for Kagami, enumerates every
-feature gap between that target and today's codebase, and sequences the work
-into steps with acceptance criteria. Feature items carry stable IDs (`B4`,
-`U2`, …) so steps, issues, and commits can reference them.
+This document says what "finished" means for Kagami, lists the gap between
+that and `main`, and puts the remaining work in order. Feature items carry
+stable IDs (`B13`, `D8.7`, …) so branches, commits and issues can refer to
+them. `ARCHITECTURE.md` describes what exists; `DIRECTION.md` explains why
+the project is shaped the way it is.
 
-> **Reset, July 2026.** This roadmap previously planned an _online_ desktop:
-> accounts, a backend service, cross-device sync, share links. That target is
-> retired — Kagami is **local-first, with no server, ever** (§2). Areas **A**
-> and **E** and the old Phases 13–14 survive only in §3.X, as a record of
-> what was dropped and why.
->
-> What remains is ordered by three commitments: the product gets **finished
-> before it gets distributed**; finished means **rock-solid**, **deep**, and
-> **extensible**; multi-device sync sits below that line.
->
-> The **native track** (Tauri shell, isolated filesystem, built-in browser —
-> [`DIRECTION.md`](DIRECTION.md), area **N**) runs in parallel: N-1 and N-2
-> shipped, N-3 deferred with everything else distribution-shaped.
+> **November 2026 revision.** Area U (app depth and customization) is
+> finished, along with step 16. This pass removes the detail for shipped work
+> (it lives in `ARCHITECTURE.md` and git history), finishes step 17's scope,
+> and adds steps 18–21. Those come from the review in
+> `docs/improvement-proposals.md`, which found the remaining gaps cut across
+> apps rather than sitting inside any one of them: backups that miss half the
+> desktop, no way back from an overwrite, search that only sees file names,
+> and a desktop that can't exchange files with the host OS except through
+> Upload and Download.
 
-**Sizing legend:** `S` ≈ half a day · `M` ≈ 1–3 days · `L` ≈ 1–2 weeks ·
-`XL` ≈ multi-week, needs its own design doc.
+**Sizing:** `S` ≈ half a day · `M` ≈ 1–3 days · `L` ≈ 1–2 weeks · `XL` ≈
+several weeks, needs its own design note.
 
 **Contents**
 
-1. [Where the project stands today](#1-where-the-project-stands-today)
+1. [Where the project stands](#1-where-the-project-stands)
 2. [Definition of "finished"](#2-definition-of-finished)
-3. [Feature backlog by area](#3-feature-backlog-by-area) (B files · C shell · D apps · F platform · G security · H quality · U depth & customization · N native · X retired)
-4. [Roadmap](#4-roadmap) — steps 13–17 with exit criteria
+3. [Backlog by area](#3-backlog-by-area) (open items only, plus §3.X retired and parked)
+4. [Roadmap](#4-roadmap) — steps 17–21
 5. [Technical debt register](#5-technical-debt-register)
-6. [Open decisions](#6-open-decisions-need-sign-off-before-the-affected-step)
+6. [Decisions](#6-decisions)
 7. [Risk register](#7-risk-register)
-8. [Success metrics per step](#8-success-metrics-per-step)
-9. [Testing & release strategy](#9-testing--release-strategy)
+8. [Success metrics](#8-success-metrics)
+9. [Testing and release](#9-testing-and-release)
 10. [Immediate next steps](#10-immediate-next-steps)
-
-- [Appendix A — Design sketches for the XL items](#appendix-a--design-sketches-for-the-xl-items)
-- [Appendix B — Phase 9 work breakdown](#appendix-b--phase-9-work-breakdown-shipped) (shipped, kept as a worked example)
 
 ---
 
-## 1. Where the project stands today
+## 1. Where the project stands
 
-Everything below already works and is the foundation the rest of this
-roadmap builds on:
-
-- **Shell** — menu bar (system + per-app manifest menus), dock (pin/run
-  indicators, size/position settings), wallpaper, light/dark/auto theme,
-  three curated "looks" (Lagoon/Ember/Slate) over five procedural wallpaper
-  designs, chrome translucency, toasts +
-  notification center, global ⌘-shortcuts, ⌘K search, app/window switchers,
+- **Shell.** Menu bar with per-app manifest menus, dock (pins, size,
+  position), three curated looks over five procedural wallpapers, custom
+  accent and wallpaper image, interface scale, toasts and a notification
+  center, global shortcuts, ⌘K name search, app and window switchers,
   desktop icons, session restore.
-- **Window manager** — open/close/focus (monotonic z-index), drag, 8-way
-  resize, minimize (with fly-to-dock animation), maximize, edge and quarter
-  snap, keyboard window ops, restore-rect peeling, viewport clamping. Pure
-  Zustand store, unit-tested.
-- **Virtual file system** — `FsNode` tree in Zustand, write-through
-  persistence behind the `StorageAdapter` seam, a content-addressed
-  `BlobStore` for binaries, seeded first run, Trash with restore/empty
-  semantics, name dedupe, system-folder protection.
-- **Apps** — Files (grid/list, breadcrumbs, history, filter, rename, DnD,
-  multi-select, clipboard, keyboard nav, upload/download, Get Info,
-  open-with), Notes, Viewer, Media Player, Terminal (pure shell engine over
-  the VFS), Settings, Welcome, Browser (native build only).
-- **Platform** — installable PWA with an offline service worker; a Tauri
-  native shell with disk-backed adapters under `$APPDATA/disk`.
-- **Quality** — 31 Vitest unit suites and 37 Playwright specs across
-  Chromium/Firefox/WebKit in CI; strict ESLint; type-checked builds; strict
-  CSP; an accessibility pass with axe-core coverage.
+- **Window manager.** Focus by monotonic z-index, drag, 8-way resize,
+  minimize to dock, maximize, edge and quarter snap, keyboard window ops,
+  viewport clamping. A pure Zustand store, unit-tested.
+- **File system.** `FsNode` tree in Zustand behind the `StorageAdapter`
+  seam, a content-addressed `BlobStore` for anything over 64 KB, Trash with
+  restore and optional 30-day auto-empty, full-disk zip export and import.
+- **Apps.** Files, Notes (WYSIWYG markdown), Code (CodeMirror 6), Viewer,
+  Documents (PDF, sandboxed), Media Player, Terminal, Calculator, Clock,
+  Paint, Settings, Welcome (a first-run tour), and Browser in the native
+  build.
+- **Platform.** Installable PWA with an offline service worker; a Tauri
+  shell with disk-backed adapters under `$APPDATA/disk`; a capability
+  sandbox (`src/system/sandbox/`) that runs Documents and installed
+  third-party bundles.
+- **Quality.** 86 Vitest suites and 45 Playwright specs across Chromium,
+  Firefox and WebKit in CI; strict ESLint; type-checked builds; strict CSP;
+  axe-core coverage.
 
-**The honest gap.** The _shell_ is mature; the _apps inside it_ are mostly
-first passes. Notes is a bare `<textarea>` over a flat list of every text
-file on the drive. The Player wraps native `<audio controls>` — a visible
-break in the design language — and does not advance to the next track when
-one ends. Closing that gap is area **U** (§3) and step 15 (§4), and it is
-the difference between a convincing demo and a desktop somebody uses.
-
-Three architectural **seams were built deliberately** and should absorb most
-of the work below without rewrites:
-
-1. `StorageAdapter` / `BlobStore` (`src/system/fs/types.ts`) — the only
-   interfaces the fs store persists through. Built for a server backend that
-   is no longer coming; they already carry the IndexedDB and native-disk
-   implementations, and would carry BYO-storage sync (§3.X.2) unchanged.
-2. The **app manifest pattern** (`src/system/apps/`) — apps are data
-   (manifest + lazy component); the shell renders them generically. New
-   apps, and eventually third-party apps, plug in here.
-3. `OsWindow.screenId` — reserved for multi-monitor; currently always
-   `'main'`.
+**The gap.** The apps aren't the problem any more. What's missing is the
+layer around them. The disk is the user's only copy, and the backup leaves
+out every `localStorage` store, including the grants installed apps depend
+on. Nothing protects a file from being overwritten. ⌘K can't search inside
+files. And the SDK can install and run an app, but nobody outside the repo
+has a document to write one from, and an installed app can't open a file.
 
 ---
 
 ## 2. Definition of "finished"
 
-The target product, stated as user-visible capabilities:
+What the user can do when Kagami is done:
 
 1. **It's yours, and it stays yours.** No account, no server, no telemetry.
-   Files live on your machine and never leave it unless you export them.
-2. **Nothing breaks.** No stuck state, no unreachable menu, no silent write
-   failure, and no path where a refresh, a crash, or a full disk loses
-   data. Your whole disk round-trips through a zip file you keep.
-3. **Real files.** Upload anything from the host OS, download anything back
-   out, preview common formats, and manage files with the ergonomics of a
-   native file manager (multi-select, clipboard, keyboard).
-4. **Apps you'd actually use.** Every built-in app is finished, not a first
-   pass — and every file type the VFS can hold has an app that opens it
-   properly.
-5. **It feels like yours.** Wallpaper, accent, density, dock, desktop, and
-   default apps are all under the user's control, within a design system
-   that keeps the result readable (§6 guardrails).
+   Files never leave the machine unless the user exports them.
+2. **Nothing breaks, and nothing is lost.** No stuck state, no silent write
+   failure. The whole desktop, settings and installed apps included,
+   round-trips through a backup, and a bad edit can be undone after the
+   fact.
+3. **Real files.** Upload, download, preview and manage files the way a
+   native file manager does, and open host files in Kagami directly.
+4. **Apps you'd actually use.** Every built-in app is finished, and every
+   file type the VFS can hold opens in an app that handles it.
+5. **It feels like yours.** Wallpaper, accent, density, dock, desktop and
+   default apps are under the user's control, inside a design system that
+   keeps the result readable.
 6. **A real app platform.** A documented, capability-scoped way to add apps
-   without touching the shell — and without trusting them.
-7. **Runs everywhere.** The same desktop is available as a website and as a
-   native desktop app that adds what the browser sandbox can't. See
-   [`DIRECTION.md`](DIRECTION.md) §3.
+   without touching the shell and without trusting them.
+7. **Runs everywhere.** The same desktop as a website and as a native app.
+   See `DIRECTION.md` §3.
 
-Where each lands in §3: statements 1–2 in areas B, G, and H; 3 in B; 4 in D
-and U; 5 in U; 6 in G (the sandbox) and D8 (the SDK); 7 in N.
+Statements 1, 4, 5 and 7 are met. Step 17 finishes 6, steps 18 and 19 finish
+2, and step 21 finishes 3.
 
-**Deliberately not in this definition:** multi-device sync and sharing.
-Both were the centre of the previous roadmap; both are now below the line
-(§3.X). A user who wants their desktop on two machines exports a zip today,
-and may get bring-your-own-storage sync later — see §3.X.2.
+**Not in this definition:** multi-device sync and sharing. Both are below
+the line (§3.X).
 
 ---
 
-## 3. Feature backlog by area
+## 3. Backlog by area
 
-### A. Accounts & backend service — **retired**
+Shipped rows are gone from these tables. Their IDs stay reserved, and the
+detail is in `ARCHITECTURE.md` or the commit that shipped them. Fully shipped
+areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 
-Kagami will not run a server. Accounts, a remote `StorageAdapter`, a sync
-engine, conflict policy, quotas, and device management are all dropped. The
-scope and the reasoning are preserved in §3.X.1 rather than deleted.
+### B. File system and data safety
 
-### B. File system & Files app maturity
+| ID  | Feature                                                                                                                                                                                                                                               | Size | Notes                                                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------- |
+| B9b | **Content search** — the second half of B9. An in-memory inverted index over text content, built in a Worker at boot and updated from `fsStore.commit()`; ⌘K results show a one-line snippet                                                          | M/L  | B9 deferred this until B1 shipped. It has. The index is reused by D10's backlinks                       |
+| B13 | **Whole-desktop backup** — the export gains a `settings.json` entry with every persisted store's state and zustand `version` (settings, dock, desktop layout, theme, view prefs, per-app prefs, `appGrantsStore`); import runs each store's `migrate` | M    | `EXPORT_MANIFEST_VERSION` → 2; version-1 zips still import as disk-only. Session-scoped stores stay out |
+| B14 | **Backup reminder** — record `lastBackupAt`, show it in the Backup row, notify once past a threshold (default 7 days, Safari's eviction window). Off in the native build                                                                              | S    | Addresses R1 directly                                                                                   |
+| B15 | **Import into a folder** — a second import action that unpacks under `Home/Imported <date>` via `uniqueChildName` instead of replacing the disk; system-folder ids in the zip are ignored                                                             | M    | The answer to "two machines" is a zip, and today that zip can only overwrite                            |
+| B16 | **Version history for text files** — on save, keep the previous content hash if it's more than a few minutes old (cap 20 per node); blob GC treats them as live; "Revert to…" in Get Info and both editors                                            | L    | Needs T11. Content addressing makes old versions nearly free                                            |
+| B17 | **Undo for file operations** — an inverse-op stack in the fs store for move, rename, drag-and-drop and paste; ⌘Z in Files and on the desktop when no text field has focus. The existing trash-undo toasts move onto it                                | M    |                                                                                                         |
+| B18 | **Automatic backup folder** — on Chromium, a `showDirectoryPicker` handle stored in IndexedDB; Kagami writes a rolling backup zip there on a schedule and keeps the last few. The native build does the same through Tauri                            | M/L  | One-way, never reads back, so it isn't §3.X.2 sync. Firefox and Safari keep B14                         |
 
-| ID  | Feature                                                                                                                                                                                                        | Size | Notes                                                                                                                                    |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| B1  | **Binary content architecture** — store file bytes as `Blob`s in a separate IDB object store (and S3-compatible storage server-side), keyed by content hash; `FsNode.content` becomes a reference for binaries | L    | Prerequisite for real uploads; today images live as data-URL strings inside the node record, which bloats `loadAll` and the sync payload |
-| B2  | **Upload from host OS** — drag files/folders from the OS onto Files or the desktop; toolbar "Upload…" fallback (`<input type=file webkitdirectory>`)                                                           | M    | Needs B1; progress toasts via the existing notification store                                                                            |
-| B3  | **Download to host OS** — "Download" on any file; folders download as a zip built client-side                                                                                                                  | M    | Zip via a Web Worker to keep the shell responsive                                                                                        |
-| B4  | **Multi-select** — click+⌘/⇧ ranges, marquee selection in grid view, bulk move/trash/download                                                                                                                  | L    | Touches `selectedId → selectedIds` throughout FilesApp/FilesView; context menus grow bulk variants                                       |
-| B5  | **Clipboard** — Copy/Cut/Paste for nodes (⌘C/⌘X/⌘V), including copy-as-duplicate ("name 2") within a folder                                                                                                    | M    | An in-memory clipboard store; menu items come from the Files manifest                                                                    |
-| B6  | **Keyboard navigation** — arrow keys, Enter to open, ⌫ to trash, F2/Enter-to-rename, type-ahead selection                                                                                                      | M    | Files-only first; establishes the roving-focus pattern other apps reuse (H1)                                                             |
-| B7  | **Desktop icons** — render the `Desktop` folder's children on the wallpaper, draggable with persisted positions, same context menus as Files                                                                   | L    | The Desktop component is currently wallpaper-only; icon positions need a small per-folder layout record                                  |
-| B8  | **File metadata & properties** — size accounting (bytes, folder rollups), "Get Info" panel, kind registry expansion                                                                                            | M    | `FsNode` gains `size`; computed lazily for folders                                                                                       |
-| B9  | **Search** — global name search (menu-bar magnifier is currently decorative), scoped search in Files; content search later, post-B1                                                                            | M/L  | Start with an in-memory index over `nodes`; ship the ⌘K/spotlight overlay in the shell                                                   |
-| B10 | **Sort controls** — by name/date/kind/size, per-folder, persisted                                                                                                                                              | S    | `childrenOf` already centralizes ordering                                                                                                |
-| B11 | **Open-with menu & file associations UI** — right-click "Open With ▸", user-editable default app per mime type                                                                                                 | M    | Generalizes the hardcoded table in `openFile.ts` into a settings-backed registry                                                         |
-| B12 | **Trash policies** — item count/age badge, optional auto-empty after 30 days                                                                                                                                   | S    |                                                                                                                                          |
+### C. Shell and window manager
 
-### C. Shell & window-manager completeness
-
-| ID  | Feature                                                                                                                                                                       | Size | Notes                                                                                                             |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------- |
-| C1  | **Session restore** — persist window layout (app, rect, mode, z-order, minimized) and reopen it on boot; apps opt in to restoring payloads (e.g. Notes reopens the same note) | M    | ✅ shipped in Phase 11, persisted to localStorage. U9 adds the user-facing switch to turn it off                  |
-| C2  | **App/window switcher** — ⌘Tab cycling with an overlay, ⌘\` between windows of one app                                                                                        | M    | Window store already has all the data; needs a capture-phase key handler coexisting with `shortcuts.ts`           |
-| C3  | **Window overview** ("mission control") — zoomed-out grid of open windows, click to focus                                                                                     | L    | Pure CSS transforms over `WindowLayer`; good demo feature, not load-bearing                                       |
-| C4  | **Quarter snapping & keyboard window ops** — corner snap zones; ⌃⌥-arrows to snap/maximize/restore                                                                            | M    | Extends `SnapSide` to a `SnapZone` union; store logic is unit-testable like the existing snap tests               |
-| C5  | **Menu-bar status tray** — storage-usage meter, battery/network where the Web APIs allow; user-configurable via U7                                                            | S/M  | The offline indicator shipped in Phase 12; the storage meter matters more now that R1 has no server-side backstop |
-| C6  | **Focus-follows-app polish** — clicking a dock tile of a running app with all windows minimized restores _all_; app-level "hide" (⌘H)                                         | S    |                                                                                                                   |
-| C7  | **Multi-monitor** — populate `screenId` via the Window Management API where available; per-screen maximize/snap bounds                                                        | XL   | Explicitly deferred; the seam exists so nothing else blocks on it                                                 |
-| C8  | ~~**Lock screen / fast user switch**~~ — **retired** with accounts; there is no session to lock                                                                               | —    | See §3.X.1                                                                                                        |
+| ID  | Feature                                                                                                                                                                    | Size | Notes                                                                  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------- |
+| C3  | **Window overview** — zoomed-out grid of open windows, click to focus                                                                                                      | L    | Nice to have, not load-bearing. Unscheduled                            |
+| C5  | **Storage meter** — usage against quota from `navigator.storage.estimate()` in Settings › General and as an optional menu-bar item; warn before a large write would fail   | S    | Nothing in `src/` calls `estimate()` yet                               |
+| C7  | **Multi-monitor** — populate `OsWindow.screenId` from the Window Management API                                                                                            | XL   | Deferred. The seam exists so nothing blocks on it                      |
+| C9  | **Commands in ⌘K** — list the focused app's enabled menu items and the shell commands next to file results ("New Note", "Empty Trash", "Toggle Dark Mode", Settings panes) | S/M  | Menus are already data; `shortcuts.ts` already runs them. No new model |
 
 ### D. App suite
 
-| ID  | Feature                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Size     | Notes                                                                                                                                                                                                                    |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D1  | ~~**Notes: Markdown preview & formatting**~~ — ✅ shipped (step 15, 2026-07-27): toggleable rendered preview, toolbar (bold/italic/underline/heading/bullet+numbered lists), read-only task-list checkboxes; stays plain-markdown on disk                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | L        | Shipped **outside** the sandbox, ahead of the original 16b sequencing — safe by construction, see §6 decision 8. Any extension toward full CommonMark, links, images, or raw-HTML passthrough must go through G2 instead |
-| D9  | ~~**Notes: inline (WYSIWYG) formatting**~~ — ✅ shipped (step 15, 2026-08-03): the Preview toggle is gone; the editing surface is the rendered document. Tiptap/ProseMirror with an explicitly-assembled closed schema (never `StarterKit`), markdown ↔ document hand-written rather than via `@tiptap/markdown` (it depends on `marked`, a general CommonMark→HTML parser — see §6 decision 8's re-check, which doubles as G1's owed renderer audit). Notes stay plain `.md` on disk. Task items became interactive, the toolbar lights up for the caret's context, and find highlights every match in place instead of forcing the preview closed. Editor chunk lazy-loads at ~113 kB gzip (was ~9 kB)       | M        | Storage, Files, search, templates and export untouched. Still open: nested lists, and any node with a URL (a link, an image) is deliberately out — adding one reopens §6 decision 8                                      |
-| D2  | **Viewer: pan + gestures + slideshow** — drag-to-pan when zoomed, pinch/trackpad zoom, arrow-key prev/next within the folder, basic EXIF panel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | M        | Prev/next reuses `childrenOf` on the file's parent                                                                                                                                                                       |
-| D3  | **Terminal: engine v2** — `cp`, `mv`, `head/tail`, `grep`, `open` (launches the associated app), `>>` append, pipes between builtins, tab completion, `..`-aware path arguments for `mkdir`/`touch`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | L        | Keep the engine pure and unit-tested; completion needs a small readline layer in `TerminalApp`                                                                                                                           |
-| D4  | ~~**Code/text editor app**~~ — ✅ shipped (step 16b, 2026-08-04): CodeMirror 6, 15 languages loaded one `import()` each, association for `.js/.ts/.json/.css/.py/.sh/.yaml/…`, and a syntax palette held to WCAG AA by its own test. Two departures from this row: **no tabs** — a single-instance window with a file sidebar, because nothing else in the shell has a tab primitive and the Notes sidebar already answers "which file"; and it ships **outside the sandbox**, see §6 decision 9. The real blocker turned out not to be highlighting: `.json`/`.ts`/`.py` had no associated app at all and failed with "Can't open this file", so mime resolution (`system/fs/mimeTypes.ts`) was half the work | L        | CodeMirror 6 was chosen, and all 15 packages installed under the `minimumReleaseAge` policy — the half of R3 the step-14 spike hadn't tested. Notes keeps `.md`/`.txt`; both apps are candidates for every text type     |
-| D5  | **Media player app** — audio/video playback for uploaded files (post-B1), playlist from a folder                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | M        | `<audio>/<video>` over Blob URLs; add mime associations                                                                                                                                                                  |
-| D6  | ~~**PDF viewing**~~ — ✅ shipped (step 16b, 2026-08-01): renders inside the capability sandbox (16a) via `pdfjs-dist`, page navigation + zoom, as a new standalone "Documents" app rather than folded into Viewer. **Reworked 2026-08-03**: the chrome moved out of the frame into React (toolbar with prev/next, a page field, zoom, fit-width, and loading/empty/error states), because a `srcdoc` document inherits no design tokens and the viewer was hardcoded light. Added `ui.setState` and a `theme` event to the bridge to make that possible. Still open: continuous scroll through pages — one canvas, one page today — plus text selection and find                                               | M        | The sandbox's first real (non-demo) consumer — see `src/apps/documents/`, notably `sandboxEntry.ts`'s comments on why PDF parsing runs on the frame's own main thread rather than a background Worker                    |
-| D7  | ~~**Small utilities**~~ — ✅ shipped (step 16b, 2026-08-02): a scientific Calculator (trig/log/powers/memory, built on JS's own `Math`, no new dependency), a Clock (live clock + stopwatch + countdown timer, fully ephemeral), and Paint (freehand canvas, saves as a real PNG into the VFS's Pictures folder via `createBlobFile`)                                                                                                                                                                                                                                                                                                                                                                          | S–M each | Cheap wins that exercised the manifest pattern exactly as intended — see `src/apps/calculator/`, `src/apps/clock/`, `src/apps/paint/`; none needed the sandbox                                                           |
-| D8  | **Third-party app SDK** — apps as sandboxed iframes with a postMessage bridge exposing a _capability-scoped_ API (fs scopes, windowing, notifications); manifest install/uninstall UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | XL       | The long-term platform play; requires G2's sandbox model first. Everything before it should keep the manifest pattern clean                                                                                              |
+The list of apps is closed (§6.2). What's left is the SDK and the leftovers
+inside existing apps.
 
-### E. Sharing & collaboration — **retired**
+| ID  | Feature                                                                                                                                                                                                             | Size | Notes                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
+| D8  | **Third-party app SDK** — D8.1–D8.5 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent). Remaining tasks are in step 17              | XL   | See §4                                                                                              |
+| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                   | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
+| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13) | M    | Take these opportunistically; none blocks a step                                                    |
 
-Share links, a public viewer page, "shared with me", and real-time
-co-presence all need a server to host and serve the shared bytes. Dropped
-alongside area A; see §3.X.1.
+### F. Platform
 
-### F. Platform: PWA, offline, mobile
+| ID  | Feature                                                                                                                                                                                                        | Size | Notes                                                                            |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------- |
+| F3  | **Touch and small screens**                                                                                                                                                                                    | L    | De-scoped by §6.1                                                                |
+| F5  | **PWA file handler** — `file_handlers` in `manifest.webmanifest` plus a `launchQueue` consumer: files opened from the host OS are copied into the VFS and handed to `openFile`                                 | M    | Chromium only; other engines ignore the field. The Tauri equivalent waits for N5 |
+| F6  | **Paste from the host clipboard** — an image or text on the system clipboard pasted into Files or the desktop becomes a file there via `createBlobFile`; Kagami's own clipboard store wins when it's non-empty | S/M  |                                                                                  |
+| F7  | **Drag out to the host** — a `DownloadURL` drag from Files saves the file on the host desktop                                                                                                                  | S    | Chromium only; everyone else keeps Download                                      |
 
-| ID  | Feature                                                                                                                                                                                                               | Size | Notes                                                                                                |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
-| F1  | **PWA** — manifest, icons, service worker precaching the app shell, installability                                                                                                                                    | M    | Vite PWA plugin, subject to dependency policy                                                        |
-| F2  | **Offline-first behavior** — boot fully offline from the cached shell + local data; visible offline indicator                                                                                                         | M    | ✅ shipped in Phase 12. With no server, "offline" is now the normal case rather than a degraded mode |
-| F3  | **Touch & small screens** — touch drag for windows/files already partially works via pointer events; needs bigger hit targets, a phone layout decision (full windowing is desktop-only; phones get a single-app view) | L    | Explicitly de-scoped from v1.0 unless priorities change                                              |
-| F4  | **Browser support matrix** — define and CI-test Chromium/Firefox/Safari; Safari IDB and pointer-capture quirks are the known risks                                                                                    | S    |                                                                                                      |
+### G. Security and privacy
 
-### G. Security, privacy, trust
+G1 (security baseline), G2 (the sandbox) and G4's data export shipped; G3
+(encryption) was retired with the server. The open security work is the
+SDK's: every new bridge method in step 17 needs negative tests (§9).
 
-| ID  | Feature                                                                                                                                                                                                                  | Size | Notes                                                                                                                                                                                                                                                                             |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| G1  | **Security baseline** — strict CSP, no `dangerouslySetInnerHTML` anywhere (audit D1's markdown renderer), dependency audit in CI                                                                                         | M    | ✅ largely shipped in Phase 9. D1's shipped renderer never calls `dangerouslySetInnerHTML` and has no generic-HTML code path (§6 decision 8), so it needed no separate audit. A renderer audit is still owed if D1's scope grows (D9, or full CommonMark) — inherited by step 16b |
-| G2  | **App sandboxing model** — iframe + capability bridge design (prerequisite for D8); even first-party "risky" renderers (PDF, or a markdown renderer that isn't closed-vocabulary like D1's) should render in the sandbox | L    |                                                                                                                                                                                                                                                                                   |
-| G3  | ~~**Encryption**~~ — **retired.** With no server and no network, there is nothing in transit and no remote copy to encrypt                                                                                               | —    | If X.2 (BYO sync) is ever picked up, encrypting what lands in the user's chosen storage becomes a live question again                                                                                                                                                             |
-| G4  | **Privacy posture** — no third-party trackers; opt-in only, anonymized telemetry (H4); data export (full account → zip) and account deletion                                                                             | M    | Data export doubles as the backup story                                                                                                                                                                                                                                           |
+### H. Quality
 
-### H. Quality: accessibility, i18n, performance, testing
+| ID  | Feature                                                                                                   | Size | Notes                                                       |
+| --- | --------------------------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------------- |
+| H2  | **i18n scaffolding** — extract UI strings; formatting already uses `navigator.language` (`lib/format.ts`) | M    | Cost grows slowly with each app. Last in line               |
+| H3  | **Performance, remaining** — virtualize the Notes and Code sidebars; add a Lighthouse budget to CI        | S/M  | Files is virtualized and `childrenOf` is cached (T7 closed) |
 
-| ID  | Feature                                                                                                                                                                                                                                          | Size | Notes                                                                                                              |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------ |
-| H1  | **Accessibility pass** — real menu/menuitem ARIA roles + arrow-key traversal in MenuBar/ContextMenu, focus trap per window, visible focus rings, `prefers-reduced-motion` variants for the minimize/toast animations, screen-reader labels audit | L    | The biggest gap in current UI code; do before the surface area doubles                                             |
-| H2  | **i18n scaffolding** — extract strings, locale-aware `Intl` date/number formatting (`format.ts` and `Clock` hardcode `en-US`), RTL smoke test                                                                                                    | M    | Scaffold early even if English-only ships                                                                          |
-| H3  | **Performance** — virtualize Files list/grid and Notes sidebar for 10k+ nodes; index `childrenOf` (currently O(n) scans of all nodes per render — fine now, not at scale); Lighthouse budget in CI                                               | M    | Measure first: seed a 10k-node fixture and profile                                                                 |
-| H4  | **Observability** — error boundary per window (one crashing app must not take down the shell), client error reporting, opt-in usage telemetry                                                                                                    | M    | Error boundaries are S and should happen immediately                                                               |
-| H5  | **E2E test rig** — Playwright suite covering: boot, open/move/snap/close windows, Files trash/restore round-trip, Notes edit persistence across reload, Terminal session, theme switching                                                        | L    | ✅ shipped in Phase 9 and grown since — 37 specs across three engines. What makes steps 14–15 safe to move fast in |
-| H6  | **CI/CD** — lint + typecheck + unit + E2E on every PR; preview deploys; versioned releases with changelog; fix the `engines` field vs. dev-Node mismatch (`package.json` pins 22.23.1; local dev uses 24)                                        | M    | First infrastructure item to do — everything else lands safer with it                                              |
+### N. Native desktop (Tauri)
 
-### U. App depth & customization _(the "not a demo" area)_
-
-The gap described in §1, itemized. Every entry is client-side, needs no new
-architecture, and is independently shippable — which also makes this the
-best area to hand to a contributor.
-
-#### U-a. Customization surface
-
-| ID  | Feature                                                                                                                                                                                                                       | Size | Notes                                                                                                                                                                                                                                                         |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| U1  | **Custom wallpaper** — set any image in the VFS as the wallpaper; fit modes (fill/fit/centre/tile); separate light and dark choices; presets stay                                                                             | M    | Upload and the `BlobStore` already exist, and the wallpaper is only CSS vars set inline on `<html>` (`system/settings/palettes.ts`). The new part is a blob URL whose lifetime outlives the Files window that picked it                                       |
-| U2  | **Custom accent, contrast-validated** — a colour picker beside the presets, with derived `accent2` and derived window-control duotone, and a validator that warns when accent-on-surface or ink-on-accent falls below WCAG AA | M    | Guardrail change, signed off in §6.5. The control triad must stay **derived**: users pick one accent, never three control colours, so "never a traffic-light triad" survives contact with customization                                                       |
-| U3  | **Curated looks over procedural wallpapers** — one "look" bundles accent, control duotone and wallpaper design; five procedural designs replace the single recolored gradient; chrome translucency (`materialLevel`)          | M    | Shipped. Wallpaper artwork became data (`wallpaperStyles.ts`) and the wallpaper tone now derives from the accent, so U2's custom color can't clash with the desktop. Retired Iris/Meadow; `settingsStore` v1→v2 migrates. Presets remain the recommended path |
-| U4  | **Interface density & text size** — a `--ui-scale` token driving the shell's currently hardcoded px sizes; small/default/large                                                                                                | M    | Also the single biggest remaining accessibility win. One mechanical pass over a lot of Tailwind classes — do it in one PR, not incrementally                                                                                                                  |
-| U5  | **Default apps pane** — list, change, and reset the per-mime overrides that `settingsStore.fileAssociations` already stores                                                                                                   | S    | The store field exists with no UI whatsoever: today an override can be set from "Open With" and then never inspected or undone                                                                                                                                |
-| U6  | **Motion & window feel** — an explicit reduce-motion switch (not only the OS media query), animation speed, wallpaper dimming behind windows                                                                                  | S    |                                                                                                                                                                                                                                                               |
-| U7  | **Menu bar & clock** — 12/24-hour, seconds, date visibility, which status items appear                                                                                                                                        | S    | `lib/format.ts` and `Clock` already centralize the formatting                                                                                                                                                                                                 |
-| U8  | **Desktop preferences** — icon size, grid snap, auto-arrange, sort order                                                                                                                                                      | S    | Rides on the existing desktop-icon layout record                                                                                                                                                                                                              |
-| U9  | **Startup behaviour** — session restore on/off, apps opened at boot, default window size per app                                                                                                                              | S    | Session restore (C1) currently has no user-facing control at all                                                                                                                                                                                              |
-| U10 | **Shortcut reference** — a Settings pane listing every chord                                                                                                                                                                  | S    | `system/shortcuts.ts` already builds the chord strings the menus display; this is a read-only view over the same data. Rebinding is a separate, larger item                                                                                                   |
-
-#### U-b. Per-app depth
-
-Sized against "would a user call this finished?", not against effort.
-
-| ID  | App                             | What finishing it means                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Size |
-| --- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| U11 | **Notes**                       | Sidebar search/filter, folder scoping (it currently lists _every_ text file on the drive in one flat list), sort options, pinning; editor find-and-replace, word and character count, adjustable font and size, soft-wrap and focus modes; new-note-in-this-folder and templates; Duplicate and Reveal in Files in the context menu; and **reading blob-backed text**, which the editor currently refuses as "too large to edit"                                                                                                                                                                                                                                                                                                                                                                                                                     | L    |
-| U12 | **Media Player**                | Transport built in the design language instead of raw `<audio controls>`; **auto-advance at end of track** — the playlist exists but never advances on its own; shuffle and repeat; persisted volume; a scrub bar with elapsed/duration; space/←/→ keys; playback speed; artwork and metadata where the file carries it; and the window-reuse gap noted at `PlayerApp.tsx:14-18`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | M    |
-| U13 | **Viewer**                      | A filmstrip of folder siblings, the EXIF panel D2 left unbuilt, copy-image, **Set as wallpaper** (pairs with U1), and a fullscreen presentation mode                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | M    |
-| U14 | **Files**                       | Column/detail view with sortable headers, space-to-preview quick look, user-pinned favourites in the sidebar, tags or colour labels, a Recents place, an editable breadcrumb path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | L    |
-| U15 | ~~**Terminal**~~                | ✅ shipped (step 15, 2026-08-03). Earlier: history persisted across sessions and searchable (⌃R), aliases, `find`, adjustable font size. **Depth pass 2026-08-03**: `;`/`&&`/`\|\|` sequences with real exit codes and `$?`; `wc sort uniq which history du exit`; `ls -l`/`-a`, `mkdir -p`, `rm -r`, `grep -E`/`-r`; ⌃A/⌃E/⌃W/⌃U/⌃K/⌃L/⌃C; Tab-cycling completion over a quote-aware tokenizer; output coloured by meaning, a block cursor, a capped scrollback, and a choice of font and prompt shape. Still open: multi-line commands, `<` redirect and user variables, ANSI passthrough                                                                                                                                                                                                                                                          | M    |
-| U16 | **Welcome**                     | A real first-run tour rather than a static card — it is the first thing every new user sees, and right now it teaches them nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | S    |
-| U17 | ~~**Browser**~~ _(native only)_ | ✅ shipped (step 15, 2026-08-03). Bookmarks (star toggle, optional bar, right-click to remove); find-in-page on the page's own `window.find`; page zoom via `Webview::set_zoom`, remembered per host; downloads staged to a temp dir by Rust and moved into the VFS's Downloads folder, mime type inferred from the extension. Alongside: the address bar infers a scheme and falls back to a search engine (Google/DuckDuckGo/Bing, chosen in Settings › General, doubling as the homepage), `javascript:`/`data:` input is searched rather than navigated to, loads show a spinner and a Stop button, and a restored window reopens on the page it was left on. **Still open:** no match count in find, no download progress, no tabs, and no chords while the page holds key focus — all three limits are structural, see `docs/browser-depth.md` | M    |
-
-**Sequencing within U:** U1, U2, U5, U11, U12 first — they are the ones a
-user notices in the first five minutes. U4 wants to land before the app
-suite grows in step 16, for the same reason H1 (accessibility) was scheduled
-before Phase 12: mechanical passes get more expensive with every new surface.
-
-### N. Native desktop (Tauri) _(the "runs everywhere" track)_
-
-Packaging Kagami as a native app while keeping the website as the baseline —
-progressive enhancement, one codebase, two runtimes. Rationale, sequencing,
-and guardrails are in [`DIRECTION.md`](DIRECTION.md); this table is the
-backlog view.
-
-| ID  | Feature                                                                                                                                                                                                                                                                                 | Size | Notes                                                                                                                                      |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| N1  | **Tauri shell** — wrap the existing frontend in a Tauri v2 window; `src-tauri/` Rust crate; dev points at the Vite server, build at `dist/`; reconcile the meta-tag CSP with the webview                                                                                                | M    | No shell/app code changes; `pnpm tauri dev`/`build` alongside the unchanged `pnpm dev`/`build`                                             |
-| N2  | **Platform detection** — `src/system/platform.ts` `isTauri()`; the single gate every native-only branch routes through (never scatter `if (native)`)                                                                                                                                    | S    | Runtime detection, not a build-time flag or opt-in setting                                                                                 |
-| N3  | **Native filesystem backend** — `tauriAdapter.ts` (StorageAdapter) + `tauriBlobStore.ts` (BlobStore) writing under an app-owned hidden folder (`~/Library/Application Support/kagami-os/disk/` & platform equivalents); wired via the `isTauri()` switch at `fsStore.ts`/`blobStore.ts` | L    | The "isolated file system." Injectable root so both unit-test against a fake fs; degrades to in-memory like the IDB adapter if unavailable |
-| N4  | **Built-in Browser app** — a generic "Browser" over a native child webview (tabs, address bar, history, back/forward); desktop-only, shows unavailable on web                                                                                                                           | L    | Desktop-only — see `DIRECTION.md` §3.2 for why this can't work on the web                                                                  |
-| N5  | **Desktop build & release pipeline** — `tauri-action` in CI over `os: [ubuntu, macos, windows]`, code signing, notarization, auto-update; `tauri-driver` desktop e2e                                                                                                                    | XL   | Deferred until the local dev loop (N1–N3) works; `ci.yml` has no build/artifact job or OS matrix today                                     |
-
-Native third-party apps are a separate go/no-go decision — see §6 item 7
-and `DIRECTION.md` §5.3 — not part of this track.
-
-**Dependency chain:** N1 → N2 → N3 → (N4, N5).
+N1–N4 shipped. **N5** (desktop build and release pipeline: `tauri-action`
+over three OSes, signing, notarization, auto-update, `tauri-driver` e2e) is
+deferred with the rest of distribution (§3.X.3).
 
 ---
 
-### X. Retired and parked — what this roadmap dropped, and why
+### X. Retired and parked
 
-Kept as a record so nobody re-derives the reasoning, and so a contributor
-reading the git history understands why a large, carefully specified plan
-stopped being followed.
+Kept so nobody re-derives the reasoning.
 
-#### X.1 The online track — retired _(former areas A and E, former Phases 13–14)_
+#### X.1 The online track — retired
 
-A backend service, accounts, a remote adapter, an op-log sync engine,
-conflict policy, quotas, device management, share links, a public viewer
-page, "shared with me", and real-time co-presence.
+A backend, accounts, a remote adapter, an op-log sync engine, quotas,
+device management, share links and co-presence (former areas A and E).
 
-**Why dropped.** All of it requires a server this project will not run. The
-real cost was never the 9–12 weeks of code — it is Postgres, blob storage,
-auth, rate limiting, abuse handling, and being on the hook, indefinitely and
-for free, when a sync bug eats somebody's files. Local-first is a stronger
-position for this project than an underfunded cloud.
+**Why.** All of it needs a server this project won't run. The cost was never
+the weeks of code. It was Postgres, blob storage, auth, rate limiting, abuse
+handling, and being responsible, indefinitely and for free, when a sync bug
+eats somebody's files. Local-first is the stronger position for this
+project.
 
 **What was kept.** The seams. `StorageAdapter` and `BlobStore`
-(`src/system/fs/types.ts`) were built so a remote backend could drop in
-behind them; that same shape already serves the native filesystem adapter
-(N3) and would serve X.2 unchanged. Appendices A.1 and A.3 stay in this
-document as design sketches — unscheduled, not deleted.
+(`src/system/fs/types.ts`) already carry the IndexedDB and native-disk
+implementations and would carry X.2 unchanged. The old design sketches for
+the sync engine and API (former Appendices A.1 and A.3) are in git history at
+`d5fc414`.
 
 #### X.2 Bring-your-own-storage sync — parked
 
-The zero-cost version of "yours anywhere": the user supplies the backend — a
-Dropbox or Drive folder on disk via the File System Access API, or a private
-GitHub repository over a token — and Kagami syncs through it. No server, no
-account, no operational burden.
+The user supplies the backend (a synced folder via the File System Access
+API, or a private Git repository over a token) and Kagami syncs through it.
+No server and nothing to operate.
 
-Parked below the §2 line, with its scope recorded so picking it up later
-isn't a fresh investigation:
+If it's picked up:
 
 - `fsStore.commit()` and `removeIds()` are the interception points.
-  `removeMany` physically erases with **no tombstone**, so nothing can sync
-  until nodes carry a version and deletes leave a marker behind.
-- Scope it as a **snapshot merge**, not Appendix A.1's op log: one user, no
-  realtime, no fan-out, no auth. Per-node version, tombstones, and
-  "name (conflicted copy)" through the existing `uniqueChildName` — with the
-  merge itself a pure function under property tests.
+  `removeMany` erases with no tombstone, so nodes need a version and deletes
+  need a marker before anything can sync.
+- Scope it as a snapshot merge, not an op log: one user, no realtime. The
+  merge is a pure function under property tests, and conflicts become
+  "name (conflicted copy)" via `uniqueChildName`.
 - The File System Access API is Chromium-only, so a second backend is needed
-  as cross-browser proof. In the native build, the Tauri fs plugin makes
-  folder sync straightforward on all three platforms.
+  as cross-browser proof. B18 builds the one-way half of this and is a
+  reasonable first step.
 
-#### X.3 Distribution — deferred by decision
+#### X.3 Distribution — deferred
 
-A public deploy, tagged releases, a changelog, contributor onboarding, and
-signed native installers (N5) all wait until §2's definition is met. The
-product gets finished before it gets distributed.
+Public deploy, tagged releases, a changelog, contributor onboarding and
+signed installers (N5) wait until §2 is met. The exception is the LICENSE,
+which is hygiene rather than distribution (§6.3).
 
-One exception is worth taking immediately: **the repository is public and has
-no LICENSE**, which legally means all rights reserved — nobody may fork it or
-contribute to it. That is hygiene, not distribution.
+---
 
 ## 4. Roadmap
 
-Steps continue `ARCHITECTURE.md`'s phase numbering (1–12 shipped). The
-ordering follows four rules: infrastructure that de-risks later work ships
-first; the desktop reaches "excellent" before its surface area grows; every
-step ends in a demoable, releasable state; and nothing distribution-shaped
-starts until §2's definition is met.
+Ordering rules: work that protects user data goes before work that adds
+surface; a refactor goes before the two features that would otherwise each
+do it; and every step ends demoable, with e2e coverage on every engine the
+feature runs on.
 
-Estimates assume one person working steadily. Treat them as sizing, not
-commitments — §7 R4 covers what to do when one slips.
+### Shipped
 
-### Phases 9–12 — shipped
+| Step        | What                                                                                                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 1–12 | Shell, window manager, VFS, blob store, the first app suite, CI and flags, desktop experience, accessibility pass, PWA and offline |
+| Step 13     | Documents realigned around local-first (July 2026)                                                                                 |
+| Step 14     | Rock-solid: the whole review backlog closed (`docs/review-backlog.md`), full-disk export and import, no silent write failures      |
+| Step 15     | Area U: customization and per-app depth, plus Notes' markdown preview (D1) and WYSIWYG editor (D9)                                 |
+| Step 16     | 16a the capability sandbox; 16b Documents (D6), Calculator, Clock and Paint (D7), Code (D4)                                        |
+| N-1, N-2    | Tauri shell with disk adapters; the native Browser and its depth pass                                                              |
 
-Foundations and guardrails (CI, error boundaries, feature flags, CSP); file
-system maturity (blob store, upload/download, multi-select, clipboard,
-keyboard nav, Media Player); desktop experience (desktop icons, session
-restore, switchers, quarter snap, ⌘K search, Terminal engine v2,
-accessibility pass); PWA and offline packaging. Details in `ARCHITECTURE.md`
-§ Phase status. Appendix B keeps the Phase 9 task breakdown as a worked
-example of the granularity these steps expand into.
+### Step 17 — Finish the app SDK _(≈ 3–4 weeks)_
 
-The native track's N-1 (Tauri shell, `isTauri()`, disk-backed adapters) and
-N-2 (built-in Browser) shipped in parallel.
+D8.1–D8.5 shipped 2026-08-05. The exit criterion has always been "an app
+written outside this repository", and the reference app in D8.8 proves the
+mechanics but not that an outsider could write one. D8.9–D8.12 close that.
 
-### Step 13 — Realign the documents — ✅ _done (July 2026)_
+| ID    | Task                                                                                                                                                                                                                                                                                                         | Size | Depends on | Accept                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| D8.6  | Settings "Apps" pane: list installed apps, uninstall                                                                                                                                                                                                                                                         | M    | —          | Uninstall leaves nothing in the VFS, the registry or `appGrantsStore`                                               |
+| D8.7  | Revocation reaches a running window                                                                                                                                                                                                                                                                          | S/M  | D8.6       | Revoking `fs.read` makes an open window's next call return `capability_denied`, no reload                           |
+| D8.8  | Reference app and an install → run → revoke → uninstall e2e                                                                                                                                                                                                                                                  | M    | D8.7       | Passing on all three engines                                                                                        |
+| D8.9  | **Author docs and starter** — `docs/app-sdk.md` (bundle format, manifest fields, every bridge method and its capability, error codes, the security model); the client published as one copyable file with its types; D8.8's app doubles as the template                                                      | M    | D8.8       | Someone following only the doc builds and installs a working app                                                    |
+| D8.10 | **Private data folder** — every installed app gets `Apps/<id>/data` with read and write and no consent prompt; uninstall removes it                                                                                                                                                                          | S    | D8.6       | An app persists state across reloads without requesting any fs scope                                                |
+| D8.11 | **Installed apps open files** — a `fileTypes` manifest field feeding `openFile.ts` and the Default Apps pane (never the default on install), plus a per-file grant: opening a file with an app grants access to that one node for that window, and `fs.pick` shows a shell-drawn picker that grants the same | M    | D8.9       | An installed viewer appears in Open With and reads only the file it was handed; negative tests for every other node |
+| D8.12 | **Menus and dock badges over the bridge** — a `menus.set` method validated against `MenuSection`, items carrying `appCommand` strings; a badge method for the dock tile. Both were in 16a's scope and never landed                                                                                           | S/M  | D8.4       | A sandboxed app's menus show in the menu bar and its chords dispatch                                                |
 
-Done first, because every other step is planned against these documents and
-a stale plan misleads contributors and planning sessions alike.
+**Prerequisite:** the LICENSE (§6.3). Nobody can legally build against an
+SDK whose source carries no license.
 
-This rewrite of `ROADMAP.md`; `DIRECTION.md` §1/§2/§5.3/§6/§7/§8/§9;
-`ARCHITECTURE.md`'s adapter note and phase status; `README.md`'s summary;
-and the no-server constraint recorded in `CLAUDE.md` so it doesn't get
-re-proposed.
+**Exit:** a developer who has only read `docs/app-sdk.md` builds an app that
+installs from a bundle, appears in the dock, opens a file handed to it from
+Files, reads only what it was granted, and uninstalls cleanly.
 
-### Step 14 — Rock-solid _(≈ 2 weeks)_
+### Step 18 — Safety net _(≈ 1–1.5 weeks)_
 
-The stated top priority: it has to stop feeling like a demo underneath.
-"Rock-solid" is a gate, so this takes the _whole_ review backlog, not just
-the five entries that document triages as "the ones a user actually hits".
+B14, C5, B13, B15, then B18. The first two are small and touch nothing step
+17 touches, so they can land between D8 PRs rather than waiting for it.
 
-**Scope:**
+**Exit:** a backup made on one machine restores on another with the look,
+dock, desktop layout and installed-app grants intact; a backup can be merged
+into a folder instead of replacing the disk; the user can see when they last
+backed up and how much space is left.
 
-- **Re-triage `docs/review-backlog.md` first.** It is dated 2026-07-18 and
-  has drifted: the Phase 11 accessibility pass closed §1, §2, §6, §8, and §9
-  incidentally without updating the file. Verify all 18 against `main`, mark
-  what's done, then close the remainder. The banner at the top of that file
-  records what was already confirmed fixed.
-- **The data-loss paths, all confirmed still open** — §12 persisted stores
-  with no `version`/`migrate`; §16 IDB `open()` handling neither `onblocked`
-  nor `versionchange`; §17 storage write failures that only reach the
-  console. These are the entries that most justify calling step 14 a gate.
-- **Full-disk export and import (G4, promoted).** With no account and sync
-  parked, R1 — Safari evicting IndexedDB after ~7 days of disuse — has no
-  backstop at all. This is a data-durability item now, not a privacy nicety.
-  Export reuses `src/apps/files/download.ts` and `zipWorker.ts` almost
-  wholesale; import is the new half.
-- **Small debt cleared while the code is open** — T4, T5, and the §18
-  smaller items.
-- **Dependency feasibility spike — week 1, not week 4.** Step 16 assumes
-  CodeMirror 6 (D4) and pdf.js (D6) install under `minimumReleaseAge: 10080`
-  and `blockExoticSubdeps: true` — the policy that already blocked `idb`
-  outright. If either is blocked, step 16 changes shape, and that is worth
-  knowing before it starts rather than three weeks in. R3 exists to force
-  exactly this.
+### Step 19 — Edit safety _(≈ 2 weeks)_
 
-**Exit:** every backlog entry closed or consciously reclassified; a seeded
-disk round-trips through export → wipe → import byte-identically; no write
-failure is silent; every fixed HIGH/MEDIUM has an E2E spec so it can't
-regress.
+T11 then T10 first: both rewrite code that B16 and D10 are about to change,
+so paying them here means the editors' save path changes once. Then B16 and
+B17.
 
-### Step 15 — Depth & customization _(≈ 3 weeks)_
+**Exit:** a note overwritten by select-all-and-type can be restored to any of
+its last 20 versions; a drag into the wrong folder is undone with ⌘Z.
 
-Area U: the apps stop being first passes and the desktop becomes the user's.
-This is the step that changes how the project _feels_, and the one most
-likely to be underestimated — each item looks small, and there are
-seventeen of them.
+### Step 20 — Find and link _(≈ 2 weeks)_
 
-**Scope:** U1–U10 (customization surface) and U11–U17 (per-app depth), in the
-order §3.U recommends — U1, U2, U5, U11, U12 first, because those are what a
-user meets in the first five minutes. U4 (density and text size) wants to
-land before step 16 grows the surface area it has to sweep.
+C9, then B9b, then D10. C9 is cheap and immediately useful; B9b's index is
+what D10's backlinks need.
 
-**Landed ahead of schedule:** Notes' markdown preview and formatting toolbar
-(D1), originally planned to wait inside the sandbox (R7) until step 16,
-shipped here instead — safe by construction, see §6 decision 8. D9 (inline
-WYSIWYG editing) and any extension of D1 toward full CommonMark or raw HTML
-still wait for the sandbox.
+**Exit:** ⌘K finds a note by a phrase inside it and runs any enabled menu
+command by name; `[[A note]]` in one note opens the other, and the target
+lists its backlinks.
 
-**Exit:** a user can set their own wallpaper and accent and the result stays
-readable; Notes searches, finds, replaces, counts words, and opens a file of
-any size; the Player plays a folder through to the end without being asked
-track by track; no app in the suite reads as a first pass.
+### Step 21 — Working with the host _(≈ 1 week)_
 
-### Step 16 — The sandbox, then the apps that need it _(≈ 5 weeks)_
+F5, F6, F7. Mostly Chromium-only, which is why they sit behind the
+cross-browser steps.
 
-Two halves, in this order: building the second first and retrofitting it is
-wasted work.
+**Exit:** in installed Chromium, a `.md` file opened from the host OS opens
+in Notes; a pasted screenshot becomes a PNG in the current folder; a file
+dragged out of Files lands on the host desktop.
 
-**16a — the capability sandbox (G2, ≈ 2 weeks).**
-`<iframe sandbox="allow-scripts">` on a null origin; a promise-based
-postMessage RPC where every call is checked against granted capabilities **in
-the shell**, never in the frame; shell integration (window title, menu
-declaration reusing the existing `MenuSection` shape, `appCommand` delivery,
-dock badges) over that same bridge. The CSP opens for `frame-src` and nothing
-else — a real change to the security posture, recorded in §6.6 and
-`DIRECTION.md` §6 rather than slipped in quietly.
+### After step 21
 
-**16b — fill the remaining app holes (≈ 3 weeks).** D6 PDF viewing, inside
-the sandbox so first-party apps harden the bridge before any third-party
-code touches it — D1 Notes markdown preview shipped early in step 15
-outside it (§6 decision 8) and no longer needs this step. D9 (Notes inline
-WYSIWYG), if picked up, is re-evaluated against the sandbox requirement at
-that time. **D6 shipped 2026-08-01** as a new standalone "Documents" app
-(§3 area D) — see `src/apps/documents/`; `e2e/documents.spec.ts` covers the
-step's hostile-PDF exit criterion below. **D7 shipped 2026-08-02** — Calculator,
-Clock, and Paint (§3 area D), needing no sandbox; `e2e/calculator.spec.ts`,
-`e2e/clock.spec.ts`, and `e2e/paint.spec.ts` cover their golden paths across
-all three browser engines. **D4 shipped 2026-08-04** (`src/apps/code/`,
-`e2e/code.spec.ts`), completing the step — outside the sandbox, per §6
-decision 9.
+H2 (i18n), the H3 remainder, D11 leftovers and C3, in whatever order demand
+suggests. Then §2 is met, and distribution (§3.X.3) becomes the next
+decision.
 
-**Exit — ✅ met.** A first-party app runs sandboxed, reads only its granted
-scope, and is provably unable to reach storage, cookies, or the network
-(`e2e/sandbox.spec.ts` asserts the last from the _top-level page_, not the
-frame's self-report). Every file type the VFS can hold opens in an app that
-handles it properly — the half that needed real work was not highlighting but
-**mime resolution**: `.json`, `.ts`, `.py` and `.yaml` had no associated app
-at all and failed with "Can't open this file", because `FsNode.mimeType` is
-written once at creation by creators that disagree (an upload of `app.ts`
-carries Chromium's `video/mp2t`; `script.py` carries nothing). Resolving the
-type at read time from the name (`system/fs/mimeTypes.ts`) fixed that for
-files already on disk, with no migration.
+### Native track
 
-### Step 17 — The app SDK _(XL, ≈ 4–6 weeks)_
+Runs alongside the steps. N-3 (N5) is deferred with distribution. Whether
+the native build ever gives third-party apps something more than the
+sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 
-D8: generalize 16a's bridge from first-party to third-party. An app is a
-static bundle plus a `manifest.json` (id, name, version, entry, icon,
-`capabilities`, min-shell-version). Bundles live in the VFS under a hidden
-`/Apps` folder, so they inherit persistence and backup for free. A first-run
-consent screen lists requested capabilities, and grants stay revocable in
-Settings.
+### Dependencies
 
-This is what turns "the app list is a TypeScript array" into a platform, and
-it is a decision as much as a feature — see §6.7.
-
-**Exit:** an app written outside this repository, installed from a bundle,
-appears in the dock, opens a window, reads only what it was granted, and
-uninstalls cleanly.
-
-**Work breakdown** (in the style of Appendix B — ordered, PR-sized, each with
-its own acceptance criterion; bundle format is a single self-contained
-`entry.html`/`entry.js` per app, not a multi-file resource-resolved folder;
-the install/manage UI is a new Settings pane, not a dock-visible app, per
-§6.2's closed D-area list):
-
-| ID   | Task                                                                                                                                                                                 | Size | Depends on       | Accept                                                                                                                                                                                                                                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D8.1 | ✅ **`fs.write`/`fs.delete` bridge capability, T6-safe by construction** — shipped 2026-08-05, `src/system/sandbox/{types,capabilities,bridge}.ts`                                   | S/M  | none             | A granted app can save and delete a file it created; capability denial and trash-safety (T6) are unit-tested                                                                                                                                                                                           |
-| D8.2 | ✅ **VFS conventions: hidden `/Apps` folder + `manifest.json` schema/validator** — shipped 2026-08-05, `src/system/fs/{types,systemFolders}.ts`, `src/system/apps/manifestSchema.ts` | S    | none             | `parseAppManifest` round-trips a valid manifest and fails closed on every malformed shape                                                                                                                                                                                                              |
-| D8.3 | ✅ **Feature flag: `third_party_apps`** — shipped 2026-08-05, `src/system/flags.ts`                                                                                                  | S    | none             | Flag off ⇒ dock/registry/Settings byte-identical to today                                                                                                                                                                                                                                              |
-| D8.4 | ✅ **Dynamic registry + generic VFS-fed runtime host** — shipped 2026-08-05, `src/system/apps/{installedApps,installedAppManifest,ThirdPartyAppHost,loadInstalledApps}.ts`           | L    | D8.2, D8.3       | A manually-placed bundle under `/Apps` appears in the dock and opens a window rendering its `entry.html`. Bundle format settled as entry-is-always-JavaScript (never HTML) — CSP's `script-src` has no `'unsafe-inline'`, so a hand-authored `entry.html`'s inline `<script>` would silently never run |
-| D8.5 | ✅ **Install flow: sideload + first-run consent screen** — shipped 2026-08-05, `src/system/apps/{installBundle,appGrantsStore}.ts`, `src/apps/settings/InstallAppDialog.tsx`         | M/L  | D8.1, D8.2, D8.4 | Installing a bundle from outside the repo makes it launchable with no reload — `e2e/install-app.spec.ts`                                                                                                                                                                                               |
-| D8.6 | Settings "Apps" pane: list installed apps + uninstall                                                                                                                                | M    | D8.5             | Uninstall leaves nothing in the VFS or the registry                                                                                                                                                                                                                                                    |
-| D8.7 | Capability revocation reaching a running window                                                                                                                                      | S/M  | D8.4, D8.6       | Revoking `fs.read` in Settings makes an already-open window's next call return `capability_denied`, no reload                                                                                                                                                                                          |
-| D8.8 | Reference third-party test app + install→run→uninstall→revoke E2E                                                                                                                    | M    | D8.1–D8.7        | Both exit-criteria bullets above are backed by passing E2E assertions                                                                                                                                                                                                                                  |
-
-D8.1 shipped first because it needed no open product decision (D8.2/D8.4/D8.5
-each do), touches only `src/system/sandbox/`, and closes the debt §10 item 5
-calls out by name: `fs.write:<scope>` authorizes both writing under a folder
-and deleting within it (one verb, not two — confirmed choice), `fs.delete`
-routes through `FileSystemProvider.delete` rather than the raw
-`fsStore.deleteForever`, and `handleFsWrite` rejects a non-folder `parentId`
-before calling `writeFile` (tightened here since this is the first time that
-path is reachable from untrusted input). `fsStore.deleteForever` itself is
-unchanged by design — the bridge can't reach it at all, so hardening it too
-was left out as a separate, optional follow-up rather than folded in.
-
-D8.4's first pass had the _shell_ build the entry script's `blob:` URL and
-hand the frame that URL as a `<script src>` — plausible-looking, and wrong.
-`e2e/install-app.spec.ts` caught it once it exercised a real installed app
-rather than a manually-placed test fixture: Chromium logs "Not allowed to
-load local resource," because a `blob:` URL is scoped to the document that
-created it, and an opaque-origin frame (`sandbox="allow-scripts"`, no
-`allow-same-origin`) can't dereference one created by the shell's real
-origin — the exact restriction `SandboxFileDto`'s own doc comment already
-named for file _reads_, just not carried over to script _loading_. Fixed by
-`thirdPartyLoaderEntry.ts`, a small app-agnostic bundle loaded via a real
-`<script src="/sandbox/third-party-loader.js">` (satisfies `script-src
-'self'`, same shape as Documents' own bundle) that builds the `blob:` URL
-itself, same-realm — exactly `sandboxEntry.ts`'s existing pdf.js-worker
-trick, just generalized to any third-party entry script instead of one
-first-party dependency.
-
-### Below the line — distribution and sync
-
-Deliberately unscheduled; revisit once steps 13–17 land. Detail in §3.X.2 and
-§3.X.3. The one item worth taking out of order is a LICENSE file, which the
-repository needs regardless of when distribution starts.
-
-### Native desktop track (parallel — see `DIRECTION.md`)
-
-Runs alongside the numbered steps, not inside them. Each milestone is
-independently shippable.
-
-- **N-1 — Native shell + isolated filesystem** — ✅ shipped. `pnpm tauri dev`
-  boots the shell; N1 (Tauri v2 shell), N2 (`isTauri()`), and N3 (disk-backed
-  `StorageAdapter`/`BlobStore` under `$APPDATA/disk`) are in `main`.
-- **N-2 — Built-in Browser** — ✅ shipped. N4: a native child webview with
-  tabs, address bar, history, and back/forward; the web build presents it as
-  desktop-only.
-- **N-3 — Distribution** — deferred with everything else distribution-shaped
-  (§3.X.3). N5's signing and notarization cost money; unsigned CI builds do
-  not, and are the cheap first move whenever this is revisited.
-
-Third-party apps themselves are committed (§6.7), but they ship through the
-same sandboxed-iframe bridge in both builds. Whether the native build ever
-gets _extra_ third-party affordances — a child webview per app rather than
-an iframe — stays out of scope; see `DIRECTION.md` §3.3.
-
-### Dependency snapshot
-
-```
-docs realigned (13) ──► everything else planned honestly
-review backlog (14) ──► depth work isn't built on broken foundations
-U4 density (15) ──► before step 16 doubles the surface to sweep
-G2 sandbox (16a) ──► D6 PDF · D8 SDK (17) — D1 shipped independently in 15; D9 revisits this gate only if it needs raw HTML
-dep spike (14) ──► D4 editor · D6 PDF shape
-export/import (14) ──► the only answer to R1 while sync is parked
-StorageAdapter/BlobStore seam ◄── native adapter (shipped) · BYO sync (X.2)
-§2 definition met ──► distribution (X.3)
+```text
+LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
+D8.6 ► D8.7 ► D8.8 ► D8.9 ► D8.11        D8.10 needs D8.6 only
+B14, C5 ─ any time ─► B13 ► B15 ► B18
+T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
+§2 met ──────────────► distribution (X.3)
 ```
 
 ---
 
 ## 5. Technical debt register
 
-Known issues to schedule (none block daily use today). T0–T3 shipped in
-Phase 9 and are dropped from this table.
+T0–T5, T7 and T9 are closed. The table lists what's open.
 
-| ID  | Debt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Suggested step |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| T4  | `notificationStore.toastIds` can retain ids evicted from the 50-item history (harmless, filtered on render)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 14             |
-| T5  | Terminal `parse()` redirect regex can match a `>` inside quotes (`echo "a > b"`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 14             |
-| T6  | `deleteForever` doesn't itself enforce trash-only; the guard lives at call sites — this becomes load-bearing the moment the fs API is exposed to third-party apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 17 (with D8)   |
-| T7  | `childrenOf` was ~147 ms on a 10k-node folder. **Shared `Intl.Collator` landed** (Phase 10 kickoff): ~147 ms → ~9 ms, under frame budget. Remaining: memoize sorted children, virtualize the list, parent-id index. See [`docs/perf-baseline.md`](docs/perf-baseline.md)                                                                                                                                                                                                                                                                                                                                                                  | 15 (with U14)  |
-| T8  | The `idb` convenience library is blocked by the workspace `minimumReleaseAge` policy; the raw-IDB adapter is fine, but revisit if IDB code keeps growing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | opportunistic  |
-| T9  | [`docs/review-backlog.md`](docs/review-backlog.md) has drifted — five of its 18 entries were closed incidentally by the Phase 11 accessibility pass. Re-verify against `main`, then close the rest; step 14 does both                                                                                                                                                                                                                                                                                                                                                                                                                     | 14             |
-| T10 | **Notes and Code duplicate their sidebar.** `fileScope.ts` shares the pure listing logic, but ~130 lines of JSX and the state around it (scope widening, the memo pipeline, the row) are a fork. It has already cost one divergence per fix: the `nested-interactive` and filter-label a11y fixes landed in Code first and had to be carried across by hand. A `FileSidebar` component (or a `useFileSidebar` hook) would delete the fork — deferred because unifying it means deciding the behaviours that already differ (Notes' `danger:` trash entry, its reveal fallback), which is a change to a shipped app rather than a refactor | opportunistic  |
-| T11 | **`NoteEditor` and `CodeEditor` duplicate the text-document lifecycle** — the 5 MB read-only cap, the blob load, the `flushRef` unmount flush, and `persist()`'s migration across `BLOB_INLINE_THRESHOLD`, which is storage semantics (review-backlog §11's fix) rather than app UI. A `useTextFileDocument(doc, { applyText })` hook would hold one copy; deferred for the same reason as T10 — it rewrites the save path of a shipped app                                                                                                                                                                                               | opportunistic  |
+| ID  | Debt                                                                                                                                                                                                   | Plan                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| T6  | `fsStore.deleteForever` doesn't enforce trash-only itself; the guard lives at call sites. Closed for the bridge (D8.1: `BridgeDeps` can't reach it), still open for in-process callers                 | Optional; harden if a new caller appears |
+| T8  | The `idb` library is blocked by `minimumReleaseAge`; the raw-IDB adapter is fine. B18's stored directory handle adds IDB code, so revisit then                                                         | Revisit at B18                           |
+| T10 | Notes and Code duplicate their sidebar: `fileScope.ts` shares the listing logic, but ~130 lines of JSX and state are a fork. A11y fixes have already had to be carried across by hand                  | Step 19, before D10                      |
+| T11 | `NoteEditor` and `CodeEditor` each carry the text-document lifecycle: the 5 MB cap, the blob load, the unmount flush, the migration across `BLOB_INLINE_THRESHOLD`. Wants a `useTextFileDocument` hook | Step 19, before B16                      |
+| T12 | `viewPrefsStore` and `themeStore` declare a `version` but no `migrate`, so the first shape change silently drops their state. `settingsStore` hit exactly this in step 15                              | Fix with B13, which runs every `migrate` |
+| T13 | The Player's Next/Previous doesn't update the window `payload`, so session restore reopens the track it was launched with, not the one playing                                                         | D11                                      |
 
 ---
 
-## 6. Open decisions (need sign-off before the affected step)
+## 6. Decisions
 
-Decisions 1–3 of the previous revision (backend stack, sync conflict policy,
-E2EE stance) are retired with the online track — see §3.X.1.
+Numbering is stable; other documents cite these by number.
 
-1. **Mobile ambition** (F3): desktop-browser-first; phones get a read-mostly
-   single-app layout later, if at all. Confirm before step 15 spends effort
-   on responsive work it doesn't need.
-2. **How far the app suite grows** (D-area): the answer was "fill the obvious
-   holes, then stop", and **the holes are now filled** — markdown preview
-   (✅ step 15), PDF, small utilities and the code editor (✅ all step 16b),
-   plus Notes' inline WYSIWYG (D9). The list is closed: a spreadsheet, a
-   full-featured drawing app (Paint stays a scratch canvas, not an image
-   editor), or an archive manager would be a new decision, not an extension
-   of this one — as would depth inside the editor that crosses §6.9's line.
-   `DIRECTION.md` §6's "coherence over sprawl" is the tie-breaker.
-3. **License** (blocks any contribution): the repository is public with no
-   LICENSE file, which means all rights reserved. MIT is the default
-   recommendation for a project optimizing for contributors and plugin-style
-   extension; Apache-2.0 if an explicit patent grant is wanted.
-4. **Web-target longevity** (native track): keep the website as the
-   permanent baseline, or deprecate it once native is primary? **Current
-   answer: keep the link** — see `DIRECTION.md` §9.1.
-5. **✅ Decided (July 2026) — customization vs. the palette guardrail.**
-   Users may set a **custom accent colour and a custom wallpaper image**, not
-   only the documented directions. The guardrail is replaced, not removed:
-   the accent picker **validates contrast** against the token system and
-   warns when accent-on-surface or ink-on-accent falls below WCAG AA, and the
-   window-control duotone stays **derived from the accent** — a user picks
-   one colour, never three control colours, so "never a traffic-light triad"
-   survives. Presets remain the designed, recommended path. Implements U1–U3.
-6. **✅ Decided (July 2026) — the CSP opens for the sandbox.** Step 16a adds
-   a `frame-src` directive for the sandboxed-app host and nothing else. This
-   is the only planned loosening of the strict-CSP guardrail; it is a
-   deliberate trade for G2/D8, and every other directive stays as-is.
-7. **✅ Decided (July 2026) — third-party apps are a committed goal.**
-   `DIRECTION.md` §9.2 framed Bet 3 as a "become a platform" go/no-go after
-   the native bets shipped. It is now above the line: extensibility is part
-   of §2's definition of finished, and step 17 is scheduled. The consequence
-   is decision 6 above.
-8. **✅ Decided (2026-07-27) — a closed-vocabulary markdown renderer doesn't
-   need G2.** R7's sandbox requirement targets renderers that can interpret
-   **arbitrary** HTML/content — a real risk for a general CommonMark-to-HTML
-   pipeline. D1's shipped preview only recognizes a fixed set of constructs
-   (bold/italic/underline/heading/bullet+numbered lists/read-only checklist)
-   with no generic tag-parsing code path at all — even a literal
-   `<script>`/`<img onerror>` in a note renders as inert text, never through
-   `dangerouslySetInnerHTML`. That structural guarantee, not the sandbox, is
-   what makes it safe pre-16a. The guardrail still applies in full to
-   anything that gains a generic-HTML or arbitrary-markup code path — D6
-   (PDF), D8 (third-party apps), and D9 (WYSIWYG) if its editor schema is
-   ever opened past that same closed vocabulary.
+1. **Mobile** — desktop-browser-first. Phones may get a read-mostly
+   single-app layout later, if at all.
+2. **The app list is closed.** "Fill the obvious holes, then stop" is done:
+   markdown (D1, D9), PDF (D6), small utilities (D7) and the code editor
+   (D4). A spreadsheet, a real image editor or an archive manager is a new
+   decision, not an extension of this one, as is depth that crosses §6.9's
+   line. New kinds of app should arrive through the SDK. `DIRECTION.md` §6's
+   "coherence over sprawl" breaks ties.
+3. **License — open, blocks step 17.** The repository is public with no
+   LICENSE, which means all rights reserved. MIT is the default
+   recommendation; Apache-2.0 if an explicit patent grant matters. This one
+   is the owner's call.
+4. **Web target** — the website stays the permanent baseline
+   (`DIRECTION.md` §9.1).
+5. **Customization vs. the palette** — users may pick a custom accent and
+   wallpaper image. The accent picker validates contrast and warns below
+   WCAG AA, and the window-control duotone is always derived from the one
+   accent, so a traffic-light triad stays impossible. Presets remain the
+   recommended path.
+6. **The CSP opens for the sandbox, and only for it** — `frame-src` for the
+   sandboxed-app host. Every other directive stays as-is.
+7. **Third-party apps are a committed goal** — part of §2, hence step 17 and
+   decision 6.
+8. **A closed-vocabulary renderer doesn't need the sandbox** (2026-07-27,
+   re-checked 2026-08-03 on shipping D9). The sandbox is for renderers that
+   can interpret arbitrary content. Notes' editor can't:
 
-   **Re-checked 2026-08-03, on shipping D9** — the check that row promised.
-   The WYSIWYG editor keeps the guarantee, and in a stronger form than the
-   preview had:
+   - The schema in `src/apps/notes/editorSchema.ts` is assembled one
+     extension at a time, never from `StarterKit` (which brings Link, Image,
+     CodeBlock and Blockquote). Nodes: doc, paragraph, text, hardBreak,
+     heading 1–3, bullet, ordered and task lists. Marks: bold, italic,
+     underline.
+   - A ProseMirror document holds only node types its schema declares, so
+     hostile paste is dropped while parsing rather than filtered afterwards.
+     `editorSchema.test.ts` asserts the exact node and mark sets, that
+     nothing carries `href` or `src`, and that `<script>`, `<img onerror>`,
+     a `javascript:` link and an `<iframe>` keep only their text.
+   - `@tiptap/markdown` was rejected because it depends on `marked`, a full
+     CommonMark-to-HTML parser. `markdownDocument.ts` speaks only the
+     grammar above; anything else stays literal text.
+   - Nothing renders through `dangerouslySetInnerHTML`.
 
-   - The schema is assembled one extension at a time in
-     `src/apps/notes/editorSchema.ts` — **never `StarterKit`**, which would
-     bundle Link, Image, CodeBlock and Blockquote; Link and Image both carry
-     a URL attribute, exactly the shape this decision rules out. Nodes:
-     doc, paragraph, text, hardBreak, heading (1–3), bullet/ordered/task
-     lists and their items. Marks: bold, italic, underline.
-   - A ProseMirror document can only contain node types its schema
-     declares, so hostile paste is dropped **structurally** during parsing
-     rather than filtered afterwards by a denylist somebody has to keep
-     current. `editorSchema.test.ts` asserts the exact node and mark sets,
-     that nothing carries an `href`/`src` attribute, and that a `<script>`,
-     an `<img onerror>`, a `javascript:` link and an `<iframe>` all lose
-     everything but their text.
-   - `@tiptap/markdown` was **rejected**: it depends on `marked`, a full
-     CommonMark-to-HTML parser, which is the generic pipeline this decision
-     exists to keep out. `markdownDocument.ts` speaks only the grammar above
-     — unsupported markdown (links, images, fences, blockquotes, tables,
-     H4+) stays literal text, and is asserted to.
-   - Nothing renders through `dangerouslySetInnerHTML`; the editor's DOM is
-     ProseMirror's, built from schema nodes.
+   This doubles as the renderer audit G1 owed. Adding a node changes the
+   argument and needs a PR that revisits it. **D10 is the next such PR.** Its
+   case is that a link holding only a VFS node id, resolved by the shell,
+   reaches no network and runs nothing. An image or embed node would not
+   pass the same test.
 
-   This is also the renderer audit G1 still owed for the case where D1's
-   scope grew. Opening the schema further — a link, an image, an embed — is
-   a change to _this_ argument and belongs in a PR that revisits it.
+9. **The code editor ships outside the sandbox** (2026-08-04). Together with
+   D6 going inside, this sets where the line is:
 
-9. **✅ Decided (2026-08-04) — the code editor ships outside the sandbox.**
-   D6 (PDF) went inside G2's sandbox and D4 does not, so the two together
-   are what actually define where the line sits. Three reasons, in the order
-   they mattered:
-
-   - **It executes nothing.** R7's concern is renderers that _interpret_
-     untrusted content — pdf.js runs a scripting-capable document format;
-     a general CommonMark→HTML pipeline emits arbitrary markup. CodeMirror
-     tokenizes text into styled spans. There is no code path from a file's
-     bytes to execution, markup, or a URL, which is the same structural
-     property decision 8 rests on for Notes rather than a promise about
-     inputs.
-   - **The sandbox cannot express "save".** The bridge grants `fs.read`,
-     `notifications`, `window.setTitle` and `ui.setState` — there is no
-     `fs.write` of any shape (`src/system/sandbox/capabilities.ts`). A
-     sandboxed editor could open a file and never write it back. Shipping
-     one would mean designing step 17's write-capability and consent model
-     now, on the schedule of an editor rather than of the SDK that actually
-     needs it, and for no security gain given the point above.
+   - **It executes nothing.** CodeMirror tokenizes text into styled spans.
+     No path leads from a file's bytes to execution, markup or a URL, the
+     same structural property decision 8 rests on.
    - **It would cost the design.** A `srcdoc` frame inherits no custom
-     properties and paints opaque (see D6's rework, which moved the whole
-     PDF toolbar back out into React for exactly this). An editor is mostly
-     chrome — sidebar, gutter, status bar, find panel — so the same rework
-     would apply to nearly all of it, and the parts left inside couldn't
-     follow the user's look.
+     properties and paints opaque, and an editor is mostly chrome.
+   - At the time, the bridge also had no `fs.write`. D8.1 added one, but the
+     two reasons above stand on their own, so that doesn't reopen this.
 
-   **What would reverse this:** any editor feature that fetches, embeds, or
-   evaluates what it is editing — a live preview pane, a language server, a
-   plugin format, an embedded runtime. Each of those is the pdf.js case, not
-   this one, and belongs in a PR that revisits this entry.
+   **What would reverse it:** any editor feature that fetches, embeds or
+   evaluates what it edits, such as a live preview, a language server, a
+   plugin format or an embedded runtime. Each of those is the pdf.js case
+   and belongs in a PR that revisits this entry.
 
-**Design guardrails carried through all steps:** monochrome-at-rest window
-controls with the duotone focus tint (never a traffic-light triad),
-rounded-square dock tiles without magnification, Inter/JetBrains Mono,
-generic app names, no Apple/Puter naming or assets — and, per decision 5,
-curated palettes as the designed default with contrast-validated custom
-values permitted alongside them.
+**Design guardrails for every step:** monochrome-at-rest window controls
+with the derived duotone focus tint, rounded-square dock tiles without
+magnification, Inter and JetBrains Mono, generic app names, no Apple or
+Puter naming or assets. `docs/design-system.md` has the values.
 
 ---
 
 ## 7. Risk register
 
-Ordered by (likelihood × impact). Review at the start of every step.
-Retired with the online track: the old R5 (backend cost & abuse). The old R2
-(sync engine complexity) now applies only to the parked X.2 work.
+Reviewed at the start of each step.
 
-| #   | Risk                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | L    | I    | Mitigation                                                                                                                                                                                                                                                                                                    |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **Browser evicts local data.** Safari caps IndexedDB for non-installed sites and evicts after ~7 days of disuse. With accounts retired, a user's only copy can simply vanish                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | High | High | `navigator.storage.persist()` is called at boot and surfaced in Settings › About; the PWA install path raises the storage tier. The real mitigation is now **export/import (step 14)** — there is no server-side copy to fall back on, which is exactly why it was promoted out of G4 into the stability step |
-| R2  | **Area U is unbounded.** "Make the apps good" has no natural stopping point, and seventeen items each look small                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | High | Med  | §3.U fixes the list and §6.2 fixes the stopping rule. Anything not in U1–U17 is a new decision, not a continuation. Ship per-app rather than per-feature so a slip leaves finished apps, not seventeen half-finished ones                                                                                     |
-| R3  | ~~**Dependency policy blocks a needed library.**~~ **Resolved (2026-07-25):** `minimumReleaseAge: 10080` + `blockExoticSubdeps` already blocked `idb`; CodeMirror 6 (D4) and pdf.js (D6) were the next asks. Spiked in step 14 week 1 — `pnpm add codemirror @codemirror/lang-javascript @codemirror/state @codemirror/view` and `pnpm add pdfjs-dist` both resolved to their current `latest` dist-tag (`codemirror@6.0.2`, `pdfjs-dist@6.1.200`) with no `ERR_PNPM_NO_MATURE_MATCHING_VERSION`/exotic-subdep rejection, unlike `idb`. **Closed out 2026-08-04**: the spike only proved the `codemirror` meta-package, and D4 needed 14 more — six `@codemirror/lang-*`, `legacy-modes`, and the core packages it imports directly. All installed clean, so the policy has now been tested against a real multi-package ask rather than a single one | Med  | Med  | —                                                                                                                                                                                                                                                                                                             |
-| R4  | **Step slip through underestimation.** Solo bandwidth; step 17 alone is 4–6 optimistic weeks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | High | Med  | Every step ends releasable, so slipping delays value but never strands broken work; cut scope (move items right) rather than skipping exit criteria; re-estimate at each step boundary                                                                                                                        |
-| R5  | **Customization breaks the design.** §6.5 lets users pick arbitrary accents and wallpapers — the exact thing the old guardrail forbade                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Med  | Med  | Contrast validation is part of U2's definition of done, not a follow-up; the control duotone stays derived rather than user-set; presets stay the default and the recommended path; screenshot the extremes before merging                                                                                    |
-| R6  | **Design drift toward macOS trade dress.** As features approach OS parity, each small decision pulls toward the familiar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Med  | Med  | The guardrails block in §6 is binding; any new shell surface gets a design pass against the Lagoon prototype before merge                                                                                                                                                                                     |
-| R7  | **Sandbox escape / injected content** once PDF (D6) or third-party apps (D8) render untrusted content. D1's shipped preview doesn't qualify — §6 decision 8 — but D9 (WYSIWYG) or any richer D1 extension must be re-evaluated against this risk before shipping outside the sandbox. **Promoted:** this is now on the critical path, not a post-1.0 concern                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Med  | High | G2 (step 16a) is a hard prerequisite for D6/D8 and for any D1/D9 extension past the closed vocabulary that shipped 2026-07-27, enforced in the dependency graph; negative tests are the _point_ of 16a's exit criteria; the CSP opens for `frame-src` only, so a slip fails closed                            |
-| R8  | **Test suite becomes flaky and gets ignored**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Med  | Med  | Flake budget in §9; quarantine-and-fix policy; E2E kept lean (happy paths + data-loss paths), breadth lives in unit tests                                                                                                                                                                                     |
-| R9  | **Native distribution burden** (N track) — signing, notarization, per-OS builds, and auto-update are ongoing costs the web build gives for free (`DIRECTION.md` §9.4); the built-in Browser (N4) also enlarges the attack surface                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Med  | Med  | Deferred entirely (§3.X.3); the website stays the shippable baseline so native slipping strands nobody; the strict CSP is kept in the native build too                                                                                                                                                        |
-| R10 | **Dual-target rot** (N track) — scattered `if (native)` conditionals make the shared codebase two divergent apps in practice                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Med  | Med  | Route every native branch through one `isTauri()` gate, in one place (N2) — `DIRECTION.md` §4                                                                                                                                                                                                                 |
+| #   | Risk                                                                                                                                    | Likelihood | Impact | Mitigation                                                                                                                            |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | **The browser evicts local data.** Safari evicts IndexedDB for non-installed sites after ~7 days of disuse, and there is no other copy  | Medium     | High   | Persistent storage is requested; export exists. Step 18 makes backups complete (B13), visible (B14) and, on Chromium, automatic (B18) |
+| R4  | **Steps slip.** One person, and step 17 is still the largest remaining step                                                             | High       | Medium | Every step ends shippable; scope moves to the next step rather than quality dropping                                                  |
+| R5  | **Customization breaks the design**                                                                                                     | Low        | Medium | The contrast validator and derived duotone (§6.5); presets stay the default                                                           |
+| R6  | **Drift toward macOS trade dress** as features approach OS parity                                                                       | Medium     | Medium | The guardrails in §6 and `docs/design-system.md`'s drift register                                                                     |
+| R7  | **Sandbox escape or injected content.** Step 17 adds four bridge methods and a picker, each a new path from untrusted code to the shell | Medium     | High   | Every method gets a refusal test when ungranted; capability checks stay in the shell, never the frame; D10 revisits §6.8 explicitly   |
+| R8  | **Flaky tests get ignored.** CI's `retries: 2` hides intermittent failures                                                              | Medium     | Medium | `e2e/window-resize.spec.ts`'s near-edge test under WebKit was the known case; confirm or fix it before step 18 adds backup specs      |
+| R9  | **Native distribution burden** — signing, notarization, per-OS builds and auto-update cost what the web build gives for free            | —          | —      | Deferred with N5                                                                                                                      |
+| R10 | **Dual-target rot** — `if (native)` checks scattered through components                                                                 | Low        | Medium | Every check goes through `isTauri()` (`system/platform.ts`)                                                                           |
+| R11 | **Chromium-only features split the experience.** B18, F5 and F7 exist on one engine                                                     | Medium     | Low    | Each ships with a working fallback on the others (B14, Download); docs never promise them on Firefox or Safari                        |
 
-## 8. Success metrics per step
-
-Checked at the end of each step, not aspirational-only. With telemetry
-retired along with the server, every number below comes from CI, a
-scripted check, or a manual QA pass — never from user data.
-
-Metrics for the shipped phases 9–12 are kept in git history; the ones that
-still matter (CI wall time, E2E flake rate, axe-core cleanliness, no new
-lint/type suppressions) are standing expectations of every step below.
-
-**Step 13 (documents)**
-
-- Zero references to accounts, sync, or a backend as _planned_ work across
-  `ROADMAP.md`, `DIRECTION.md`, `CLAUDE.md`, and `src/system/flags.ts`.
-
-**Step 14 (rock-solid)**
-
-- `docs/review-backlog.md` has no open entry left unresolved or unreclassified.
-- Export → wipe storage → import reproduces the tree and every blob
-  byte-identically (hash-checked in E2E, mirroring `e2e/download.spec.ts`).
-- Fault injection: a rejected IDB write surfaces a user-visible error rather
-  than a console line, in every store that writes.
-- An old-schema localStorage fixture upgrades cleanly through `migrate`.
-
-**Step 15 (depth & customization)**
-
-- A custom accent and a custom wallpaper can be set, and the resulting UI
-  passes the same axe-core contrast checks the presets do.
-- Notes opens a 5 MB text file, finds and replaces inside it, and reports an
-  accurate word count.
-- The Player plays a 10-track folder start to finish untouched.
-- Nothing in the suite still uses browser-default form or media controls.
-- Frame time p95 < 16 ms in a 10,000-node folder after U14's view work.
-- Notes' markdown preview renders a hostile fixture (`<script>`, `<img
-onerror>`) as inert text, unit-tested, confirming D1 shipped safely outside
-  the sandbox (§6 decision 8).
-
-**Step 16 (sandbox + remaining apps)**
-
-- A sandboxed frame cannot reach `localStorage`, cookies, IndexedDB, or the
-  network — asserted by negative tests, not by inspection.
-- A capability the manifest didn't request is refused by the shell, and the
-  refusal is logged rather than silent.
-- A deliberately hostile PDF fixture renders without script execution and
-  without a CSP violation (D1's markdown fixture equivalent already covers
-  step 15's shipped preview; D9, if it opens the editor schema to raw HTML,
-  repeats this check before shipping). **✅ Verified 2026-08-01** —
-  `e2e/fixtures/hostile.pdf` carries an `/OpenAction` JavaScript entry;
-  `e2e/documents.spec.ts` confirms no dialog fires and the console stays
-  clean, since `getDocument()` never wires pdf.js's scripting API.
-- Every file type the VFS can hold opens in an app that handles it properly.
-  **✅ 2026-08-04** — `e2e/code.spec.ts` opens a `.ts` and a `.json`, both of
-  which previously had no associated app at all; `mimeTypes.test.ts` pins the
-  extension table and the two ways a stored type lies.
-
-**Step 17 (app SDK)**
-
-- An app built outside this repository installs from a bundle, runs,
-  and uninstalls leaving nothing in the VFS or the registry.
-- Revoking a capability in Settings takes effect on the running app.
-
-## 9. Testing & release strategy
-
-### Test pyramid
-
-1. **Unit (exists, keep growing)** — Vitest over pure logic: window store,
-   fs store, shell engine, and every new pure module (zip import/export,
-   contrast validation, capability checks, blob refcounting, path/keyboard
-   helpers). Rule: new store or engine code lands with unit tests in the
-   same PR.
-2. **E2E (Playwright)** — the catalog below; runs on Chromium + Firefox +
-   WebKit in CI. Kept deliberately lean: happy paths, data-loss paths, and
-   regressions for shipped bugs.
-3. **Sandbox negative tests (step 16a)** — not a category the old plan had.
-   Every capability the bridge exposes gets a test that it is _refused_
-   when ungranted, and every ambient browser capability (storage, cookies,
-   network, top-level navigation) gets a test that the frame cannot reach
-   it. These are the tests that make G2 trustworthy; treat them as exit
-   criteria, not coverage.
-4. **Manual QA script (every release)** — a one-page checklist: fresh
-   profile boot, upgrade-in-place from the previous release (migration
-   check), Safari private mode (degraded-storage path), reduced-motion,
-   200%-zoom, and — once U2 lands — a deliberately awful custom accent, to
-   confirm the contrast validator earns its keep.
-
-### E2E scenario catalog (H5 — initial 15)
-
-| #   | Scenario                                                                   | Guards against                              |
-| --- | -------------------------------------------------------------------------- | ------------------------------------------- |
-| 1   | Cold boot → Welcome window, dock, menu bar render; no console errors       | Boot regressions                            |
-| 2   | Open Files from dock; drag window; snap left; restore-drag; close          | WM pointer logic                            |
-| 3   | ⌘-shortcut dispatch: app chord beats shell chord; ⌘W closes                | shortcuts.ts routing                        |
-| 4   | Create folder → rename → move via DnD → trash → restore → verify path      | fs lifecycle                                |
-| 5   | Trash → Empty (two-step confirm) → items gone after reload                 | destructive flow                            |
-| 6   | Notes: edit → autosave badge → reload → content persists                   | autosave/flush                              |
-| 7   | Open file from Files → Notes selects it; switch note; re-open → re-selects | the payload-identity bug fixed this session |
-| 8   | Viewer: open image → zoom/fit/rotate → resize window → fit recomputes      | ResizeObserver path                         |
-| 9   | Terminal: `mkdir`/`echo >`/overwrite/`cat`/`rm` round-trip vs. Files view  | engine↔store integration                    |
-| 10  | Theme: toggle dark; accent + wallpaper change; reload persists             | settings persistence                        |
-| 11  | Dock: pin/unpin, size/position change relayouts, running dots              | dock store/UI                               |
-| 12  | Notification: action button (Undo) restores the file; center marks read    | notification flows                          |
-| 13  | Two windows same app: z-order, minimize→dock restore, ⌘Q closes all        | multi-window                                |
-| 14  | Private-mode boot (no IDB): OS boots in-memory, banner shown               | persistence hardening                       |
-| 15  | Forced app crash → error card in-window; shell + other windows fine        | H4 boundaries                               |
-
-Phase 10 added upload/download/multi-select scenarios. Step 14 adds the
-export/import round-trip and a spec per fixed backlog finding; step 15 adds
-custom-wallpaper/accent persistence and Player auto-advance; step 16 adds the
-sandbox negative tests (a frame that tries to reach storage, network, or an
-ungranted capability and is refused).
-
-### Versioning & release mechanics
-
-- **Semver mapping:** steps release as tagged minors (0.13, 0.14, …); 1.0
-  when §2's definition is met — that is, at step 17's exit, not before.
-  Patch releases for fixes between steps.
-- **Feature flags:** `flags.ts` (env + localStorage override); the sandbox
-  and the app SDK ship dark through steps 16–17 behind their own flags, the
-  way `online` was meant to be used before that track was retired.
-- **Branching:** trunk-based; `main` always releasable (enforced by CI);
-  step work in short-lived feature branches; no long-running release
-  branches until there are external users to support.
-- **Migrations:** IDB and persisted-store version bumps get an explicit
-  migration function plus an upgrade-in-place E2E fixture (an old-schema
-  snapshot committed as a test asset). Step 14 makes this real for the
-  localStorage stores, which have no `migrate` at all today.
-- **Changelog:** human-written `CHANGELOG.md` per release; exit criteria
-  from §4 become the release-notes skeleton. Tagging can start before
-  distribution does — a tag costs nothing and dates the work.
-
-## 10. Immediate next steps
-
-1. **Add a LICENSE** (§6.3). The repository is public without one, so today
-   nobody may legally fork it or contribute. Ten minutes, and gated on
-   nothing.
-2. ~~**Run the dependency spike** (R3)~~ — ✅ done 2026-07-25, closed out
-   2026-08-04 when D4 installed the other 14 CodeMirror packages.
-3. ~~**Re-triage the review backlog**~~ — ✅ done in step 14; nothing in
-   `docs/review-backlog.md` is open work.
-4. ~~**Write the U2 contrast note before building the picker.**~~ — ✅ the
-   picker shipped in step 15, and `design/color.ts`'s `checkAccentContrast`
-   is that note in executable form. It has since been reused by D4's syntax
-   palette test, which is the shape any future colour decision should take.
-5. ~~**Start step 17 (the app SDK).**~~ — ✅ **D8.1 shipped 2026-08-05**,
-   closing both carry-ins from D4's work in one PR: the bridge gained
-   `fs.write`/`fs.delete` (§6.9's gap), and T6 is closed for the bridge
-   specifically — `fs.delete` routes through `FileSystemProvider.delete`
-   rather than the raw `deleteForever`, which `BridgeDeps` can't even
-   reach. See Step 17's work breakdown (§4) for D8.2–D8.8, still open.
-6. **Fix the flaky specs before they get ignored** (R8). Two are known to
-   fail intermittently under full-suite parallel load and pass in isolation:
-   `src/system/fs/blobIntegrity.test.ts`'s "does not collect a blob whose
-   node commit hasn't landed yet" (a bounded microtask spin-wait — it fails
-   on `main` too, ~3 runs in 4) and `e2e/window-resize.spec.ts`'s "a window
-   near the edge stays reachable" under WebKit. CI's retries currently hide
-   both.
+R2 (area U unbounded) and R3 (dependency policy) are closed: U shipped, and
+CodeMirror and pdf.js both installed under the release-age policy.
 
 ---
 
-## Appendix A — Design sketches for the XL items
+## 8. Success metrics
 
-Not final designs — these are the starting points for each item's design
-doc, capturing decisions already implied by the current architecture.
+Checked at the end of each step. With no telemetry, every number comes from
+CI, a scripted check or a manual pass. Standing expectations for every step:
+CI wall time doesn't regress noticeably, no new flaky spec, axe-core stays
+clean, no new lint or type suppressions.
 
-**A.2 (blob architecture) and A.4 (session restore) shipped**; they are kept
-because they document _why_ the shipped code looks the way it does. **A.1 and
-A.3 describe the retired server track** (§3.X.1) and are kept only as
-reference — A.1 in particular is deliberately _heavier_ than the snapshot
-merge X.2 would need, and should not be used as X.2's design. **A.5 is live**
-and seeds step 16a.
+**Step 17**
 
-### A.1 Sync engine (A4): op log over the StorageAdapter seam — _retired_
+- An app built outside the repository from `docs/app-sdk.md` alone
+  installs, runs, opens a file handed to it, and uninstalls leaving nothing
+  in the VFS, the registry or `appGrantsStore`.
+- Revoking a capability takes effect in an open window.
+- Every new bridge method has a test that it is refused when ungranted.
 
-**Core shape.** Every fs/settings mutation becomes an **operation**
-appended to a local outbox before the UI even hears about network:
+**Step 18**
 
-```ts
-interface Op {
-  opId: string; // uuid — idempotency key
-  deviceId: string; // stable per install
-  seq: number; // Lamport counter per device (never wall clock)
-  kind: "put" | "remove";
-  nodes?: FsNode[]; // for put (metadata only; blobs travel separately)
-  nodeIds?: string[]; // for remove
-  baseVersion?: Version; // what this op believed it was editing
-}
-interface Version { deviceId: string; seq: number } // LWW order: (seq, deviceId)
-```
+- Export on profile A, import on a fresh profile B: the look, dock, desktop
+  layout and app grants match, asserted in e2e.
+- A version-1 export zip still imports.
+- An import-into-folder leaves every existing node untouched.
 
-**Client pipeline.**
-`mutation → commit to Zustand + IDB (as today) → append Op to IDB "outbox"
-→ syncer drains FIFO with exponential backoff → server acks with canonical
-versions → server broadcasts deltas → remote ops applied iff their version
-wins`. The existing `commit()`/`removeIds()` helpers in `fsStore.ts` are
-the exact interception points — the store API doesn't change.
+**Step 19**
 
-**Non-negotiable invariants** (each becomes a fuzzer assertion):
+- Unit tests for the history list's cap and its GC interaction (no version
+  blob is collected while referenced).
+- Move, rename and paste each undo correctly in e2e.
 
-1. Applying the same op twice is a no-op (`opId` dedupe).
-2. Ops from one device apply in `seq` order; cross-device order may vary
-   but all devices converge to identical state.
-3. A delete leaves a **tombstone** (`removedAt` + version) for ≥ 30 days —
-   today's `removeMany` physically erases, which cannot sync.
-4. Offline boot = snapshot + replay of unacked outbox; no network in the
-   boot path.
-5. Content conflict (both devices edited `content` from the same
-   `baseVersion`) forks a "name (conflicted copy)" node rather than losing
-   either write — reuses `uniqueChildName`.
+**Step 20**
 
-**Server side.** Per-account append-only `ops` table (the audit log and
-recovery mechanism), materialized `nodes` snapshot for fast `GET
-/fs/nodes?since=<cursor>`, WebSocket fan-out of applied ops to the
-account's other connections. Ops make server storage grow forever →
-periodic compaction below the tombstone horizon.
+- Content search over a 1,000-note fixture returns in under 50 ms once the
+  index is built.
+- The decision-8 tests still pass with the link node added, and no node
+  carries `href` or `src`.
 
-**Explicitly out of scope for v1:** CRDT text merging (that's E3),
-per-field merge, cross-account ops.
+**Step 21**
 
-### A.2 Blob architecture (B1): content-addressed bytes
+- Chromium e2e for paste-to-file and the launch queue; the other engines
+  still pass with the features absent.
 
-**Problem.** `FsNode.content` holds file bytes as strings (data URLs for
-images). Every byte rides through `loadAll`, every Zustand snapshot, and —
-post-A4 — every sync op. This caps file size at "toy".
+---
 
-**Shape.**
+## 9. Testing and release
 
-```ts
-// FsNode changes
-interface FsNode {
-  // content?: string        → stays, but only for small text (≤ 64 KB)
-  contentRef?: { hash: string; size: number }; // binaries & big text
-}
-```
+### Test layers
 
-- New IDB object store `blobs`: `hash (sha-256) → Blob`. Nodes are
-  metadata-only; the fs store never holds bytes in memory.
-- **Content addressing** gives dedupe for free (10 copies of a photo = 1
-  blob) and makes server upload skippable when the hash already exists
-  ("instant upload").
-- **GC:** refcount sweep triggered by `emptyTrash`/`deleteForever` —
-  delete blobs no live `contentRef` points to. Runs idle-time, unit-tested
-  as a pure function over `(nodes, blobHashes)`.
-- **Threshold rule:** text ≤ 64 KB stays inline in `content` so Notes,
-  the Terminal (`cat`, `echo >`), and sync ops keep their simple
-  string path; everything else goes through `contentRef`.
-- **Server:** blobs live in S3-compatible storage; API hands out presigned
-  upload/download URLs after a hash-existence check; metadata sync (A4)
-  never carries bytes.
-- **Migration:** one-time pass in `fsStore.init` — any node whose
-  `content` is a data URL > threshold is hashed into `blobs` and
-  rewritten. Ship with the upgrade-in-place E2E fixture (§9).
-- **Consumers to update:** Viewer & Files thumbnails (`node.content` →
-  `URL.createObjectURL`), `openFile`, seed data, Terminal `cat` (prints a
-  size/type notice for binary refs — it already special-cases images).
+1. **Unit (Vitest, `node` environment).** Pure logic next to its code. New
+   store or engine code lands with tests in the same PR.
+2. **E2E (Playwright).** One user-visible seam per spec in `e2e/`, run on
+   Chromium, Firefox and WebKit against a production preview. Happy paths,
+   data-loss paths, and a regression spec for each shipped bug. Conventions
+   are in `ARCHITECTURE.md` under Testing.
+3. **Sandbox negative tests.** Every bridge capability is tested for refusal
+   when ungranted, and every ambient capability (storage, cookies, network,
+   top-level navigation) for being unreachable from a frame. These are exit
+   criteria, not coverage.
+4. **Manual pass before a release.** Fresh profile; upgrade in place from
+   the previous release; Safari private mode; reduced motion; 200% zoom; a
+   deliberately bad custom accent.
 
-### A.3 API surface (A1/A2): first draft — _retired_
+### Release mechanics
 
-REST for request/response, one WebSocket for push. All routes
-account-scoped by the session token; versioned under `/v1`.
+- **Versions.** Steps release as minors; 1.0 when §2 is met, at step 21's
+  exit. Tags can start before distribution does.
+- **Flags.** `src/system/flags.ts`; the SDK ships dark behind
+  `third_party_apps` until step 17's exit.
+- **Branches.** Trunk-based, short-lived `<type>/<slug>` branches, `main`
+  always releasable.
+- **Migrations.** Any IndexedDB or persisted-store version bump comes with a
+  `migrate` and an upgrade-in-place fixture.
 
-| Route                                                                        | Purpose                                                                                   |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `POST /v1/auth/signup` · `POST /v1/auth/login`                               | Email + passkey (WebAuthn) first; password fallback decided in the design doc             |
-| `POST /v1/auth/refresh` · `DELETE /v1/auth/sessions/:id`                     | Short-lived access token (~15 min) + rotating refresh; device list & remote sign-out (A8) |
-| `GET /v1/fs/nodes?since=<cursor>`                                            | Snapshot/delta catch-up on boot and reconnect                                             |
-| `POST /v1/fs/ops`                                                            | Batch op submission (A.1); returns per-op ack/canonical version                           |
-| `POST /v1/blobs/presign` · `HEAD /v1/blobs/:hash`                            | Upload/download URLs; hash-existence check                                                |
-| `GET /v1/account` · `PATCH /v1/account/settings` · `GET /v1/account/usage`   | Profile, synced preferences (A6), quota meter (A7)                                        |
-| `POST /v1/shares` · `DELETE /v1/shares/:id` · `GET /v1/public/shares/:token` | E1; the public route is the only unauthenticated surface                                  |
-| WS `/v1/events`                                                              | `ops.applied`, `account.updated`, later `presence.*`                                      |
+---
 
-Skeleton decisions to confirm in the A1 design doc: TypeScript service in
-this pnpm workspace (`apps/server`) sharing the `FsNode`/`Op` types with
-the client; Postgres (nodes, ops, accounts, shares) + S3-compatible blob
-store; rate limiting and body-size caps in the skeleton from day one (R5).
+## 10. Immediate next steps
 
-### A.4 Session restore (C1): saved-session schema
-
-```ts
-interface SavedSession {
-  version: 1;
-  savedAt: number;
-  windows: Array<{
-    appId: string;
-    rect: WindowRect;
-    mode: WindowMode;
-    minimized: boolean;
-    stackOrder: number; // relative z, not raw zIndex
-    payload?: unknown; // only if the app opts in
-  }>;
-  focusedIndex: number | null;
-}
-```
-
-- Written debounced on any window-store change; localStorage first, synced
-  via A6 later.
-- Apps opt into payload restore through two optional manifest hooks:
-  `serializePayload(payload) → JsonValue | null` and
-  `restorePayload(json) → payload`. Notes serializes `{ fileId }`, checks
-  the file still exists on restore; apps without hooks reopen bare.
-- Guardrails: skip windows whose `appId` is no longer registered; clamp
-  rects through the existing `clampToViewport`; a `?fresh` URL param
-  bypasses restore (recovery hatch if a bad session wedges boot).
-
-### A.5 Third-party app sandbox (G2 → D8): capability bridge
-
-- **Packaging:** an app = static bundle (HTML/JS/CSS) + `manifest.json`
-  (id, name, version, entry, icon, `capabilities: string[]`,
-  min-shell-version). Installed bundles live in the VFS under a hidden
-  `/Apps` folder → they sync like files for free.
-- **Isolation:** `<iframe sandbox="allow-scripts">` on a null origin —
-  no cookies, no storage, no network except through the bridge.
-- **Bridge:** promise-based postMessage RPC. Every call is checked against
-  the manifest's granted capabilities _in the shell_, e.g.
-  `fs.read:/Home/Documents`, `fs.write:<own-data-dir>`, `notifications`,
-  `clipboard.read`. First-run consent screen lists requested capabilities;
-  grants are revocable in Settings.
-- **Shell integration over the same bridge:** window title updates, menu
-  section declaration (reusing the `MenuSection` shape), `appCommand`
-  delivery back into the iframe, dock badge/progress.
-- **First consumer is first-party:** the D6 PDF viewer (✅ shipped, step 16b,
-  2026-08-01) renders inside this sandbox before any external code does
-  (D1's markdown renderer shipped independently — §6 decision 8 — and only
-  needs this if D9 opens its editor schema to raw HTML) — the bridge gets
-  hardened on friendly apps.
-
-## Appendix B — Phase 9 work breakdown _(shipped)_
-
-Kept as a worked example of the granularity a step expands into: ordered,
-each row one PR-sized task, each with its own acceptance criterion. Steps
-14–17 should be broken down the same way before they start.
-
-| ID    | Task                               | Size | Details & acceptance                                                                                                                                                                                                        |
-| ----- | ---------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P9.1  | **Git init + remote** (T0)         | S    | `git init`, commit (excluding `dist/` — it's currently on disk; `.gitignore` already covers it), push, protect `main`. _Accept:_ PRs are the only path to `main`.                                                           |
-| P9.2  | **Toolchain alignment** (T1)       | S    | Decide Node 22 LTS vs 24; align `engines`, `.nvmrc`, CI image, and the `.claude/launch.json` node path. _Accept:_ `pnpm lint && pnpm build && pnpm test` clean on the pinned version with no engine warnings.               |
-| P9.3  | **CI pipeline** (H6)               | M    | Actions workflow: pnpm cache → lint → typecheck → unit. Badge in README. _Accept:_ red on any failure; < 4 min before E2E is added.                                                                                         |
-| P9.4  | **Playwright rig** (H5)            | M    | Install (verify against the 7-day release-age policy — pin an older minor if needed), config for 3 engines, scenario 1 (boot smoke). _Accept:_ runs headless in CI on all three browsers.                                   |
-| P9.5  | **E2E: fs + notes round-trips**    | M    | Scenarios 4, 5, 6, 7 from §9. _Accept:_ catches a deliberately re-introduced payload-identity bug (mutation test).                                                                                                          |
-| P9.6  | **E2E: window management**         | M    | Scenarios 2, 3, 13. Pointer-event drag/snap helpers become shared fixtures.                                                                                                                                                 |
-| P9.7  | **Per-window error boundary** (H4) | S    | New `WindowErrorBoundary` wrapping `<AppComponent>` in `Window.tsx`; crash card with "Reload app" (remount) and "Close window". _Accept:_ scenario 15 green; a `throw` in any app leaves shell interactive.                 |
-| P9.8  | **CSP + security lint** (G1)       | M    | Meta-tag CSP for the static build (no inline script; workers/blobs allowed for B3/B1), `eslint-plugin-security`-style rules if policy-installable, `pnpm audit` in CI. _Accept:_ app runs with zero CSP console violations. |
-| P9.9  | **Perf baseline** (H3 prep)        | S    | Script seeding 10k nodes; profile Files render + `childrenOf`; write findings into T7's entry. _Accept:_ a one-page note with numbers, informing Phase 10 virtualization scope.                                             |
-| P9.10 | **Sort controls** (B10)            | M    | View-menu + toolbar sort (name/date/kind), per-folder persistence in a small `viewPrefs` store; `childrenOf` gains a comparator param (unit-tested).                                                                        |
-| P9.11 | **Rename guard** (T2)              | S    | `fsStore.rename` (and Files/Notes rename UIs) reject `/` in names with a toast; unit test. Keeps every node addressable by the Terminal.                                                                                    |
-| P9.12 | **Live window titles** (T3)        | S    | Files/Notes/Viewer window titles follow renames — add a `setWindowTitle(id, title)` store action; Viewer subscribes to its node's name.                                                                                     |
-| P9.13 | **Trash polish** (B12)             | S    | Sidebar badge ages out, optional auto-empty-after-30-days setting (default off).                                                                                                                                            |
-| P9.14 | **Feature-flag utility**           | S    | `src/system/flags.ts`: build-time env + localStorage override + Settings › About debug list. Needed dark-shipping from Phase 10 onward.                                                                                     |
-
-Suggested sequencing: P9.1 → P9.2 → P9.3 land first (everything else rides
-CI); P9.4–P9.6 and P9.7–P9.9 can proceed in parallel tracks; P9.10–P9.14
-are independent fillers.
+1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
+   can't finish without it.
+2. **D8.6, the Apps pane.** The next task in step 17.
+3. **B14 and C5 between D8 PRs.** Each is about half a day, and together
+   they close most of R1's visibility gap.
+4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
+   WebKit in a loop; fix it or record why it's flaky before more specs pile
+   onto CI's retries.
