@@ -17,6 +17,7 @@ import { useSettingsStore } from "@/system/settings/settingsStore";
 import { useThemeStore } from "@/system/theme/themeStore";
 import { MENU_BAR_HEIGHT, useWindowStore } from "@/system/windows/windowStore";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { StorageIndicator } from "./StorageIndicator";
 
 interface BarMenuItem {
   /** Stable per-position id — not the label, which apps aren't guaranteed to keep unique. */
@@ -355,6 +356,7 @@ export function MenuBar() {
 
         <div className="ml-auto flex items-center gap-[calc(14px*var(--ui-scale))] text-12.5 opacity-80">
           {statusItems.offline && <OfflineIndicator />}
+          {statusItems.storage && <StorageIndicator />}
           {statusItems.search && (
             <button
               type="button"

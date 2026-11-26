@@ -19,7 +19,7 @@ import {
 export type ReduceMotionPreference = "system" | "on" | "off";
 
 /** Optional menu-bar status items (U7) — whether each appears at all, independent of the clock's own format toggles below. */
-export type MenuBarStatusItem = "offline" | "search" | "appearance" | "notifications" | "clock";
+export type MenuBarStatusItem = "offline" | "search" | "appearance" | "notifications" | "clock" | "storage";
 
 const DEFAULT_STATUS_ITEMS: Record<MenuBarStatusItem, boolean> = {
   offline: true,
@@ -27,6 +27,8 @@ const DEFAULT_STATUS_ITEMS: Record<MenuBarStatusItem, boolean> = {
   appearance: true,
   notifications: true,
   clock: true,
+  // C5 — opt-in: it only earns its space for someone watching a full disk.
+  storage: false,
 };
 
 export interface WindowSize {

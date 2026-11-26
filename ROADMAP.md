@@ -126,7 +126,6 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 | ID  | Feature                                                                                                                                                                    | Size | Notes                                                                  |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------- |
 | C3  | **Window overview** — zoomed-out grid of open windows, click to focus                                                                                                      | L    | Nice to have, not load-bearing. Unscheduled                            |
-| C5  | **Storage meter** — usage against quota from `navigator.storage.estimate()` in Settings › General and as an optional menu-bar item; warn before a large write would fail   | S    | Nothing in `src/` calls `estimate()` yet                               |
 | C7  | **Multi-monitor** — populate `OsWindow.screenId` from the Window Management API                                                                                            | XL   | Deferred. The seam exists so nothing blocks on it                      |
 | C9  | **Commands in ⌘K** — list the focused app's enabled menu items and the shell commands next to file results ("New Note", "Empty Trash", "Toggle Dark Mode", Settings panes) | S/M  | Menus are already data; `shortcuts.ts` already runs them. No new model |
 
@@ -271,8 +270,7 @@ Files, reads only what it was granted, and uninstalls cleanly.
 
 ### Step 18 — Safety net _(≈ 1–1.5 weeks)_
 
-C5, B13, B15, then B18 (B14 shipped 2026-11-26). C5 is small and touch nothing step
-17 touches, so they can land between D8 PRs rather than waiting for it.
+B13, B15, then B18 (B14 and C5 shipped 2026-11-26).
 
 **Exit:** a backup made on one machine restores on another with the look,
 dock, desktop layout and installed-app grants intact; a backup can be merged
@@ -323,7 +321,7 @@ sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 ```text
 LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
 D8.6 ► D8.7 ► D8.8 ► D8.9 ► D8.11        D8.10 needs D8.6 only
-C5 ─ any time ─► B13 ► B15 ► B18
+B13 ► B15 ► B18
 T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
 §2 met ──────────────► distribution (X.3)
 ```
@@ -523,8 +521,8 @@ clean, no new lint or type suppressions.
 1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
    can't finish without it.
 2. **D8.6, the Apps pane.** The next task in step 17.
-3. **C5 between D8 PRs.** About half a day; with B14 it closes most of R1's
-   visibility gap.
+3. **B13, the whole-desktop backup.** B14 and C5 are in, so the next safety-net
+   step is making the export complete.
 4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
    WebKit in a loop; fix it or record why it's flaky before more specs pile
    onto CI's retries.

@@ -46,6 +46,7 @@ import {
 } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
 import { sortForFolder, useViewPrefsStore, viewModeForFolder } from "@/system/settings/viewPrefsStore";
+import { readStorageEstimate, wouldExceedQuota } from "@/system/storage/storageEstimate";
 import { pathString, resolveFolderPath } from "./breadcrumbPath";
 import { useClipboardStore } from "./clipboardStore";
 import { downloadMany } from "./download";
@@ -339,6 +340,16 @@ export default function FilesApp({ windowId, payload }: AppWindowProps) {
     if (targetFolderId === TRASH_ID || isVirtualPlace(targetFolderId)) {
       notify({ title: "Can’t upload here", body: "Items can’t be uploaded directly into the Trash.", tone: "danger" });
       return;
+    }
+    // C5: say so before a write that clearly won't fit, rather than only after it fails.
+    const incoming = entries.reduce((sum, entry) => sum + entry.file.size, 0);
+    const estimate = await readStorageEstimate();
+    if (estimate && wouldExceedQuota(estimate, incoming)) {
+      notify({
+        title: "Not enough storage",
+        body: `These files are ${formatBytes(incoming)} and the browser has about ${formatBytes(Math.max(0, estimate.quota - estimate.usage))} left. Some may fail to save.`,
+        tone: "danger",
+      });
     }
     const result = await uploadEntries(
       targetFolderId,

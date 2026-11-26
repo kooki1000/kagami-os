@@ -19,7 +19,7 @@ import { Segmented } from "@/components/ui/Segmented";
 import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
-import { formatShortcut } from "@/lib/format";
+import { formatBytes, formatShortcut } from "@/lib/format";
 import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps/installBundle";
 import { launchApp } from "@/system/apps/launch";
 import { candidateAppsForMime } from "@/system/apps/openFile";
@@ -44,6 +44,7 @@ import { useWallpaperUrl } from "@/system/settings/wallpaperBlobUrl";
 import { PREVIEW_WALL_TILE, WALLPAPER_STYLES, wallpaperStyleVars } from "@/system/settings/wallpaperStyles";
 import { SHELL_CHORD_DESCRIPTIONS, WINDOW_CHORDS } from "@/system/shortcuts";
 import { usePersistentStorageStatus } from "@/system/storage/persistence";
+import { storageLevel, usedFraction, useStorageEstimate } from "@/system/storage/storageEstimate";
 import { useThemeStore } from "@/system/theme/themeStore";
 import { InstallAppDialog } from "./InstallAppDialog";
 
@@ -911,6 +912,7 @@ const STATUS_ITEM_LABELS: Record<MenuBarStatusItem, string> = {
   appearance: "Appearance toggle",
   notifications: "Notifications",
   clock: "Clock",
+  storage: "Storage meter",
 };
 
 /** U7 — clock format/visibility and which status items appear in the menu bar. */
@@ -954,7 +956,8 @@ function MenuBarSection() {
             <ListRowItem key={item} index={i} length={statusItemIds.length}>
               <span className="text-12 text-ink">{STATUS_ITEM_LABELS[item]}</span>
               <Switch
-                checked={statusItems[item]}
+                // A payload saved before C5 has no `storage` key.
+                checked={Boolean(statusItems[item])}
                 onChange={value => setStatusItemEnabled(item, value)}
                 label={`Show ${STATUS_ITEM_LABELS[item]}`}
               />
@@ -1119,8 +1122,52 @@ function GeneralSection() {
           />
         </div>
       </Row>
+      <StorageSection />
       <BackupSection />
     </>
+  );
+}
+
+/** C5 — how much of the browser's storage quota the desktop is using. */
+function StorageSection() {
+  const estimate = useStorageEstimate();
+  const persistent = usePersistentStorageStatus();
+  const percent = estimate ? Math.round(usedFraction(estimate) * 100) : 0;
+  const level = estimate ? storageLevel(estimate) : "ok";
+  return (
+    <Row label="Storage">
+      {estimate
+        ? (
+            <>
+              <div
+                role="meter"
+                aria-label="Storage used"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+                className="h-2 overflow-hidden rounded-full bg-ph"
+              >
+                <div className={`h-full ${level === "ok" ? "bg-accent" : "bg-accent-2"}`} style={{ width: `${Math.max(percent, 1)}%` }} />
+              </div>
+              <p className="mt-2 text-12 text-ink-2">
+                {`About ${formatBytes(estimate.usage)} of ${formatBytes(estimate.quota)} used (${percent}%).`}
+              </p>
+              {level !== "ok" && (
+                <p className="mt-1 text-12 text-ink">
+                  Space is running low. Delete files you don't need, or export a backup first.
+                </p>
+              )}
+            </>
+          )
+        : <p className="text-12 text-ink-2">Your browser doesn't report storage use.</p>}
+      <p className="mt-2 text-12 text-ink-2">
+        {persistent === true
+          ? "The browser has agreed to keep this data. It can still be lost if you clear site data."
+          : persistent === false
+            ? "The browser may clear this data when it needs space, so keep a backup."
+            : ""}
+      </p>
+    </Row>
   );
 }
 
