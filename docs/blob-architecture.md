@@ -1,46 +1,42 @@
-# Blob storage architecture (B1) — design note
+# Blob storage (B1)
 
-**Status:** design for review · opens Phase 10 (File-system maturity → v0.8)
-**Gate:** this reshapes `FsNode` and both storage adapters and touches ~5
-consumers, so it gets a page of thought before code (roadmap §10.5). Nothing
-here ships until the shape below is agreed.
+**Status:** shipped in Phase 10. This note started as the design for review
+and now describes what was built, including the choices that were open at
+the time.
 
-## Problem
+## Why it exists
 
-`FsNode.content` holds file bytes as strings — data URLs for images, raw text
-for documents. Every byte therefore rides through `loadAll` into memory and
-sits in every Zustand snapshot. This caps practical file size at "toy" and
-blocks real uploads (B2), download (B3), and media/PDF (D5/D6).
-
-**Exit criterion (roadmap Phase 10):** `loadAll` no longer contains file bytes
-— nodes are metadata.
+`FsNode.content` used to hold every file's bytes as a string: data URLs for
+images, raw text for documents. All of it rode through `loadAll` into memory
+and sat in every Zustand snapshot, which capped practical file size and
+blocked real uploads, downloads, media and PDF.
 
 ## Shape
 
-Bytes move out of the node record into a **content-addressed blob store**.
-Nodes keep only a reference.
+Bytes live in a content-addressed blob store. A node holds a reference:
 
 ```ts
 interface FsNode {
-  // content?: string  — STAYS, but only for small text (≤ 64 KB): Notes
-  //                      documents, Terminal `echo >`/`cat`. Keeps their
-  //                      simple string path (and their sync ops) unchanged.
+  content?: string; // small text only, ≤ BLOB_INLINE_THRESHOLD (64 KB)
   contentRef?: {
-    hash: string; // sha-256 hex of the bytes — the blob's identity
-    size: number; // byte length, for "Get Info" (B8) and quota (A7)
+    hash: string; // SHA-256 hex of the bytes, the blob's identity
+    size: number;
     mimeType?: string;
   };
 }
 ```
 
-A node has **at most one** of `content` / `contentRef`. The **threshold is
-64 KB**: text under it stays inline; everything else (all binaries, large
-text) becomes a `contentRef`.
+A node has at most one of `content` and `contentRef`. Text under 64 KB stays
+inline, so Notes and the Terminal keep their simple string path. Everything
+else, binaries and large text alike, becomes a `contentRef`. An edit that
+crosses the threshold moves the content across in either direction
+(`fsStore.setFileBlob`, the mirror of `updateFileContent`).
 
-## Storage layer
+## The `BlobStore` seam
 
-A new seam, parallel to `StorageAdapter`, so the byte store can evolve
-independently (IndexedDB in the web build, disk files in the native one):
+It sits beside `StorageAdapter` rather than inside it, so the byte store can
+change on its own. That's what let the native disk store land without
+touching node persistence.
 
 ```ts
 interface BlobStore {
@@ -48,101 +44,44 @@ interface BlobStore {
   get: (hash: string) => Promise<Blob | null>;
   put: (hash: string, blob: Blob) => Promise<void>;
   delete: (hashes: string[]) => Promise<void>;
-  listHashes: () => Promise<string[]>; // for GC
+  listHashes: () => Promise<string[]>;
 }
 ```
 
-- IndexedDB backing: a new `blobs` object store, `keyPath: "hash"`, value a
-  `Blob` (Safari IDB Blob support is fine on our target matrix). This is an
-  **IDB schema version bump** with an explicit migration (see below) and an
-  upgrade-in-place E2E fixture (roadmap §9).
-- Hashing: `crypto.subtle.digest("SHA-256", bytes)` → hex.
+- **Web:** `idbBlobStore.ts`, a `blobs` object store keyed by `hash` holding
+  `Blob` values (chosen over `ArrayBuffer` as simpler and well supported on
+  all three engines).
+- **Native:** `tauriBlobStore.ts`, one file per blob under `$APPDATA/disk`.
+- Both degrade to in-memory when their backing store is unavailable.
 
-## Content addressing → free dedupe + "instant upload"
+Hashing is `crypto.subtle.digest("SHA-256", bytes)` in `blobHash.ts`.
+Writing hashes first and skips the `put` when `has(hash)` is already true,
+so ten copies of a photo are one blob and re-uploading a file is instant.
 
-Writing bytes: hash first; if `has(hash)` is already true, **skip the write**
-and just point the node at it. Ten copies of a photo = one blob; re-uploading
-an existing file is instant. Server-side this becomes the `HEAD /blobs/:hash`
-existence check from Appendix A.3.
+## Reading bytes
 
-## Read path
+Components that render bytes call `useBlobUrl(ref)`, which creates an object
+URL and revokes it on unmount or hash change. Viewer, Files thumbnails, the
+Player, Documents and the editors all go through it or through
+`blobStore.get`. Terminal `cat` prints a size and type notice for a
+`contentRef` instead of dumping bytes.
 
-Consumers that render bytes resolve a blob URL from the ref:
+## Garbage collection
 
-```text
-useBlobUrl(ref) → createObjectURL(blob), revoked on unmount
-```
+Blobs are shared, so deleting a node can't delete its blob directly.
+`unreferencedBlobs(nodes, blobHashes)` is a pure function returning the
+hashes no live node points at. The node deletion commits first, then the
+sweep runs; it's triggered by Empty Trash and permanent delete, plus an idle
+sweep after boot. `blobIntegrity.test.ts` checks that a blob whose node
+commit hasn't landed yet is never collected.
 
-- **Viewer** and **Files thumbnails**: `node.content` → blob URL from
-  `contentRef.hash`.
-- **Terminal `cat`**: a `contentRef` prints a size/type notice (it already
-  special-cases images) instead of dumping bytes.
-- Small-text consumers (Notes editor, `cat` on a text file) keep reading
-  `node.content` unchanged.
+If version history (`ROADMAP.md` B16) lands, old version hashes have to
+count as references here.
 
-## Garbage collection (refcounting)
+## Migration
 
-Blobs are shared, so deleting a node must not blindly delete its blob. GC is a
-**pure function**, unit-tested independent of storage:
-
-```text
-unreferencedBlobs(nodes, blobHashes) → hashes with no live contentRef
-```
-
-Ordering: apply the node deletion first, then sweep. Triggered by
-`emptyTrash` / `deleteForever`, plus an idle-time sweep. (T6 already notes the
-trash-only guard lives at call sites — revisit when third-party apps get fs
-access.)
-
-## Migration (one-time, in `fsStore.init`)
-
-Guarded by the IDB schema version so it runs exactly once:
-
-1. For each node whose `content` is a data URL **larger than the threshold**:
-   decode → hash → `blobs.put` → rewrite the node to a `contentRef`, clear
-   `content`.
-2. Small text stays inline.
-3. Seeded SVG artwork: **kept inline** — it's `image/svg+xml` text well under
-   64 KB, so it stays a `content` string (no blob, no `<img>` change needed
-   beyond what already works). Revisit only if seed art grows.
-
-Ship with an old-schema snapshot committed as a test fixture and an
-upgrade-in-place E2E scenario.
-
-## Consumers to update
-
-`Viewer`, Files thumbnail rendering (`isImageNode` path), `openFile`, the
-seed data, and Terminal `cat`. Everything else addresses nodes by metadata
-and is untouched.
-
-## Suggested sub-PR sequence
-
-Each step is independently reviewable and leaves the app working:
-
-1. **`BlobStore` seam + IDB `blobs` store + schema bump** — no behavior change
-   yet; unit tests for the adapter.
-2. **`contentRef` type + write path** — `createFile` routes `> threshold` to a
-   blob; add the `useBlobUrl` read hook. Behind a feature flag if needed.
-3. **Migration + fixture** — one-time data-URL → blob pass.
-4. **Switch consumers** — Viewer, Files thumbnails, `openFile`, Terminal.
-5. **GC / refcount sweep** — pure function + wire into trash flows.
-
-B2 (upload from host OS) then builds directly on steps 1–2.
-
-## Open decisions (confirm before step 1)
-
-1. **Blob value type in IDB:** `Blob` (recommended — simplest, well-supported)
-   vs `ArrayBuffer`.
-2. **Threshold value:** 64 KB proposed. Balances keeping Notes/Terminal on the
-   inline path against payload bloat.
-3. **`BlobStore` as a separate seam** (recommended) vs extending
-   `StorageAdapter`. Separate keeps a future backend swap isolated — which
-   is what let the native disk store land without touching node persistence.
-4. **Seed SVGs inline** (recommended) vs migrated to blobs.
-
-## Risk
-
-This is user-data-shaped (R2). Mitigations: the migration is idempotent and
-version-guarded; content addressing means a botched write is detectable (hash
-mismatch); the old IDB data is only rewritten after the blob is durably
-stored; and the upgrade-in-place fixture is a merge gate.
+A one-time pass in `fsStore.init`, guarded by the IndexedDB schema version:
+any node whose `content` was a data URL over the threshold was decoded,
+hashed, stored, and rewritten to a `contentRef`. The node was only rewritten
+after its blob was durably stored. Seeded SVG artwork stayed inline, since
+it's small text.

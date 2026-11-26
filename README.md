@@ -116,6 +116,10 @@ Actions** and the same workflow will publish your copy.
   tokens, type, radii, and the places the code has drifted from them.
 - [`docs/security-advisories.md`](docs/security-advisories.md) lists dependency
   alerts that were looked at and deliberately left open, with the reasoning.
+- [`docs/improvement-proposals.md`](docs/improvement-proposals.md) is the
+  review behind the roadmap's current steps. The rest of [`docs/`](docs)
+  holds notes on blob storage, the native browser, browser support,
+  performance and the closed review backlog.
 
 ## Feature flags
 

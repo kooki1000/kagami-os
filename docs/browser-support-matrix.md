@@ -1,66 +1,57 @@
 # Browser support matrix (F4)
 
-**Status:** Phase 12. This documents what's already true today; it doesn't
-add new CI — `.github/workflows/ci.yml`'s `e2e` job already runs the full
-Playwright suite as three parallel per-engine jobs
-(`chromium`/`firefox`/`webkit`, `playwright.config.ts`), so the "CI-test
-Chromium/Firefox/Safari" half of F4 was met before this phase started.
+Written in Phase 12 to record what was already true; it added no CI. The
+`e2e` job in `.github/workflows/ci.yml` runs the full Playwright suite once
+per engine (`playwright.config.ts`).
 
-## Officially supported
+## Supported
 
 | Engine   | Playwright project | Represents             |
 | -------- | ------------------ | ---------------------- |
 | Chromium | `chromium`         | Chrome, Edge, Brave, … |
 | Firefox  | `firefox`          | Firefox                |
-| WebKit   | `webkit`           | Safari (macOS/iOS)     |
+| WebKit   | `webkit`           | Safari (macOS, iOS)    |
 
-All three run the full E2E suite on every PR. A change that only passes on
-one or two engines is a regression, not a platform quirk, unless it's
-recorded below.
+All three run every spec on every PR. A change that passes on only one or two
+engines is a regression unless the gap is listed below.
 
-## Known-handled cross-engine differences
+## Differences the code already handles
 
-- **IndexedDB unavailable (Safari private browsing, or any browser with
-  storage disabled).** `idbAdapter.ts`/`idbBlobStore.ts` detect
-  `typeof indexedDB === "undefined"` and degrade to an in-memory
-  `StorageAdapter`/`BlobStore` — the OS still boots and is fully usable,
-  it just doesn't persist across a reload. Covered by
-  `e2e/private-mode.spec.ts` (scenario #14 in `ARCHITECTURE.md`'s catalog).
-- **Window drag/resize** is implemented on the standard Pointer Events API
-  with explicit `setPointerCapture` (`Window.tsx`) rather than a
-  library — chosen specifically so drag/resize/snap behave the same on all
-  three engines without engine-specific branches. `pointercancel` (fired
-  instead of `pointerup` when the browser itself takes over a gesture, e.g.
-  a native drag) is handled explicitly for the same reason.
-- **`navigator.storage.persist()`** (F1) is fully feature-detected —
-  browsers that don't implement it (or refuse the grant) fall back to
-  showing "best-effort" in Settings › About rather than throwing.
+- **No IndexedDB** (Safari private browsing, storage disabled).
+  `idbAdapter.ts` and `idbBlobStore.ts` fall back to in-memory stores. The OS
+  boots and works but doesn't persist across a reload. Covered by
+  `e2e/private-mode.spec.ts`.
+- **Window drag and resize** use Pointer Events with explicit
+  `setPointerCapture` (`Window.tsx`), not a library, so they behave the same
+  on all three engines. `pointercancel` is handled explicitly for when the
+  browser takes over a gesture.
+- **`navigator.storage.persist()`** is feature-detected. Browsers that don't
+  implement it, or refuse, show "best-effort" in Settings › About.
 
-## Known engine-specific gaps (accepted, not bugs)
+## Accepted gaps
 
-- **PWA installability differs — don't claim parity.** Chromium exposes a
-  real install prompt (`beforeinstallprompt`) and installs `manifest.webmanifest`
-  as written. Firefox desktop has no install UI for the manifest at all.
-  Safari has no `beforeinstallprompt` either — the only path is manual
-  "Add to Home Screen", which reads a narrower, non-standard subset of the
-  manifest (notably: no `display: "standalone"` chrome control the way
-  Chromium honors it, and it prefers `apple-touch-icon` over the manifest's
-  icon list, which is why `index.html` sets both). UI copy and docs should
-  say "install" generically and never promise a native prompt on Safari or
-  Firefox.
-- **Playwright's WebKit driver cannot reload a page against
-  `context.setOffline(true)` while a service worker is active** — throws
-  "WebKit encountered an internal error" (confirmed reproducible, not a
-  timing flake). This is a Playwright/WebKit **test-driver** limitation, not
-  a real-Safari runtime bug — the equivalent mid-session offline scenario
-  (no reload involved) passes on WebKit fine. `e2e/offline.spec.ts`'s
-  airplane-mode-boot test is scoped to Chromium/Firefox only, same pattern
-  already used for `files.spec.ts`'s native drag-and-drop and
-  `a11y-reduced-motion.spec.ts`'s `prefers-reduced-motion` emulation.
+**PWA install differs by engine, so never claim parity.** Chromium offers an
+install prompt and honours the manifest as written. Firefox desktop has no
+install UI at all. Safari's only path is "Add to Home Screen" (or "Add to
+Dock"), which reads a narrower part of the manifest and prefers
+`apple-touch-icon`, which is why `index.html` sets both. Copy should say
+"install" generically. Chromium-only features planned in `ROADMAP.md` (F5's
+file handler, B18's backup folder, F7's drag-out) follow the same rule: each
+has a fallback, and nothing promises them on Firefox or Safari.
+
+**Specs skipped on some engines.** Each is a test-driver limit, not a
+runtime bug in the browser:
+
+| Spec                                        | Runs on           | Why                                                                                                                            |
+| ------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `files.spec.ts`, native drag-and-drop       | Chromium          | HTML5 drag-and-drop synthesis is unreliable in Playwright's Firefox and WebKit drivers                                         |
+| `a11y-reduced-motion.spec.ts`               | Chromium          | `emulateMedia`'s `prefers-reduced-motion` is unreliable on Firefox and WebKit                                                  |
+| `notes.spec.ts`, paste                      | Chromium          | Synthetic paste events aren't delivered on the other engines                                                                   |
+| `offline.spec.ts`, airplane-mode boot       | Chromium, Firefox | WebKit's driver throws reloading against `setOffline(true)` with an active service worker; the mid-session offline case passes |
+| `export-import.spec.ts`, download read-back | Chromium, Firefox | WebKit's driver can't read a finished download's bytes back                                                                    |
 
 ## Revisit when
 
-- A future Playwright/WebKit release fixes the reload+offline+SW driver
-  error above — try dropping the `test.skip` in `e2e/offline.spec.ts`.
-- Safari or Firefox ship `beforeinstallprompt`-equivalent install UI — the
-  "don't claim parity" note above would need updating.
+- A Playwright release fixes WebKit's reload-while-offline or
+  download-read-back errors: try dropping those `test.skip` calls.
+- Firefox or Safari ship real install UI: update the PWA note.
