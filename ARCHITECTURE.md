@@ -625,6 +625,11 @@ tokens without flipping light/dark.
   `appGrantsStore` and `SandboxedAppHost` syncs it into the context every
   bridge call reads, so a revoked capability is denied on the open window's
   next call with no reload.
+- `examples/scratchpad/` is the reference app (D8.8): a manifest and one
+  commented entry script that use every bridge method an app is likely to
+  want. `e2e/app-lifecycle.spec.ts` zips it from those files and runs
+  install → run → revoke → uninstall, so it can't rot. D8.9 makes it the
+  starter.
 
 **A pattern worth remembering.** The first version had the shell create the
 entry script's `blob:` URL and pass it to the frame as `<script src>`. A
@@ -768,6 +773,6 @@ desktop e2e via `tauri-driver`).
 
 **Steps 13–16** are done: realigned docs, the review backlog closed, area U
 (depth and customization), the capability sandbox (16a), and Documents, the
-small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.7 in
-(described under Capability sandbox above); D8.8–D8.12 and steps 18–21 are
+small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.8 in
+(described under Capability sandbox above); D8.9–D8.12 and steps 18–21 are
 in `ROADMAP.md` §4.
