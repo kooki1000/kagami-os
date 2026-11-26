@@ -42,3 +42,7 @@ null-pointer dereference. Fixed upstream in `gtk-rs-core` v0.20.0
 (watch [wry releases](https://github.com/tauri-apps/wry/releases) or the
 `tauri` Cargo.toml requirement in `src-tauri/Cargo.toml`); then `cargo
 update -p glib` and confirm the Dependabot alert closes on its own.
+
+**Rechecked 2026-11-26:** `wry` is now 0.58.1 but requires `gtk ^0.19`
+(i.e. `glib 0.19`), still short of the `>= 0.20` fix. Condition not met;
+alert stays dismissed.
