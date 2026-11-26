@@ -35,10 +35,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Fail on high/critical advisories (caught the vitest CVE); lower
-      # severities stay visible without blocking on transient dev-dep noise.
-      # pnpm-workspace.yaml's auditConfig.ignoreGhsas carries one temporary
-      # exception — see docs/security-advisories.md for why.
+      # High/critical only; exceptions: docs/security-advisories.md.
       - name: Security audit
         run: pnpm audit --audit-level=high
 
@@ -63,7 +60,7 @@ jobs:
     env:
       PLAYWRIGHT_IMAGE_VERSION: 1.61.1
     strategy:
-      # One job per engine so the three run concurrently instead of serially.
+      # One job per engine, run concurrently.
       fail-fast: false
       matrix:
         project: [chromium, firefox, webkit]
@@ -104,10 +101,7 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # Branch protection requires a status check named "E2E (Playwright)", but
-  # the job above matrixes into per-engine contexts ("E2E (Playwright)
-  # (chromium)" etc.) that never post under the plain name. This job posts
-  # under the exact required name once, aggregating the matrix's outcome.
+  # Posts the plain "E2E (Playwright)" check that branch protection requires.
   e2e-required:
     name: E2E (Playwright)
     needs: e2e
