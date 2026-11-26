@@ -136,11 +136,11 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 The list of apps is closed (§6.2). What's left is the SDK and the leftovers
 inside existing apps.
 
-| ID  | Feature                                                                                                                                                                                                                             | Size | Notes                                                                                               |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
-| D8  | **Third-party app SDK** — D8.1–D8.6 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent, the Apps pane and uninstall). Remaining tasks are in step 17 | XL   | See §4                                                                                              |
-| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                                   | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
-| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13)                 | M    | Take these opportunistically; none blocks a step                                                    |
+| ID  | Feature                                                                                                                                                                                                                                                                 | Size | Notes                                                                                               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
+| D8  | **Third-party app SDK** — D8.1–D8.8 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent, the Apps pane and uninstall, live revocation, the reference app). Remaining tasks are in step 17 | XL   | See §4                                                                                              |
+| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                                                                       | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
+| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13)                                                     | M    | Take these opportunistically; none blocks a step                                                    |
 
 ### F. Platform
 
@@ -249,15 +249,13 @@ feature runs on.
 
 ### Step 17 — Finish the app SDK _(≈ 3–4 weeks)_
 
-D8.1–D8.5 shipped 2026-08-05, D8.6 on 2026-11-26. The exit criterion has always been "an app
+D8.1–D8.5 shipped 2026-08-05, D8.6–D8.8 on 2026-11-26. The exit criterion has always been "an app
 written outside this repository", and the reference app in D8.8 proves the
 mechanics but not that an outsider could write one. D8.9–D8.12 close that.
 
 | ID    | Task                                                                                                                                                                                                                                                                                                         | Size | Depends on | Accept                                                                                                              |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| D8.7  | Revocation reaches a running window                                                                                                                                                                                                                                                                          | S/M  | —          | Revoking `fs.read` makes an open window's next call return `capability_denied`, no reload                           |
-| D8.8  | Reference app and an install → run → revoke → uninstall e2e                                                                                                                                                                                                                                                  | M    | D8.7       | Passing on all three engines                                                                                        |
-| D8.9  | **Author docs and starter** — `docs/app-sdk.md` (bundle format, manifest fields, every bridge method and its capability, error codes, the security model); the client published as one copyable file with its types; D8.8's app doubles as the template                                                      | M    | D8.8       | Someone following only the doc builds and installs a working app                                                    |
+| D8.9  | **Author docs and starter** — `docs/app-sdk.md` (bundle format, manifest fields, every bridge method and its capability, error codes, the security model); the client published as one copyable file with its types; D8.8's app doubles as the template                                                      | M    | —          | Someone following only the doc builds and installs a working app                                                    |
 | D8.10 | **Private data folder** — every installed app gets `Apps/<id>/data` with read and write and no consent prompt; uninstall removes it                                                                                                                                                                          | S    | —          | An app persists state across reloads without requesting any fs scope                                                |
 | D8.11 | **Installed apps open files** — a `fileTypes` manifest field feeding `openFile.ts` and the Default Apps pane (never the default on install), plus a per-file grant: opening a file with an app grants access to that one node for that window, and `fs.pick` shows a shell-drawn picker that grants the same | M    | D8.9       | An installed viewer appears in Open With and reads only the file it was handed; negative tests for every other node |
 | D8.12 | **Menus and dock badges over the bridge** — a `menus.set` method validated against `MenuSection`, items carrying `appCommand` strings; a badge method for the dock tile. Both were in 16a's scope and never landed                                                                                           | S/M  | D8.4       | A sandboxed app's menus show in the menu bar and its chords dispatch                                                |
@@ -322,7 +320,7 @@ sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 
 ```text
 LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
-D8.7 ► D8.8 ► D8.9 ► D8.11        D8.10 is unblocked
+D8.9 ► D8.11        D8.10 is unblocked
 B14, C5 ─ any time ─► B13 ► B15 ► B18
 T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
 §2 met ──────────────► distribution (X.3)
@@ -522,7 +520,7 @@ clean, no new lint or type suppressions.
 
 1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
    can't finish without it.
-2. **D8.7, revocation reaching a running window.** The next task in step 17.
+2. **D8.10, then D8.12.** Both are unblocked. D8.9 (publishing the SDK) waits on the license in item 1.
 3. **B14 and C5 between D8 PRs.** Each is about half a day, and together
    they close most of R1's visibility gap.
 4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
