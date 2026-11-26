@@ -1,14 +1,15 @@
-minimumReleaseAge: 10080
 blockExoticSubdeps: true
-allowBuilds:
-  esbuild: true
-strictDepBuilds: true
-shellEmulator: true
+minimumReleaseAge: 10080
+minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
+shellEmulator: true
+strictDepBuilds: true
+
 overrides:
+  katex: ^0.18.2
   postcss: ^8.5.18
   semver: ^7.8.5
-auditConfig:
-  ignoreGhsas:
-    - GHSA-mh99-v99m-4gvg
-    - GHSA-rgw5-rvv9-x895
+  tinypool: ^2.1.2
+
+allowBuilds:
+  esbuild: true
