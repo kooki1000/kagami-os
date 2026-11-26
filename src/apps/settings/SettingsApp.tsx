@@ -14,7 +14,7 @@ import type { ResolvedTheme, ThemePreference } from "@/system/theme/themeStore";
 import { Check, ChevronRight, Clock, FileType, Info, Keyboard, LayoutGrid, Monitor, Palette, Power, Puzzle, SlidersHorizontal } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { SEARCH_ENGINES } from "@/apps/browser/searchEngines";
-import { exportDisk, importDisk } from "@/apps/files/exportImport";
+import { importDisk } from "@/apps/files/exportImport";
 import { Segmented } from "@/components/ui/Segmented";
 import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
@@ -24,13 +24,14 @@ import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps
 import { launchApp } from "@/system/apps/launch";
 import { candidateAppsForMime } from "@/system/apps/openFile";
 import { apps, getApp } from "@/system/apps/registry";
+import { BACKUP_REMINDER_CHOICES, describeBackupAge, exportDiskAndRecord } from "@/system/backup/backupReminder";
 import { useDesktopLayoutStore } from "@/system/desktop/desktopLayoutStore";
 import { useDockStore } from "@/system/dock/dockStore";
 import { effectiveDefault, FLAGS, hasFlagOverride, isFlagEnabled, setFlagOverride } from "@/system/flags";
-import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
 import { PICTURES_ID } from "@/system/fs/types";
 import { notify } from "@/system/notifications/notificationStore";
+import { isTauri } from "@/system/platform";
 import {
   lookById,
   LOOKS,
@@ -1134,8 +1135,12 @@ const IMPORT_CONFIRM_MS = 8000;
  * confirm click rather than replacing the disk on selection alone.
  */
 function BackupSection() {
-  const nodes = useFsStore(s => s.nodes);
   const replaceAll = useFsStore(s => s.replaceAll);
+  const lastBackupAt = useSettingsStore(s => s.lastBackupAt);
+  const reminderDays = useSettingsStore(s => s.backupReminderDays);
+  const setBackupReminderDays = useSettingsStore(s => s.setBackupReminderDays);
+  // Fixed at mount: the age is shown in whole days, and render must stay pure.
+  const [openedAt] = useState(Date.now);
   const [exporting, setExporting] = useState(false);
   const { armed: pendingImport, arm: armImport, disarm: disarmImport } = useArmedConfirm<File>(IMPORT_CONFIRM_MS);
   const [importing, setImporting] = useState(false);
@@ -1144,7 +1149,7 @@ function BackupSection() {
   async function handleExport(): Promise<void> {
     setExporting(true);
     try {
-      await exportDisk(nodes, blobStore);
+      await exportDiskAndRecord();
     }
     catch (error) {
       notify({
@@ -1228,6 +1233,24 @@ function BackupSection() {
         </button>
         <input ref={inputRef} type="file" accept=".zip" hidden onChange={handlePick} />
       </div>
+      <p className="mt-3 text-12 text-ink-2">
+        {"Last backup: "}
+        {describeBackupAge(lastBackupAt, openedAt)}
+      </p>
+      {!isTauri() && (
+        <label className="mt-2 flex items-center gap-2 text-12 text-ink-2">
+          Remind me after
+          <select
+            value={reminderDays}
+            className="rounded-btn bg-ph px-2 py-1 text-11.5 text-ink"
+            onChange={e => setBackupReminderDays(Number(e.target.value))}
+          >
+            {BACKUP_REMINDER_CHOICES.map(days => (
+              <option key={days} value={days}>{days === 0 ? "Never" : `${days} days`}</option>
+            ))}
+          </select>
+        </label>
+      )}
     </Row>
   );
 }

@@ -116,7 +116,6 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------- |
 | B9b | **Content search** — the second half of B9. An in-memory inverted index over text content, built in a Worker at boot and updated from `fsStore.commit()`; ⌘K results show a one-line snippet                                                          | M/L  | B9 deferred this until B1 shipped. It has. The index is reused by D10's backlinks                       |
 | B13 | **Whole-desktop backup** — the export gains a `settings.json` entry with every persisted store's state and zustand `version` (settings, dock, desktop layout, theme, view prefs, per-app prefs, `appGrantsStore`); import runs each store's `migrate` | M    | `EXPORT_MANIFEST_VERSION` → 2; version-1 zips still import as disk-only. Session-scoped stores stay out |
-| B14 | **Backup reminder** — record `lastBackupAt`, show it in the Backup row, notify once past a threshold (default 7 days, Safari's eviction window). Off in the native build                                                                              | S    | Addresses R1 directly                                                                                   |
 | B15 | **Import into a folder** — a second import action that unpacks under `Home/Imported <date>` via `uniqueChildName` instead of replacing the disk; system-folder ids in the zip are ignored                                                             | M    | The answer to "two machines" is a zip, and today that zip can only overwrite                            |
 | B16 | **Version history for text files** — on save, keep the previous content hash if it's more than a few minutes old (cap 20 per node); blob GC treats them as live; "Revert to…" in Get Info and both editors                                            | L    | Needs T11. Content addressing makes old versions nearly free                                            |
 | B17 | **Undo for file operations** — an inverse-op stack in the fs store for move, rename, drag-and-drop and paste; ⌘Z in Files and on the desktop when no text field has focus. The existing trash-undo toasts move onto it                                | M    |                                                                                                         |
@@ -272,7 +271,7 @@ Files, reads only what it was granted, and uninstalls cleanly.
 
 ### Step 18 — Safety net _(≈ 1–1.5 weeks)_
 
-B14, C5, B13, B15, then B18. The first two are small and touch nothing step
+C5, B13, B15, then B18 (B14 shipped 2026-11-26). C5 is small and touch nothing step
 17 touches, so they can land between D8 PRs rather than waiting for it.
 
 **Exit:** a backup made on one machine restores on another with the look,
@@ -324,7 +323,7 @@ sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 ```text
 LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
 D8.6 ► D8.7 ► D8.8 ► D8.9 ► D8.11        D8.10 needs D8.6 only
-B14, C5 ─ any time ─► B13 ► B15 ► B18
+C5 ─ any time ─► B13 ► B15 ► B18
 T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
 §2 met ──────────────► distribution (X.3)
 ```
@@ -524,8 +523,8 @@ clean, no new lint or type suppressions.
 1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
    can't finish without it.
 2. **D8.6, the Apps pane.** The next task in step 17.
-3. **B14 and C5 between D8 PRs.** Each is about half a day, and together
-   they close most of R1's visibility gap.
+3. **C5 between D8 PRs.** About half a day; with B14 it closes most of R1's
+   visibility gap.
 4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
    WebKit in a loop; fix it or record why it's flaky before more specs pile
    onto CI's retries.
