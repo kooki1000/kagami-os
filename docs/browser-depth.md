@@ -3,10 +3,17 @@
 **Status:** shipped 2026-08-03, step 15. Native-only — the web build renders
 the "available in the desktop app" state and none of this applies to it.
 
-What landed is in `ROADMAP.md`'s U17 row. This note covers the parts that
-aren't obvious from the diff: the one constraint that shaped every decision,
-and the three things a user will notice are missing, with the reason each one
-is missing rather than merely unfinished.
+What landed: bookmarks (a star toggle, an optional bar, right-click to
+remove); find-in-page through the page's own `window.find`; page zoom via
+`Webview::set_zoom`, remembered per host; downloads staged by Rust and moved
+into the VFS's Downloads folder. Alongside those, the address bar infers a
+scheme and falls back to a search engine (chosen in Settings › General,
+which doubles as the homepage), loads show a spinner and a Stop button, and
+a restored window reopens on the page it was left on.
+
+This note covers what isn't obvious from the diff: the one constraint that
+shaped every decision, and the three things a user will notice are missing,
+with the reason each one is missing rather than merely unfinished.
 
 ## The constraint: the page is not in the DOM
 
