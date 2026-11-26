@@ -619,6 +619,12 @@ tokens without flipping light/dark.
   named it. The registry refuses a bundle whose id is a built-in's
   (`isBuiltInAppId`): its by-id map is last-write-wins, so such a bundle
   would otherwise replace the built-in app everywhere.
+- Revocation is live (D8.7). Each requested capability has a switch in
+  Settings › Apps (`setCapabilityGranted`, which can restore what the manifest
+  asked for but never widen past it). `ThirdPartyAppHost` subscribes to
+  `appGrantsStore` and `SandboxedAppHost` syncs it into the context every
+  bridge call reads, so a revoked capability is denied on the open window's
+  next call with no reload.
 
 **A pattern worth remembering.** The first version had the shell create the
 entry script's `blob:` URL and pass it to the frame as `<script src>`. A
@@ -762,6 +768,6 @@ desktop e2e via `tauri-driver`).
 
 **Steps 13–16** are done: realigned docs, the review backlog closed, area U
 (depth and customization), the capability sandbox (16a), and Documents, the
-small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.6 in
-(described under Capability sandbox above); D8.7–D8.12 and steps 18–21 are
+small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.7 in
+(described under Capability sandbox above); D8.8–D8.12 and steps 18–21 are
 in `ROADMAP.md` §4.

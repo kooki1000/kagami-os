@@ -4,13 +4,13 @@ import { resolveFileBytes } from "@/apps/files/download";
 import { blobStore } from "@/system/fs/blobStore";
 import { fileSystem } from "@/system/fs/provider";
 import { SandboxedAppHost } from "@/system/sandbox/SandboxedAppHost";
+import { NO_GRANTS, useAppGrantsStore } from "./appGrantsStore";
 import { buildThirdPartyEntryHtml } from "./thirdPartyEntryHtml";
 
 export interface ThirdPartyAppHostProps extends AppWindowProps {
   appId: string;
   /** fs node id of the app's entry script, resolved once at scan time (`installedApps.ts`). */
   entryNodeId: string;
-  capabilities: readonly string[];
 }
 
 /**
@@ -21,7 +21,12 @@ export interface ThirdPartyAppHostProps extends AppWindowProps {
  * file's doc comment for why this side can't build the blob: URL itself.
  */
 export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
-  const { entryNodeId, capabilities } = props;
+  const { appId, entryNodeId } = props;
+  // Subscribed rather than passed in: what an app may do can change while its
+  // window is open (Settings › Apps, D8.7), and `SandboxedAppHost` syncs this
+  // into the context every bridge call reads, so a revoked capability is
+  // denied on the very next call with no reload.
+  const capabilities = useAppGrantsStore(s => s.grants[appId] ?? NO_GRANTS);
   const [entryHtml, setEntryHtml] = useState<string | null>(null);
 
   useEffect(() => {

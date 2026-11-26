@@ -21,7 +21,7 @@ import { Switch } from "@/components/ui/Switch";
 import { useArmedConfirm } from "@/components/ui/useArmedConfirm";
 import { checkAccentContrast, WCAG_AA_NORMAL_TEXT } from "@/design/color";
 import { formatShortcut } from "@/lib/format";
-import { useAppGrantsStore } from "@/system/apps/appGrantsStore";
+import { setCapabilityGranted, useAppGrantsStore } from "@/system/apps/appGrantsStore";
 import { commitInstall, InvalidBundleError, parseBundleZip } from "@/system/apps/installBundle";
 import { resolveInstalledAppBundles } from "@/system/apps/installedApps";
 import { launchApp } from "@/system/apps/launch";
@@ -936,27 +936,40 @@ function AppsSection() {
               const granted = grants[manifest.id] ?? [];
               const confirming = armedUninstall === manifest.id;
               return (
-                <ListRowItem key={manifest.id} index={i} length={installed.length}>
-                  <div className="min-w-0">
-                    <div className="truncate text-12 font-medium text-ink">{manifest.name}</div>
-                    <div className="text-11 text-ink-2">
-                      {"Version "}
-                      {manifest.version}
-                      {" · "}
-                      {granted.length > 0 ? `Can use ${granted.join(", ")}` : "No capabilities"}
+                <div key={manifest.id} className={dividerExceptLast(i, installed.length)}>
+                  <div className="flex items-center justify-between gap-3 px-[calc(14px*var(--ui-scale))] py-[calc(9px*var(--ui-scale))]">
+                    <div className="min-w-0">
+                      <div className="truncate text-12 font-medium text-ink">{manifest.name}</div>
+                      <div className="text-11 text-ink-2">
+                        {"Version "}
+                        {manifest.version}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      aria-label={`${confirming ? "Confirm uninstall of" : "Uninstall"} ${manifest.name}`}
+                      className={`flex-none rounded-btn px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11 font-medium ${
+                        confirming ? "bg-accent-strong text-white" : "text-ink-2 hover:bg-ph hover:text-ink"
+                      }`}
+                      onClick={() => (confirming ? void handleUninstall(bundle) : armUninstall(manifest.id))}
+                    >
+                      {confirming ? "Confirm" : "Uninstall"}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    aria-label={`${confirming ? "Confirm uninstall of" : "Uninstall"} ${manifest.name}`}
-                    className={`flex-none rounded-btn px-[calc(8px*var(--ui-scale))] py-[calc(4px*var(--ui-scale))] text-11 font-medium ${
-                      confirming ? "bg-accent-strong text-white" : "text-ink-2 hover:bg-ph hover:text-ink"
-                    }`}
-                    onClick={() => (confirming ? void handleUninstall(bundle) : armUninstall(manifest.id))}
-                  >
-                    {confirming ? "Confirm" : "Uninstall"}
-                  </button>
-                </ListRowItem>
+                  {/* D8.7 — one switch per capability the app asked for. Off takes effect on a running window's next call. */}
+                  {manifest.capabilities.length > 0
+                    ? manifest.capabilities.map(cap => (
+                        <div key={cap} className="flex items-center justify-between gap-3 px-[calc(14px*var(--ui-scale))] pb-[calc(7px*var(--ui-scale))]">
+                          <span className="min-w-0 truncate font-mono text-11 text-ink-2">{cap}</span>
+                          <Switch
+                            checked={granted.includes(cap)}
+                            onChange={value => setCapabilityGranted(manifest.id, manifest.capabilities, cap, value)}
+                            label={`Allow ${manifest.name} to use ${cap}`}
+                          />
+                        </div>
+                      ))
+                    : <div className="px-[calc(14px*var(--ui-scale))] pb-[calc(9px*var(--ui-scale))] text-11 text-ink-2">Requests no capabilities.</div>}
+                </div>
               );
             })}
           </ListRow>
