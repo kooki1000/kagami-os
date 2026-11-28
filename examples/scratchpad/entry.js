@@ -222,8 +222,8 @@ async function saveDraft() {
   if (!dataFolderId)
     return;
   try {
-    await kagami.fs.write(dataFolderId, DRAFT_NAME, text.value, "text/plain");
-    draftStatus.textContent = "draft: saved";
+    const written = await kagami.fs.write(dataFolderId, DRAFT_NAME, text.value, "text/plain");
+    draftStatus.textContent = `draft: saved ${written.size} bytes as ${written.name}`;
   }
   catch (error) {
     draftStatus.textContent = `draft: ${error.code ?? "error"}`;
@@ -272,7 +272,7 @@ void (async () => {
     const draft = entries.find(entry => entry.name === DRAFT_NAME);
     if (draft) {
       text.value = await kagami.fs.readText(draft.id);
-      draftStatus.textContent = "draft: restored";
+      draftStatus.textContent = `draft: restored ${draft.size} bytes of ${entries.map(entry => entry.name).join(", ")}`;
     }
     else {
       draftStatus.textContent = `draft: none (${entries.map(entry => entry.name).join(", ") || "empty folder"})`;
