@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { emitAppCommand } from "./appCommands";
+import { menusForWindow } from "./apps/appChromeStore";
 import { getApp } from "./apps/registry";
 import { executeCommand } from "./commands";
 import { isOverlayOpen } from "./overlay/overlayRegistry";
@@ -173,7 +174,7 @@ export function useGlobalShortcuts(): void {
       const app = win ? getApp(win.appId) : undefined;
 
       // The focused app's own menu shortcuts win (⌘N = new note, etc.).
-      for (const section of app?.menus ?? []) {
+      for (const section of menusForWindow(focusedId, app?.menus)) {
         for (const item of section.items) {
           if (item.shortcut !== chord || item.disabled)
             continue;

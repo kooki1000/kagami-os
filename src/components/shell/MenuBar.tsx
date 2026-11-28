@@ -5,6 +5,7 @@ import { Bell, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { currentLocale, formatClockTime, formatShortcut } from "@/lib/format";
 import { emitAppCommand } from "@/system/appCommands";
+import { useAppChromeStore } from "@/system/apps/appChromeStore";
 import { getApp } from "@/system/apps/registry";
 import { executeCommand } from "@/system/commands";
 import {
@@ -117,6 +118,8 @@ export function MenuBar() {
     const w = s.windows.find(win => win.id === s.focusedId && !win.minimized);
     return w?.appId;
   });
+  // Menus a sandboxed frame set for the focused window, if any (D8.12).
+  const frameMenus = useAppChromeStore(s => (focusedId ? s.menusByWindow[focusedId] : undefined));
   const preference = useThemeStore(s => s.preference);
   const resolved = useThemeStore(s => s.resolved);
   const setPreference = useThemeStore(s => s.setPreference);
@@ -228,7 +231,7 @@ export function MenuBar() {
             },
           ],
         },
-        ...fromSections(app.menus ?? []),
+        ...fromSections(frameMenus ?? app.menus ?? []),
       ]
     : [];
 

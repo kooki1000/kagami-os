@@ -42,6 +42,8 @@ function makeDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
     getNodes: () => nodes,
     notify: vi.fn((_input: NotifyInput) => "ntf-1"),
     setWindowTitle: vi.fn(),
+    setMenus: vi.fn(),
+    setBadge: vi.fn(),
     ...overrides,
   };
 }
@@ -370,5 +372,57 @@ describe("dispatchSandboxRequest — app.info", () => {
   it("reports null for an app with no data folder and no file", async () => {
     const response = await dispatchSandboxRequest(request("app.info"), context, makeDeps());
     expect(response).toMatchObject({ ok: true, data: { dataFolderId: null, fileId: null } });
+  });
+});
+
+describe("dispatchSandboxRequest — menus.set", () => {
+  const sections = [{ title: "Note", items: [{ label: "New", appCommand: "note.new", shortcut: "⌘N" }] }];
+
+  it("hands validated menus to the shell for the caller's own window", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("menus.set", { sections }), context, deps);
+    expect(response.ok).toBe(true);
+    expect(deps.setMenus).toHaveBeenCalledWith("win-1", sections);
+  });
+
+  it("rejects an item that names a shell command, and never calls the shell", async () => {
+    const deps = makeDeps();
+    const bad = [{ title: "A", items: [{ label: "Quit", appCommand: "q", command: "app.quit" }] }];
+    const response = await dispatchSandboxRequest(request("menus.set", { sections: bad }), context, deps);
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected error response");
+    expect(response.error.code).toBe("invalid_request");
+    expect(deps.setMenus).not.toHaveBeenCalled();
+  });
+
+  it("rejects a shortcut the shell reserves", async () => {
+    const deps = makeDeps();
+    const bad = [{ title: "A", items: [{ label: "Close", appCommand: "c", shortcut: "⌘W" }] }];
+    const response = await dispatchSandboxRequest(request("menus.set", { sections: bad }), context, deps);
+    expect(response.ok).toBe(false);
+    expect(deps.setMenus).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchSandboxRequest — dock.setBadge", () => {
+  it("sets the badge for the caller's own app, never one the frame names", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("dock.setBadge", { badge: 3, appId: "notes" }), context, deps);
+    expect(response.ok).toBe(true);
+    expect(deps.setBadge).toHaveBeenCalledWith("sandbox-demo", "3");
+  });
+
+  it("clears on null", async () => {
+    const deps = makeDeps();
+    await dispatchSandboxRequest(request("dock.setBadge", { badge: null }), context, deps);
+    expect(deps.setBadge).toHaveBeenCalledWith("sandbox-demo", null);
+  });
+
+  it("rejects a badge too long to be one", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("dock.setBadge", { badge: "Your disk is full, click here" }), context, deps);
+    expect(response.ok).toBe(false);
+    expect(deps.setBadge).not.toHaveBeenCalled();
   });
 });

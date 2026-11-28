@@ -4,6 +4,7 @@ import type { DockPosition } from "@/system/dock/dockStore";
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { useAppChromeStore } from "@/system/apps/appChromeStore";
 import { launchApp } from "@/system/apps/launch";
 import { getApp } from "@/system/apps/registry";
 import { DOCK_TILE_PX, useDockStore } from "@/system/dock/dockStore";
@@ -57,6 +58,7 @@ export function Dock() {
   // on every drag/resize frame of an unrelated window.
   const runningIds = useWindowStore(useShallow(s => [...new Set(s.windows.map(w => w.appId))]));
   const closeApp = useWindowStore(s => s.closeApp);
+  const badges = useAppChromeStore(s => s.badgeByApp);
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const menuApp = menu ? getApp(menu.appId) : undefined;
@@ -105,12 +107,13 @@ export function Dock() {
   function renderTile(app: AppManifest) {
     const Icon = app.icon;
     const running = runningIds.includes(app.id);
+    const badge = running ? badges[app.id] : undefined;
     return (
       <button
         key={app.id}
         type="button"
         data-dock-app={app.id}
-        aria-label={app.name}
+        aria-label={badge ? `${app.name}, ${badge}` : app.name}
         className={`group relative grid cursor-pointer place-items-center rounded-tile border-[0.5px] border-white/20 text-white shadow-[0_5px_12px_-4px_rgba(0,0,0,.42)] transition-[transform,box-shadow] duration-180 ease-[cubic-bezier(.2,.9,.25,1.4)] hover:scale-[1.06] hover:shadow-[0_16px_30px_-8px_rgba(0,0,0,.5)] ${layout.hover}`}
         style={{
           width: tilePx,
@@ -129,6 +132,14 @@ export function Dock() {
         >
           {app.name}
         </span>
+        {badge && (
+          <span
+            data-dock-badge
+            className="pointer-events-none absolute -top-1 -right-1 min-w-4 rounded-full bg-accent-strong px-[calc(4px*var(--ui-scale))] text-center text-[calc(10px*var(--ui-scale))]/4 font-bold text-white tabular-nums"
+          >
+            {badge}
+          </span>
+        )}
         {running && (
           <span data-dock-running className={`absolute size-1 rounded-full bg-ink opacity-55 ${layout.dot}`} />
         )}

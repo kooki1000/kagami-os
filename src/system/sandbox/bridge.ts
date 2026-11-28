@@ -1,10 +1,12 @@
 import type { Capability, SandboxAppInfoDto, SandboxEntryDto, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse, SandboxWriteResultDto } from "./types";
+import type { MenuSection } from "@/system/apps/types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { BlobStore, FileSystemProvider, FsNode } from "@/system/fs/types";
 import type { NotifyInput } from "@/system/notifications/notificationStore";
 import { resolveFileBytes } from "@/apps/files/download";
 import { childrenOf, fileBytes } from "@/system/fs/fsStore";
 import { isMethodAuthorized } from "./capabilities";
+import { parseBadge, parseMenuSections } from "./menuSchema";
 import { buildErrorResponse, buildSuccessResponse } from "./rpc";
 
 /**
@@ -38,6 +40,10 @@ export interface BridgeDeps {
    * inside the frame and never call `ui.setState`.
    */
   setAppState?: (windowId: string, state: Record<string, unknown>) => void;
+  /** Shows validated menus while this window is focused (`menus.set`). */
+  setMenus: (windowId: string, sections: MenuSection[]) => void;
+  /** Sets or clears the app's dock badge (`dock.setBadge`). */
+  setBadge: (appId: string, badge: string | null) => void;
 }
 
 export type CapabilityDeniedLogger = (info: { appId: string; windowId: string; method: string }) => void;
@@ -116,6 +122,22 @@ function handleAppInfo(context: SandboxContext): SandboxAppInfoDto {
     dataFolderId: context.dataFolderId ?? null,
     fileId: context.fileId ?? null,
   };
+}
+
+function handleSetMenus(params: Record<string, unknown>, windowId: string, deps: BridgeDeps): null {
+  const sections = parseMenuSections(params.sections);
+  if (!sections)
+    throw new SandboxRequestError("invalid_request", "menus.set requires a \"sections\" array of valid menu sections.");
+  deps.setMenus(windowId, sections);
+  return null;
+}
+
+function handleSetBadge(params: Record<string, unknown>, appId: string, deps: BridgeDeps): null {
+  const badge = parseBadge(params.badge);
+  if (badge === undefined)
+    throw new SandboxRequestError("invalid_request", "dock.setBadge requires a \"badge\" of at most 4 characters, a positive integer, or null.");
+  deps.setBadge(appId, badge);
+  return null;
 }
 
 async function handleFsWrite(params: Record<string, unknown>, deps: BridgeDeps): Promise<SandboxWriteResultDto> {
@@ -237,6 +259,10 @@ export async function dispatchSandboxRequest(
         return buildSuccessResponse(request.id, handleSetAppState(params, context.windowId, deps));
       case "app.info":
         return buildSuccessResponse(request.id, handleAppInfo(context));
+      case "menus.set":
+        return buildSuccessResponse(request.id, handleSetMenus(params, context.windowId, deps));
+      case "dock.setBadge":
+        return buildSuccessResponse(request.id, handleSetBadge(params, context.appId, deps));
     }
   }
   catch (error) {

@@ -3,6 +3,7 @@ import type { SandboxResponse } from "./types";
 import type { AppWindowProps } from "@/system/apps/types";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useAppCommand } from "@/system/appCommands";
+import { useAppChromeStore } from "@/system/apps/appChromeStore";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
 import { fileSystem } from "@/system/fs/provider";
@@ -105,6 +106,8 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, dat
           notify,
           setWindowTitle: (id, title) => useWindowStore.getState().setWindowTitle(id, title),
           setAppState: (_id, state) => onAppStateRef.current?.(state),
+          setMenus: (id, sections) => useAppChromeStore.getState().setMenus(id, sections),
+          setBadge: (id, badge) => useAppChromeStore.getState().setBadge(id, badge),
         },
       ).then((response) => {
         // The frame (and its window) may be gone by the time this
@@ -145,6 +148,19 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, dat
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme"] });
     return () => observer.disconnect();
   }, [postTheme, themeKey]);
+
+  // Menus belong to a window and a badge to a running app: neither outlives
+  // the window that set it. The badge stays while another window of the app is
+  // open — this runs as the window leaves, so its own id is excluded.
+  useEffect(() => {
+    return () => {
+      const chrome = useAppChromeStore.getState();
+      chrome.clearMenus(windowId);
+      const stillRunning = useWindowStore.getState().windows.some(w => w.appId === appId && w.id !== windowId);
+      if (!stillRunning)
+        chrome.setBadge(appId, null);
+    };
+  }, [appId, windowId]);
 
   useAppCommand(windowId, (command) => {
     const frameWindow = iframeRef.current?.contentWindow;
