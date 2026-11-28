@@ -80,6 +80,8 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     // and is still there after a reload (D8.10).
     await frame.locator("#text").fill("kept across reloads");
     await expect(frame.locator("#draft")).toHaveText("draft: saved");
+    // Give the write-through IndexedDB persist a moment before we reload.
+    await page.waitForTimeout(500);
     await page.locator("[data-dock-app=\"scratchpad\"]").click({ button: "right" });
     await page.getByRole("menuitem", { name: "Pin to Dock" }).click();
     await page.goto("/?fresh");
