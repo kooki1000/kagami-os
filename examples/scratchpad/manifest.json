@@ -3,5 +3,13 @@
   "name": "Scratchpad",
   "version": "1.0.0",
   "entry": "entry.js",
-  "capabilities": ["notifications", "fs.read:documents", "fs.write:documents"]
+  "capabilities": [
+    "notifications",
+    "fs.read:documents",
+    "fs.write:documents"
+  ],
+  "fileTypes": [
+    "text/plain",
+    "text/markdown"
+  ]
 }

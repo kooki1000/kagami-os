@@ -1,6 +1,6 @@
 import type { AppManifest } from "./types";
-import { describe, expect, it } from "vitest";
-import { getApp, getInstalledApps, registerInstalledApps, unregisterInstalledApp } from "./registry";
+import { describe, expect, it, vi } from "vitest";
+import { getApp, getInstalledApps, getRegistryVersion, registerInstalledApps, subscribeToRegistry, unregisterInstalledApp } from "./registry";
 
 function fakeManifest(id: string): AppManifest {
   return {
@@ -43,5 +43,28 @@ describe("installed-app registry guards (step 17, D8.6)", () => {
 
     unregisterInstalledApp("notes");
     expect(getApp("notes")).toBeDefined();
+  });
+});
+
+describe("registry change notifications", () => {
+  it("tells subscribers when an installed app arrives or leaves, and bumps the version", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeToRegistry(listener);
+    const before = getRegistryVersion();
+
+    registerInstalledApps([fakeManifest("observed-app")]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getRegistryVersion()).toBe(before + 1);
+
+    unregisterInstalledApp("observed-app");
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unregisterInstalledApp("observed-app");
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    registerInstalledApps([fakeManifest("observed-app")]);
+    unregisterInstalledApp("observed-app");
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

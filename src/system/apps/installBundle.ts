@@ -5,6 +5,7 @@ import { useFsStore } from "@/system/fs/fsStore";
 import { fileSystem } from "@/system/fs/provider";
 import { APPS_ID } from "@/system/fs/types";
 import { setGrantedCapabilities } from "./appGrantsStore";
+import { DATA_FOLDER_NAME } from "./effectiveCapabilities";
 import { buildInstalledAppManifest } from "./installedAppManifest";
 import { resolveInstalledAppBundles } from "./installedApps";
 import { parseAppManifest } from "./manifestSchema";
@@ -90,6 +91,10 @@ export async function commitInstall({ manifest, entryBytes }: ParsedBundle): Pro
   await fileSystem.writeFile(folder.id, "manifest.json", JSON.stringify(manifest));
   const entryNode = await fileSystem.writeFile(folder.id, manifest.entry, new TextDecoder().decode(entryBytes), "text/javascript");
 
+  // Private state the app owns outright. Lives inside the bundle folder so
+  // uninstalling the folder takes the data with it.
+  const dataFolder = await fileSystem.mkdir(folder.id, DATA_FOLDER_NAME);
+
   setGrantedCapabilities(manifest.id, manifest.capabilities);
-  registerInstalledApps([buildInstalledAppManifest({ manifest, entryNodeId: entryNode.id, folderId: folder.id })]);
+  registerInstalledApps([buildInstalledAppManifest({ manifest, entryNodeId: entryNode.id, folderId: folder.id, dataFolderId: dataFolder.id })]);
 }

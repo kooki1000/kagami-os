@@ -1,8 +1,9 @@
 import type { FsNode } from "../fs/types";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useSettingsStore } from "../settings/settingsStore";
 import { useWindowStore } from "../windows/windowStore";
 import { appIdForFile, candidateAppsForFile, candidateAppsForMime, openFile, openFileWithApp, payloadFileId } from "./openFile";
+import { registerInstalledApps, unregisterInstalledApp } from "./registry";
 
 function file(partial: Partial<FsNode> & Pick<FsNode, "id" | "name">): FsNode {
   return {
@@ -42,6 +43,43 @@ describe("candidateAppsForFile (B11)", () => {
     const unknown = file({ id: "u", name: "data.bin", mimeType: "application/octet-stream" });
     expect(candidateAppsForFile(folder)).toEqual([]);
     expect(candidateAppsForFile(unknown)).toEqual([]);
+  });
+});
+
+describe("installed apps as Open With candidates (D8.11)", () => {
+  const stub = { id: "md-viewer", name: "MD Viewer", fileTypes: ["text/markdown", "image/*"] } as unknown as Parameters<typeof registerInstalledApps>[0][number];
+
+  beforeEach(() => registerInstalledApps([stub]));
+  afterEach(() => unregisterInstalledApp("md-viewer"));
+
+  it("offers an app for an exact type and for a family it declared, after the built-ins", () => {
+    expect(candidateAppsForMime("text/markdown")).toEqual(["notes", "code", "md-viewer"]);
+    expect(candidateAppsForMime("image/png")).toEqual(["viewer", "md-viewer"]);
+  });
+
+  it("doesn't offer it for a type it never declared", () => {
+    expect(candidateAppsForMime("text/plain")).toEqual(["notes", "code"]);
+    expect(candidateAppsForMime("audio/mpeg")).toEqual(["player"]);
+  });
+
+  it("never becomes the default just by being installed", () => {
+    const md = file({ id: "m", name: "a.md", mimeType: "text/markdown" });
+    expect(appIdForFile(md)).toBe("notes");
+    const png = file({ id: "p", name: "a.png", mimeType: "image/png" });
+    expect(appIdForFile(png)).toBe("viewer");
+  });
+
+  it("is the default for a type nothing else opens only once the user picks it", () => {
+    const odd = { id: "x-app", name: "X", fileTypes: ["application/x-odd"] } as unknown as typeof stub;
+    registerInstalledApps([odd]);
+    try {
+      const node = file({ id: "o", name: "a.odd", mimeType: "application/x-odd" });
+      expect(candidateAppsForFile(node)).toEqual(["x-app"]);
+      expect(appIdForFile(node)).toBeNull();
+    }
+    finally {
+      unregisterInstalledApp("x-app");
+    }
   });
 });
 

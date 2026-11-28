@@ -1,7 +1,11 @@
+import type { SandboxContext } from "./bridge";
 import type { SandboxResponse } from "./types";
 import type { AppWindowProps } from "@/system/apps/types";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useAppCommand } from "@/system/appCommands";
+import { useAppChromeStore } from "@/system/apps/appChromeStore";
+import { getApp } from "@/system/apps/registry";
+import { useWindowFilesStore } from "@/system/apps/windowFilesStore";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
 import { fileSystem } from "@/system/fs/provider";
@@ -22,6 +26,10 @@ export interface SandboxedAppHostProps extends AppWindowProps {
    */
   entryHtml: string;
   capabilities: string[];
+  /** The app's private data folder, reported to the frame by `app.info`. */
+  dataFolderId?: string;
+  /** The file the window was opened with, reported to the frame by `app.info`. */
+  fileId?: string;
   /**
    * Receives whatever the frame reports through `ui.setState` — how an app
    * that draws its chrome in React (Documents' toolbar) learns which page it
@@ -61,7 +69,7 @@ function postResponse(target: Window, response: SandboxResponse) {
  * (`Window.tsx`, menu/appCommand routing) needs to know an app is
  * sandboxed at all.
  */
-export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onAppState, themeVars }: SandboxedAppHostProps) {
+export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, dataFolderId, fileId, onAppState, themeVars }: SandboxedAppHostProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // Same ref-sync reason as `contextRef` below: a caller that doesn't
   // memoize its handler must not force the message listener to re-attach.
@@ -74,12 +82,15 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onA
   // that doesn't memoize `capabilities` can't force the message listener
   // below to tear down and re-attach on every render — same ref-sync
   // pattern useAppCommand uses for its own handler.
-  const contextRef = useRef({ appId, windowId, capabilities });
+  const contextRef = useRef<SandboxContext>({ appId, windowId, capabilities, dataFolderId, fileId });
   useLayoutEffect(() => {
-    contextRef.current = { appId, windowId, capabilities };
+    contextRef.current = { appId, windowId, capabilities, dataFolderId, fileId };
   });
 
-  useEffect(() => {
+  // A layout effect, not a passive one: it must be listening before the frame
+  // can run, because a frame's very first call (an app setting its menus on
+  // start) otherwise races the listener and is silently dropped.
+  useLayoutEffect(() => {
     function handleMessage(event: MessageEvent) {
       // A sandboxed frame's origin is the literal string "null", so
       // authenticate by identity (is this message from *my* iframe's
@@ -102,6 +113,14 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onA
           notify,
           setWindowTitle: (id, title) => useWindowStore.getState().setWindowTitle(id, title),
           setAppState: (_id, state) => onAppStateRef.current?.(state),
+          setMenus: (id, sections) => useAppChromeStore.getState().setMenus(id, sections),
+          setBadge: (id, badge) => useAppChromeStore.getState().setBadge(id, badge),
+          pickFile: (id, accept) => useWindowFilesStore.getState().requestFile({
+            windowId: contextRef.current.windowId,
+            appName: getApp(id)?.name ?? id,
+            accept,
+          }),
+          grantFile: (id, fileId) => useWindowFilesStore.getState().grant(id, fileId),
         },
       ).then((response) => {
         // The frame (and its window) may be gone by the time this
@@ -142,6 +161,20 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onA
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme"] });
     return () => observer.disconnect();
   }, [postTheme, themeKey]);
+
+  // Menus, picked-file access and an open picker belong to a window, and a
+  // badge to a running app: none outlives the window that set it. The badge stays while another window of the app is
+  // open — this runs as the window leaves, so its own id is excluded.
+  useEffect(() => {
+    return () => {
+      const chrome = useAppChromeStore.getState();
+      chrome.clearMenus(windowId);
+      useWindowFilesStore.getState().clearWindow(windowId);
+      const stillRunning = useWindowStore.getState().windows.some(w => w.appId === appId && w.id !== windowId);
+      if (!stillRunning)
+        chrome.setBadge(appId, null);
+    };
+  }, [appId, windowId]);
 
   useAppCommand(windowId, (command) => {
     const frameWindow = iframeRef.current?.contentWindow;

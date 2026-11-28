@@ -18,7 +18,10 @@
  * document, never by a different one, opaque or not.
  */
 const encoded = document.body.dataset.entrySource ?? "";
-const source = atob(encoded);
+// `atob` yields one character per *byte*. Handing that string to a Blob would
+// encode it as UTF-8 a second time and garble every non-ASCII character in the
+// app's source ("…" in a label, "⌘" in a shortcut), so keep the bytes as bytes.
+const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
 const script = document.createElement("script");
-script.src = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+script.src = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" }));
 document.body.append(script);

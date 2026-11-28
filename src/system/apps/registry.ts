@@ -65,6 +65,27 @@ export function isBuiltInAppId(id: string): boolean {
 
 const installed = new Map<string, AppManifest>();
 
+// Installed apps arrive after first paint (the scan waits on the VFS), so
+// anything drawn from the registry — the dock's pinned tiles — has to hear
+// about it. `version` is the snapshot `useSyncExternalStore` compares.
+const listeners = new Set<() => void>();
+let version = 0;
+
+function registryChanged(): void {
+  version += 1;
+  listeners.forEach(listener => listener());
+}
+
+export function subscribeToRegistry(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Changes whenever an installed app is registered or removed. */
+export function getRegistryVersion(): number {
+  return version;
+}
+
 /**
  * Step 17 (D8.4): adds installed third-party apps to the lookup `getApp`
  * resolves against, called once at boot after the VFS is ready and the
@@ -84,6 +105,7 @@ export function registerInstalledApps(list: readonly AppManifest[]): void {
     byId.set(app.id, app);
     installed.set(app.id, app);
   }
+  registryChanged();
 }
 
 /** D8.6: the inverse of `registerInstalledApps`. Never touches a built-in. */
@@ -91,6 +113,7 @@ export function unregisterInstalledApp(id: string): void {
   if (!installed.delete(id))
     return;
   byId.delete(id);
+  registryChanged();
 }
 
 /** Installed third-party apps, in registration order. */

@@ -33,8 +33,8 @@ The shell is mature, and steps 15 and 16 closed most of the "first pass"
 complaints the roadmap made about the apps. Notes has an inline editor,
 templates and find-and-replace. Files has Recents, Favourites, Quick Look and a
 virtualized view. The Player has shuffle, repeat and its own transport. Step 17
-is mostly shipped: D8.1 to D8.8 are in, and the rest of the step is authoring docs (D8.9),
-the private data folder, file opening and menus.
+has shipped: D8.1 to D8.12 are in, and only the license (P18) stands between it
+and turning the flag on.
 
 So the remaining gaps are less about any one app and more about three things
 that cut across all of them:

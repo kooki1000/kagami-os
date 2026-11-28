@@ -1,10 +1,13 @@
-import type { Capability, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse, SandboxWriteResultDto } from "./types";
+import type { Capability, SandboxAppInfoDto, SandboxEntryDto, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse, SandboxWriteResultDto } from "./types";
+import type { MenuSection } from "@/system/apps/types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { BlobStore, FileSystemProvider, FsNode } from "@/system/fs/types";
 import type { NotifyInput } from "@/system/notifications/notificationStore";
 import { resolveFileBytes } from "@/apps/files/download";
-import { fileBytes } from "@/system/fs/fsStore";
+import { childrenOf, fileBytes } from "@/system/fs/fsStore";
+import { isMimePattern } from "@/system/fs/mimeTypes";
 import { isMethodAuthorized } from "./capabilities";
+import { parseBadge, parseMenuSections } from "./menuSchema";
 import { buildErrorResponse, buildSuccessResponse } from "./rpc";
 
 /**
@@ -16,6 +19,10 @@ export interface SandboxContext {
   appId: string;
   windowId: string;
   capabilities: readonly Capability[];
+  /** The app's private data folder (`Apps/<id>/data`), reported by `app.info`. */
+  dataFolderId?: string;
+  /** The file this window was opened with, reported by `app.info`. */
+  fileId?: string;
 }
 
 /**
@@ -34,6 +41,17 @@ export interface BridgeDeps {
    * inside the frame and never call `ui.setState`.
    */
   setAppState?: (windowId: string, state: Record<string, unknown>) => void;
+  /** Shows validated menus while this window is focused (`menus.set`). */
+  setMenus: (windowId: string, sections: MenuSection[]) => void;
+  /** Sets or clears the app's dock badge (`dock.setBadge`). */
+  setBadge: (appId: string, badge: string | null) => void;
+  /**
+   * Draws the shell's file picker for `appId` and resolves to the node the
+   * user chose, or `null` if they cancelled (`fs.pick`).
+   */
+  pickFile: (appId: string, accept: string[]) => Promise<string | null>;
+  /** Gives `windowId` read access to one node, for as long as the window lives. */
+  grantFile: (windowId: string, fileId: string) => void;
 }
 
 export type CapabilityDeniedLogger = (info: { appId: string; windowId: string; method: string }) => void;
@@ -82,6 +100,76 @@ async function handleFsRead(params: Record<string, unknown>, deps: BridgeDeps): 
     // Notes/Terminal-authored files and is always text.
     isText: (node.mimeType ?? "text/plain").startsWith("text/"),
   };
+}
+
+function toEntryDto(node: FsNode): SandboxEntryDto {
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    mimeType: node.mimeType,
+    size: node.type === "file" ? fileBytes(node) : 0,
+    modifiedAt: node.modifiedAt,
+  };
+}
+
+/** One level of a folder, folders first, in the same entry shape every method reports. */
+function handleFsList(params: Record<string, unknown>, deps: BridgeDeps): SandboxEntryDto[] {
+  // isMethodAuthorized already required params.id to be a string granted
+  // under some fs.read:<scope> capability before this handler runs.
+  const id = params.id as string;
+  const nodes = deps.getNodes();
+  if (nodes[id]?.type !== "folder")
+    throw new SandboxRequestError("not_found", `"${id}" is not a folder.`);
+  return childrenOf(nodes, id).map(toEntryDto);
+}
+
+function handleAppInfo(context: SandboxContext): SandboxAppInfoDto {
+  return {
+    appId: context.appId,
+    dataFolderId: context.dataFolderId ?? null,
+    fileId: context.fileId ?? null,
+  };
+}
+
+function handleSetMenus(params: Record<string, unknown>, windowId: string, deps: BridgeDeps): null {
+  const sections = parseMenuSections(params.sections);
+  if (!sections)
+    throw new SandboxRequestError("invalid_request", "menus.set requires a \"sections\" array of valid menu sections.");
+  deps.setMenus(windowId, sections);
+  return null;
+}
+
+function handleSetBadge(params: Record<string, unknown>, appId: string, deps: BridgeDeps): null {
+  const badge = parseBadge(params.badge);
+  if (badge === undefined)
+    throw new SandboxRequestError("invalid_request", "dock.setBadge requires a \"badge\" of at most 4 characters, a positive integer, or null.");
+  deps.setBadge(appId, badge);
+  return null;
+}
+
+const MAX_ACCEPT_PATTERNS = 32;
+
+function parseAccept(raw: unknown): string[] | null {
+  return Array.isArray(raw) && raw.length <= MAX_ACCEPT_PATTERNS && raw.every(isMimePattern) ? raw : null;
+}
+
+/**
+ * Opens the shell's picker and grants the window read access to the one file
+ * the user chooses. `null` means the user said no (or a picker was already
+ * open), and nothing is granted. The frame never names a node: the id comes
+ * out of the shell's own dialog.
+ */
+async function handleFsPick(params: Record<string, unknown>, context: SandboxContext, deps: BridgeDeps): Promise<SandboxEntryDto | null> {
+  const accept = params.accept === undefined ? [] : parseAccept(params.accept);
+  if (!accept)
+    throw new SandboxRequestError("invalid_request", "fs.pick \"accept\" must be an array of MIME types such as \"text/markdown\" or \"image/*\".");
+  const id = await deps.pickFile(context.appId, accept);
+  const node = id ? deps.getNodes()[id] : undefined;
+  if (!node || node.type !== "file")
+    return null;
+  deps.grantFile(context.windowId, node.id);
+  return toEntryDto(node);
 }
 
 async function handleFsWrite(params: Record<string, unknown>, deps: BridgeDeps): Promise<SandboxWriteResultDto> {
@@ -189,6 +277,10 @@ export async function dispatchSandboxRequest(
     switch (request.method) {
       case "fs.read":
         return buildSuccessResponse(request.id, await handleFsRead(params, deps));
+      case "fs.list":
+        return buildSuccessResponse(request.id, handleFsList(params, deps));
+      case "fs.pick":
+        return buildSuccessResponse(request.id, await handleFsPick(params, context, deps));
       case "fs.write":
         return buildSuccessResponse(request.id, await handleFsWrite(params, deps));
       case "fs.delete":
@@ -199,6 +291,12 @@ export async function dispatchSandboxRequest(
         return buildSuccessResponse(request.id, handleSetTitle(params, context.windowId, deps));
       case "ui.setState":
         return buildSuccessResponse(request.id, handleSetAppState(params, context.windowId, deps));
+      case "app.info":
+        return buildSuccessResponse(request.id, handleAppInfo(context));
+      case "menus.set":
+        return buildSuccessResponse(request.id, handleSetMenus(params, context.windowId, deps));
+      case "dock.setBadge":
+        return buildSuccessResponse(request.id, handleSetBadge(params, context.appId, deps));
     }
   }
   catch (error) {

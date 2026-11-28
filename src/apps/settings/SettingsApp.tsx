@@ -765,7 +765,10 @@ function DefaultAppsSection() {
   const setFileAssociation = useSettingsStore(s => s.setFileAssociation);
   const clearFileAssociation = useSettingsStore(s => s.clearFileAssociation);
 
-  const extraMimes = Object.keys(fileAssociations).filter(
+  // An installed app's exact types get a row even when nothing is associated
+  // yet, so the choice is there before the user ever uses "Open With".
+  const installedMimes = getInstalledApps().flatMap(app => app.fileTypes ?? []).filter(mime => !mime.endsWith("/*"));
+  const extraMimes = [...new Set([...Object.keys(fileAssociations), ...installedMimes])].filter(
     mime => !FILE_ASSOCIATION_TYPES.some(t => t.mime === mime),
   );
   const rows = [...FILE_ASSOCIATION_TYPES, ...extraMimes.map(mime => ({ mime, label: mime }))];

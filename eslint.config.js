@@ -34,6 +34,15 @@ export default antfu(
     },
   },
   {
+    // The client is a classic script pasted above an app's own code, which is
+    // what uses `kagami`; on its own it declares a name nothing here reads.
+    files: ["sdk/**", "examples/**"],
+    rules: {
+      "no-unused-vars": "off",
+      "unused-imports/no-unused-vars": "off",
+    },
+  },
+  {
     files: ["**/*.{jsx,tsx}"],
     plugins: {
       "better-tailwindcss": eslintPluginBetterTailwindcss,

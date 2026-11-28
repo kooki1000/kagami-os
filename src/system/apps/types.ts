@@ -48,6 +48,12 @@ export interface AppManifest {
   component: LazyExoticComponent<ComponentType<AppWindowProps>>;
   menus?: MenuSection[];
   singleInstance?: boolean;
+  /**
+   * MIME types an installed app opens (exact, or `family/*`); see
+   * `AppBundleManifest.fileTypes`. Built-in apps are matched by
+   * `openFile.ts`'s own tables instead.
+   */
+  fileTypes?: string[];
   /** Pinned to the dock by default. */
   pinned?: boolean;
   /** 'system' apps (e.g. Settings) sit after the dock separator. */

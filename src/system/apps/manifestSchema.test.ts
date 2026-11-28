@@ -19,6 +19,17 @@ describe("parseAppManifest", () => {
     expect(parseAppManifest(withOptionals)).toEqual(withOptionals);
   });
 
+  it("accepts fileTypes as exact types and family wildcards", () => {
+    const withTypes = { ...validManifest, fileTypes: ["text/markdown", "image/*", "application/x-thing+json"] };
+    expect(parseAppManifest(withTypes)).toEqual(withTypes);
+  });
+
+  for (const fileTypes of ["text/plain", [1], ["plain"], ["text/"], ["*/*"], ["text/plain, text/html"], Array.from({ length: 33 }).fill("text/plain")]) {
+    it(`rejects fileTypes ${JSON.stringify(fileTypes).slice(0, 40)}`, () => {
+      expect(parseAppManifest({ ...validManifest, fileTypes })).toBeNull();
+    });
+  }
+
   it("accepts an empty capabilities array (a pure viewer that reads/writes nothing)", () => {
     expect(parseAppManifest({ ...validManifest, capabilities: [] })).toEqual({ ...validManifest, capabilities: [] });
   });

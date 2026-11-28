@@ -53,10 +53,8 @@ export function canReadFsNode(granted: readonly Capability[], targetId: string, 
 /**
  * Scoped `fs.write` check: granted iff some `fs.write:<scopeId>` capability
  * names `targetId` itself or an ancestor of it — same shape as
- * `canReadFsNode`. One capability governs both writing under the scope
- * (`targetId` = destination folder) and deleting a node under it (`targetId`
- * = the node itself): a writable-directory grant implies delete-within-it,
- * matching the `fs.write:<own-data-dir>` capability sketched for step 17.
+ * `canReadFsNode`. The same capability also governs deleting a node under the
+ * scope (`canDeleteFsNode`): a writable-folder grant implies delete-within-it.
  */
 export function canWriteFsNode(granted: readonly Capability[], targetId: string, nodes: NodeMap): boolean {
   for (const cap of granted) {
@@ -70,12 +68,28 @@ export function canWriteFsNode(granted: readonly Capability[], targetId: string,
 }
 
 /**
+ * `fs.delete` check: like `canWriteFsNode`, but the target must sit *under*
+ * the granted scope. A writable-folder grant covers what's inside the folder,
+ * never the folder itself, so an app can't trash the directory it was given.
+ */
+export function canDeleteFsNode(granted: readonly Capability[], targetId: string, nodes: NodeMap): boolean {
+  for (const cap of granted) {
+    const parsed = parseCapability(cap);
+    if (parsed?.verb === "fs.write" && parsed.scope && isDescendantOf(nodes, targetId, parsed.scope))
+      return true;
+  }
+  return false;
+}
+
+/**
  * Central capability gate the bridge dispatcher calls before running any
- * method. `window.setTitle` and `ui.setState` need no capability — both are
- * basic window chrome, available to every sandboxed app exactly like
- * `CommandId` shell commands are for every app. Neither can reach anything
- * outside the frame's own window: one sets that window's title, the other
- * hands its own view state to its own host component.
+ * method. Six methods need no capability. `window.setTitle`, `ui.setState`,
+ * `app.info`, `menus.set` and `dock.setBadge` are window and app chrome,
+ * available to every sandboxed app exactly like `CommandId` shell commands are
+ * for every app; none reaches anything but the frame's own window and dock
+ * tile, and the bridge validates what they carry (`menuSchema.ts`).
+ * `fs.pick` is the sixth: the user's choice in a shell-drawn dialog is the
+ * grant, and what it opens up is one node, read-only.
  */
 export function isMethodAuthorized(
   granted: readonly Capability[],
@@ -86,16 +100,22 @@ export function isMethodAuthorized(
   switch (method) {
     case "fs.read":
       return typeof params.id === "string" && canReadFsNode(granted, params.id, nodes);
+    case "fs.list":
+      return typeof params.id === "string" && canReadFsNode(granted, params.id, nodes);
     case "fs.write":
       // Authorized against the destination folder, not params.id — the file
       // being written may not exist yet.
       return typeof params.parentId === "string" && canWriteFsNode(granted, params.parentId, nodes);
     case "fs.delete":
-      return typeof params.id === "string" && canWriteFsNode(granted, params.id, nodes);
+      return typeof params.id === "string" && canDeleteFsNode(granted, params.id, nodes);
     case "notifications.notify":
       return hasCapability(granted, "notifications");
     case "window.setTitle":
     case "ui.setState":
+    case "fs.pick":
+    case "app.info":
+    case "menus.set":
+    case "dock.setBadge":
       return true;
     default:
       return false;

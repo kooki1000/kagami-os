@@ -2,6 +2,7 @@ import type { InstalledAppBundle } from "./installedApps";
 import type { AppManifest, AppWindowProps } from "./types";
 import { Puzzle } from "lucide-react";
 import { createElement, lazy } from "react";
+import { restoreFilePayload, serializeFilePayload } from "./filePayload";
 import { ThirdPartyAppHost } from "./ThirdPartyAppHost";
 
 /**
@@ -24,7 +25,7 @@ const THIRD_PARTY_TILE_GRADIENT: [string, string] = ["#8f8f96", "#5c5c63"];
  * or to `Window.tsx`'s `<Suspense>` wrapper.
  */
 export function buildInstalledAppManifest(bundle: InstalledAppBundle): AppManifest {
-  const { manifest, entryNodeId } = bundle;
+  const { manifest, entryNodeId, dataFolderId } = bundle;
   // The exposed component only ever receives AppWindowProps (that's all
   // Window.tsx passes any app's component) — appId/entryNodeId are closed
   // over here, not supplied by the caller. Capabilities aren't passed at
@@ -32,12 +33,14 @@ export function buildInstalledAppManifest(bundle: InstalledAppBundle): AppManife
   // and an already-open window both see a Settings revocation (D8.7).
   // manifest.capabilities is never read: what's granted is only ever what
   // appGrantsStore records (see its own doc comment for why the two are
-  // kept separate).
+  // kept separate). The private data folder is the one thing every app gets
+  // without a grant (`effectiveCapabilities`).
   const component = lazy(() => Promise.resolve({
     default: (props: AppWindowProps) => createElement(ThirdPartyAppHost, {
       ...props,
       appId: manifest.id,
       entryNodeId,
+      dataFolderId,
     }),
   }));
 
@@ -47,6 +50,9 @@ export function buildInstalledAppManifest(bundle: InstalledAppBundle): AppManife
     icon: Puzzle,
     tileGradient: THIRD_PARTY_TILE_GRADIENT,
     defaultSize: { width: 480, height: 400 },
+    fileTypes: manifest.fileTypes,
+    serializePayload: serializeFilePayload,
+    restorePayload: restoreFilePayload,
     component,
   };
 }

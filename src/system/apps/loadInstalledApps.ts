@@ -1,6 +1,9 @@
+import type { InstalledAppBundle } from "./installedApps";
 import { isFlagEnabled } from "@/system/flags";
 import { blobStore } from "@/system/fs/blobStore";
 import { useFsStore } from "@/system/fs/fsStore";
+import { fileSystem } from "@/system/fs/provider";
+import { DATA_FOLDER_NAME } from "./effectiveCapabilities";
 import { buildInstalledAppManifest } from "./installedAppManifest";
 import { resolveInstalledAppBundles } from "./installedApps";
 import { getInstalledApps, registerInstalledApps, unregisterInstalledApp } from "./registry";
@@ -18,7 +21,15 @@ export async function loadInstalledApps(): Promise<void> {
   if (!isFlagEnabled("third_party_apps"))
     return;
   const bundles = await resolveInstalledAppBundles(useFsStore.getState().nodes, blobStore);
-  registerInstalledApps(bundles.map(buildInstalledAppManifest));
+  registerInstalledApps((await Promise.all(bundles.map(ensureDataFolder))).map(buildInstalledAppManifest));
+}
+
+/** Gives a bundle installed before D8.10 the data folder every new install gets. */
+async function ensureDataFolder(bundle: InstalledAppBundle): Promise<InstalledAppBundle> {
+  if (bundle.dataFolderId)
+    return bundle;
+  const folder = await fileSystem.mkdir(bundle.folderId, DATA_FOLDER_NAME);
+  return { ...bundle, dataFolderId: folder.id };
 }
 
 /**
