@@ -79,7 +79,7 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     // The private data folder needs no grant, so the draft saves regardless,
     // and is still there after a reload (D8.10).
     await frame.locator("#text").fill("kept across reloads");
-    await expect(frame.locator("#draft")).toHaveText(/^draft: saved 19 bytes as draft\.txt$/);
+    await expect(frame.locator("#draft")).toHaveText(/^draft: saved 19 bytes as draft\.txt/);
     // Give the write-through IndexedDB persist a moment before we reload.
     await page.waitForTimeout(500);
     await page.locator("[data-dock-app=\"scratchpad\"]").click({ button: "right" });
