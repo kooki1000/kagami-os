@@ -217,15 +217,19 @@ function open() {
 // Autosaves the text as a draft, and restores it when the app next opens.
 let dataFolderId = null;
 let draftTimer;
-let inputs = 0;
-let clears = 0;
+const trail = [];
+const started = Date.now();
+const mark = note => trail.push(`${Date.now() - started}:${note}`);
 
 async function saveDraft() {
   if (!dataFolderId)
     return;
   try {
-    const written = await kagami.fs.write(dataFolderId, DRAFT_NAME, text.value, "text/plain");
-    draftStatus.textContent = `draft: saved ${written.size} bytes as ${written.name} (inputs ${inputs}, clears ${clears})`;
+    const sent = text.value;
+    mark(`save(${sent.length})`);
+    const written = await kagami.fs.write(dataFolderId, DRAFT_NAME, sent, "text/plain");
+    mark(`saved(${written.size})`);
+    draftStatus.textContent = `draft: saved ${written.size} bytes as ${written.name} [${trail.join(" ")}]`;
   }
   catch (error) {
     draftStatus.textContent = `draft: ${error.code ?? "error"}`;
@@ -235,7 +239,7 @@ async function saveDraft() {
 text.addEventListener("input", () => {
   // Ungated: it only affects this window's own title bar.
   void kagami.setTitle(text.value.split("\n")[0] || "Scratchpad");
-  inputs += 1;
+  mark(`input(${text.value.length})`);
   draftStatus.textContent = "draft: unsaved";
   clearTimeout(draftTimer);
   draftTimer = setTimeout(saveDraft, 200);
@@ -247,7 +251,7 @@ void kagami.setMenus([
 ]);
 kagami.onCommand((command) => {
   if (command === "draft.clear") {
-    clears += 1;
+    mark("clear");
     text.value = "";
     void saveDraft();
   }
