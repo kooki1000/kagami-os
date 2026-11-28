@@ -217,19 +217,13 @@ function open() {
 // Autosaves the text as a draft, and restores it when the app next opens.
 let dataFolderId = null;
 let draftTimer;
-const trail = [];
-const started = Date.now();
-const mark = note => trail.push(`${Date.now() - started}:${note}`);
 
 async function saveDraft() {
   if (!dataFolderId)
     return;
   try {
-    const sent = text.value;
-    mark(`save(${sent.length})`);
-    const written = await kagami.fs.write(dataFolderId, DRAFT_NAME, sent, "text/plain");
-    mark(`saved(${written.size})`);
-    draftStatus.textContent = `draft: saved ${written.size} bytes as ${written.name} [${trail.join(" ")}]`;
+    const written = await kagami.fs.write(dataFolderId, DRAFT_NAME, text.value, "text/plain");
+    draftStatus.textContent = `draft: saved ${written.size} bytes`;
   }
   catch (error) {
     draftStatus.textContent = `draft: ${error.code ?? "error"}`;
@@ -239,7 +233,6 @@ async function saveDraft() {
 text.addEventListener("input", () => {
   // Ungated: it only affects this window's own title bar.
   void kagami.setTitle(text.value.split("\n")[0] || "Scratchpad");
-  mark(`input(${text.value.length})`);
   draftStatus.textContent = "draft: unsaved";
   clearTimeout(draftTimer);
   draftTimer = setTimeout(saveDraft, 200);
@@ -251,7 +244,6 @@ void kagami.setMenus([
 ]);
 kagami.onCommand((command) => {
   if (command === "draft.clear") {
-    mark("clear");
     text.value = "";
     void saveDraft();
   }
@@ -280,10 +272,10 @@ void (async () => {
     const draft = entries.find(entry => entry.name === DRAFT_NAME);
     if (draft) {
       text.value = await kagami.fs.readText(draft.id);
-      draftStatus.textContent = `draft: restored ${draft.size} bytes of ${entries.map(entry => entry.name).join(", ")}`;
+      draftStatus.textContent = `draft: restored ${draft.size} bytes`;
     }
     else {
-      draftStatus.textContent = `draft: none (${entries.map(entry => entry.name).join(", ") || "empty folder"})`;
+      draftStatus.textContent = "draft: none";
     }
   }
   catch (error) {

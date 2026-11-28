@@ -78,8 +78,11 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
 
     // The private data folder needs no grant, so the draft saves regardless,
     // and is still there after a reload (D8.10).
+    // Typing goes to the focused window, so bring Scratchpad forward first, as
+    // a user would; Firefox won't insert text into a frame behind Settings.
+    await openApp(page, "scratchpad");
     await frame.locator("#text").fill("kept across reloads");
-    await expect(frame.locator("#draft")).toHaveText(/^draft: saved 19 bytes as draft\.txt/);
+    await expect(frame.locator("#draft")).toHaveText("draft: saved 19 bytes");
     // Give the write-through IndexedDB persist a moment before we reload.
     await page.waitForTimeout(500);
     await page.locator("[data-dock-app=\"scratchpad\"]").click({ button: "right" });
@@ -87,7 +90,7 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     await page.goto("/?fresh");
     await openApp(page, "scratchpad");
     const reopened = page.frameLocator("iframe[title=\"scratchpad\"]");
-    await expect(reopened.locator("#draft")).toHaveText(/^draft: restored 19 bytes of draft\.txt$/);
+    await expect(reopened.locator("#draft")).toHaveText("draft: restored 19 bytes");
     await expect(reopened.locator("#text")).toHaveValue("kept across reloads");
 
     await openApp(page, "settings");
