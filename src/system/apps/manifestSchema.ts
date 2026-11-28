@@ -1,3 +1,5 @@
+import { isMimePattern } from "@/system/fs/mimeTypes";
+
 /**
  * Step 17 (D8) — the shape of a third-party app's `manifest.json`, and a
  * pure, fail-closed parser for it. Mirrors `sandbox/rpc.ts`'s
@@ -33,6 +35,12 @@ export interface AppBundleManifest {
   /** Raw capability strings, same vocabulary `sandbox/capabilities.ts` checks. */
   capabilities: string[];
   minShellVersion?: string;
+  /**
+   * MIME types the app can open: exact (`"text/markdown"`) or a family
+   * (`"image/*"`). Declaring one only makes the app an "Open With" choice; it
+   * is never the default for a type until the user picks it (D8.11).
+   */
+  fileTypes?: string[];
 }
 
 /**
@@ -41,6 +49,14 @@ export interface AppBundleManifest {
  */
 function isValidBundleName(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 128 && value.trim() === value && !/[/\\]/.test(value);
+}
+
+const MAX_FILE_TYPES = 32;
+
+function isFileTypeList(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length <= MAX_FILE_TYPES
+    && value.every(isMimePattern);
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -63,6 +79,8 @@ export function parseAppManifest(raw: unknown): AppBundleManifest | null {
     return null;
   if (obj.minShellVersion !== undefined && typeof obj.minShellVersion !== "string")
     return null;
+  if (obj.fileTypes !== undefined && !isFileTypeList(obj.fileTypes))
+    return null;
   if (!Array.isArray(obj.capabilities) || !obj.capabilities.every(cap => typeof cap === "string"))
     return null;
 
@@ -74,5 +92,6 @@ export function parseAppManifest(raw: unknown): AppBundleManifest | null {
     icon: obj.icon,
     capabilities: obj.capabilities,
     minShellVersion: obj.minShellVersion,
+    fileTypes: obj.fileTypes,
   };
 }

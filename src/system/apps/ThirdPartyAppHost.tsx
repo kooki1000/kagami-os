@@ -6,7 +6,9 @@ import { fileSystem } from "@/system/fs/provider";
 import { SandboxedAppHost } from "@/system/sandbox/SandboxedAppHost";
 import { NO_GRANTS, useAppGrantsStore } from "./appGrantsStore";
 import { effectiveCapabilities } from "./effectiveCapabilities";
+import { payloadFileId } from "./filePayload";
 import { buildThirdPartyEntryHtml } from "./thirdPartyEntryHtml";
+import { NO_FILES, useWindowFilesStore } from "./windowFilesStore";
 
 export interface ThirdPartyAppHostProps extends AppWindowProps {
   appId: string;
@@ -30,7 +32,14 @@ export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
   // into the context every bridge call reads, so a revoked capability is
   // denied on the very next call with no reload.
   const grants = useAppGrantsStore(s => s.grants[appId] ?? NO_GRANTS);
-  const capabilities = useMemo(() => effectiveCapabilities(grants, { dataFolderId }), [grants, dataFolderId]);
+  // The file this window was opened with, plus any it picked since. The
+  // payload is written only by the shell, so a frame can't widen it.
+  const openedFileId = payloadFileId(props.payload);
+  const pickedFileIds = useWindowFilesStore(s => s.grantsByWindow[props.windowId] ?? NO_FILES);
+  const capabilities = useMemo(() => {
+    const fileIds = openedFileId ? [openedFileId, ...pickedFileIds] : pickedFileIds;
+    return effectiveCapabilities(grants, { dataFolderId, fileIds });
+  }, [grants, dataFolderId, openedFileId, pickedFileIds]);
   const [entryHtml, setEntryHtml] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +73,7 @@ export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
       entryHtml={entryHtml}
       capabilities={capabilities}
       dataFolderId={dataFolderId ?? undefined}
+      fileId={openedFileId ?? undefined}
     />
   );
 }

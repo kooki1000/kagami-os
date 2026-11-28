@@ -83,11 +83,13 @@ export function canDeleteFsNode(granted: readonly Capability[], targetId: string
 
 /**
  * Central capability gate the bridge dispatcher calls before running any
- * method. `window.setTitle`, `ui.setState`, `app.info`, `menus.set` and
- * `dock.setBadge` need no capability — window and app chrome, available to
- * every sandboxed app exactly like `CommandId` shell commands are for every
- * app. None reaches anything but the frame's own window and dock tile, and the
- * bridge validates what they carry (`menuSchema.ts`).
+ * method. Six methods need no capability. `window.setTitle`, `ui.setState`,
+ * `app.info`, `menus.set` and `dock.setBadge` are window and app chrome,
+ * available to every sandboxed app exactly like `CommandId` shell commands are
+ * for every app; none reaches anything but the frame's own window and dock
+ * tile, and the bridge validates what they carry (`menuSchema.ts`).
+ * `fs.pick` is the sixth: the user's choice in a shell-drawn dialog is the
+ * grant, and what it opens up is one node, read-only.
  */
 export function isMethodAuthorized(
   granted: readonly Capability[],
@@ -110,6 +112,7 @@ export function isMethodAuthorized(
       return hasCapability(granted, "notifications");
     case "window.setTitle":
     case "ui.setState":
+    case "fs.pick":
     case "app.info":
     case "menus.set":
     case "dock.setBadge":

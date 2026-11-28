@@ -1,13 +1,13 @@
 import type { FsNode } from "../fs/types";
 import type { FilePayload } from "./filePayload";
-import { effectiveMimeType, isTextLikeMime } from "../fs/mimeTypes";
+import { effectiveMimeType, isTextLikeMime, mimeMatchesPattern } from "../fs/mimeTypes";
 import { notify } from "../notifications/notificationStore";
 import { useSettingsStore } from "../settings/settingsStore";
 import { useViewPrefsStore } from "../settings/viewPrefsStore";
 import { useWindowStore } from "../windows/windowStore";
 import { payloadFileId } from "./filePayload";
 import { launchApp } from "./launch";
-import { getApp } from "./registry";
+import { getApp, getInstalledApps } from "./registry";
 
 export type { FilePayload } from "./filePayload";
 export { payloadFileId } from "./filePayload";
@@ -49,11 +49,9 @@ const FAMILY_DEFAULTS: Array<{ prefix: string; appId: string }> = [
 ];
 
 /**
- * Apps that can open any text-ish file, whichever one is the default for it.
- * A hardcoded list because an app can't yet *declare* what it opens — step 17
- * (`ROADMAP.md` D8) needs exactly that declaration for third-party apps, and
- * this list dissolves into it. Every id here must accept anything
- * `isTextLikeMime` accepts, not just `text/*`.
+ * Built-in apps that can open any text-ish file, whichever one is the default
+ * for it. Installed apps declare what they open instead (`fileTypes`). Every
+ * id here must accept anything `isTextLikeMime` accepts, not just `text/*`.
  */
 const TEXT_CAPABLE_APP_IDS = ["notes", "code"];
 
@@ -79,6 +77,13 @@ export function candidateAppsForMime(mime: string): string[] {
       if (!candidates.includes(id))
         candidates.push(id);
     }
+  }
+  // Installed apps are choices, never defaults: they come after the built-ins
+  // and `familyDefaultAppId` never returns one, so installing an app changes
+  // what "Open With" offers and nothing else (D8.11).
+  for (const app of getInstalledApps()) {
+    if (!candidates.includes(app.id) && app.fileTypes?.some(pattern => mimeMatchesPattern(pattern, mime)))
+      candidates.push(app.id);
   }
   // An app can be absent from a build (a flag-gated one, or a manifest that
   // was removed); offering it would produce a menu item that can only fail.

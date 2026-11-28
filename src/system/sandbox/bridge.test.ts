@@ -44,6 +44,8 @@ function makeDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
     setWindowTitle: vi.fn(),
     setMenus: vi.fn(),
     setBadge: vi.fn(),
+    pickFile: vi.fn(async () => null),
+    grantFile: vi.fn(),
     ...overrides,
   };
 }
@@ -424,5 +426,60 @@ describe("dispatchSandboxRequest — dock.setBadge", () => {
     const response = await dispatchSandboxRequest(request("dock.setBadge", { badge: "Your disk is full, click here" }), context, deps);
     expect(response.ok).toBe(false);
     expect(deps.setBadge).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchSandboxRequest — fs.pick", () => {
+  const noFsContext: SandboxContext = { appId: "viewer-app", windowId: "win-2", capabilities: [] };
+
+  it("grants the window the one file the user chose, and reports it as a narrow entry", async () => {
+    const deps = makeDeps({ pickFile: vi.fn(async () => "reportDoc") });
+    const response = await dispatchSandboxRequest(request("fs.pick", { accept: ["text/*"] }), noFsContext, deps);
+
+    expect(deps.pickFile).toHaveBeenCalledWith("viewer-app", ["text/*"]);
+    expect(deps.grantFile).toHaveBeenCalledWith("win-2", "reportDoc");
+    expect(response).toMatchObject({ ok: true, data: { id: "reportDoc", name: "report.txt", type: "file", size: 11 } });
+  });
+
+  it("grants nothing and answers null when the user cancels", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("fs.pick"), noFsContext, deps);
+    expect(response).toMatchObject({ ok: true, data: null });
+    expect(deps.grantFile).not.toHaveBeenCalled();
+  });
+
+  it("grants nothing for a node that isn't a file, whatever the picker returned", async () => {
+    const deps = makeDeps({ pickFile: vi.fn(async () => "documents") });
+    const response = await dispatchSandboxRequest(request("fs.pick"), noFsContext, deps);
+    expect(response).toMatchObject({ ok: true, data: null });
+    expect(deps.grantFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed accept list before opening anything", async () => {
+    const deps = makeDeps();
+    for (const accept of ["text/*", ["not a type"], [1], Array.from({ length: 33 }).fill("text/plain")]) {
+      const response = await dispatchSandboxRequest(request("fs.pick", { accept }), noFsContext, deps);
+      expect(response.ok).toBe(false);
+    }
+    expect(deps.pickFile).not.toHaveBeenCalled();
+  });
+
+  it("picking one file doesn't widen what the window can do to anything else", async () => {
+    // What the host would build after the grant: only fs.read on that node.
+    const afterPick: SandboxContext = { ...noFsContext, capabilities: ["fs.read:reportDoc"] };
+    const deps = makeDeps();
+    const own = await dispatchSandboxRequest(request("fs.read", { id: "reportDoc" }), afterPick, deps);
+    expect(own.ok).toBe(true);
+    for (const [method, params] of [
+      ["fs.read", { id: "desktopFile" }],
+      ["fs.list", { id: "documents" }],
+      ["fs.write", { parentId: "documents", name: "x.txt", content: "x" }],
+      ["fs.delete", { id: "reportDoc" }],
+    ] as const) {
+      const response = await dispatchSandboxRequest(request(method, params), afterPick, deps, vi.fn());
+      expect(response.ok, method).toBe(false);
+    }
+    expect(deps.fileSystem.writeFile).not.toHaveBeenCalled();
+    expect(deps.fileSystem.delete).not.toHaveBeenCalled();
   });
 });

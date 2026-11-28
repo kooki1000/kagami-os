@@ -169,3 +169,15 @@ export function effectiveMimeType(node: Pick<FsNode, "name" | "mimeType">): stri
 export function isTextFile(node: Pick<FsNode, "type" | "name" | "mimeType">): boolean {
   return node.type === "file" && isTextLikeMime(effectiveMimeType(node));
 }
+
+const MIME_PATTERN = /^[a-z0-9][a-z0-9.+-]*\/(?:\*|[a-z0-9][a-z0-9.+-]*)$/;
+
+/** A MIME type (`text/markdown`) or a family wildcard (`image/*`), as manifests and `fs.pick` spell them. */
+export function isMimePattern(value: unknown): value is string {
+  return typeof value === "string" && MIME_PATTERN.test(value);
+}
+
+/** An exact type, or a `family/*` wildcard, against a concrete mime type. */
+export function mimeMatchesPattern(pattern: string, mime: string): boolean {
+  return pattern.endsWith("/*") ? mime.startsWith(pattern.slice(0, -1)) : pattern === mime;
+}

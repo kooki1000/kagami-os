@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { AppSwitcherOverlay } from "./components/shell/AppSwitcherOverlay";
 import { Desktop } from "./components/shell/Desktop";
 import { Dock } from "./components/shell/Dock";
+import { FilePickerDialog } from "./components/shell/FilePickerDialog";
 import { MenuBar } from "./components/shell/MenuBar";
 import { NotificationCenter } from "./components/shell/NotificationCenter";
 import { SearchOverlay } from "./components/shell/SearchOverlay";
@@ -177,6 +178,7 @@ export default function App() {
       <ToastStack />
       <NotificationCenter />
       <SearchOverlay />
+      <FilePickerDialog />
       <AppSwitcherOverlay />
     </div>
   );

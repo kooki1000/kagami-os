@@ -52,6 +52,15 @@ export function InstallAppDialog({ bundle, installing, onCancel, onInstall }: In
               )
             : <p className="mt-2 text-12 text-ink-2">Nothing — this app requests no capabilities.</p>}
 
+          {manifest.fileTypes && manifest.fileTypes.length > 0 && (
+            <p className="mt-3 text-11.5 text-ink-2">
+              Appears in Open With for
+              {" "}
+              <span className="font-mono text-ink">{manifest.fileTypes.join(", ")}</span>
+              . It is never the default until you choose it.
+            </p>
+          )}
+
           <p className="mt-4 text-11/relaxed text-ink-2">
             Installed apps run in a sandboxed frame and can only do what's
             listed above. Access stays revocable from this pane.

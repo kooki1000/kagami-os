@@ -2,6 +2,7 @@ import type { InstalledAppBundle } from "./installedApps";
 import type { AppManifest, AppWindowProps } from "./types";
 import { Puzzle } from "lucide-react";
 import { createElement, lazy } from "react";
+import { restoreFilePayload, serializeFilePayload } from "./filePayload";
 import { ThirdPartyAppHost } from "./ThirdPartyAppHost";
 
 /**
@@ -49,6 +50,9 @@ export function buildInstalledAppManifest(bundle: InstalledAppBundle): AppManife
     icon: Puzzle,
     tileGradient: THIRD_PARTY_TILE_GRADIENT,
     defaultSize: { width: 480, height: 400 },
+    fileTypes: manifest.fileTypes,
+    serializePayload: serializeFilePayload,
+    restorePayload: restoreFilePayload,
     component,
   };
 }

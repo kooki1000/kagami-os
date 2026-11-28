@@ -85,6 +85,7 @@ export type SandboxMethod
     | "notifications.notify"
     | "window.setTitle"
     | "ui.setState"
+    | "fs.pick"
     | "app.info"
     | "menus.set"
     | "dock.setBadge";
@@ -93,7 +94,7 @@ export type SandboxMethod
  * Every valid `SandboxMethod`, for request-time validation against the
  * closed union (`rpc.ts` has no other way to check membership at runtime).
  */
-export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "fs.list", "fs.write", "fs.delete", "notifications.notify", "window.setTitle", "ui.setState", "app.info", "menus.set", "dock.setBadge"];
+export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "fs.list", "fs.write", "fs.delete", "notifications.notify", "window.setTitle", "ui.setState", "fs.pick", "app.info", "menus.set", "dock.setBadge"];
 
 export type SandboxErrorCode = "capability_denied" | "invalid_request" | "not_found" | "internal";
 
