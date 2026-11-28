@@ -373,9 +373,10 @@ user's choice persists as a per-exact-mime-type override in
 `settingsStore.fileAssociations` (localStorage), which `appIdForFile` checks
 before falling back to the built-in family default. `candidateAppsForFile`
 lists the apps capable of opening a given file. Text is the case with a real
-choice today, since Notes and Code can each open the other's types; the
-same list is where an installed app will appear once manifests can declare
-file types (`ROADMAP.md` D8.11).
+choice, since Notes and Code can each open the other's types. Installed apps
+join the same list through their manifest's `fileTypes` (exact types or
+`family/*`), after the built-ins, and `familyDefaultAppId` never returns one,
+so installing an app adds a choice without changing a default.
 `ContextMenu` grew nested-submenu support (`ContextMenuEntry.children`) for
 this; the flyout renders through a `createPortal` to `<body>` rather than
 inline, because the top-level menu's `translateY(-100%)` (used when it opens
@@ -580,18 +581,23 @@ is the first-party consumer; `sandboxDemo` is the test fixture.
 
 **Methods** (`SANDBOX_METHODS` in `types.ts`):
 
-- `fs.read`, gated by `fs.read:<nodeId>`, which covers that node and its
-  descendants.
+- `fs.read` and `fs.list`, gated by `fs.read:<nodeId>`, which covers that
+  node and its descendants. `fs.list` is one level and returns the narrow
+  `SandboxEntryDto`, never an `FsNode`.
 - `fs.write` and `fs.delete`, both gated by `fs.write:<nodeId>`: one grant
-  authorizes writing under a folder and deleting within it. `fs.delete`
-  goes through `FileSystemProvider.delete`. `BridgeDeps` only exposes a
-  `Pick` of the provider, so the unguarded `fsStore.deleteForever` is
-  unreachable from a frame (closes T6 for the bridge).
+  authorizes writing under a folder and deleting _within_ it (never the folder
+  itself, `canDeleteFsNode`). `fs.delete` goes through
+  `FileSystemProvider.delete`. `BridgeDeps` only exposes a `Pick` of the
+  provider, so the unguarded `fsStore.deleteForever` is unreachable from a
+  frame (closes T6 for the bridge).
 - `notifications.notify`, gated by `notifications`.
-- `window.setTitle` and `ui.setState`, ungated, because they only reach the
-  frame's own window. `ui.setState` lets a host component draw real chrome
-  from the frame's view state, which is how Documents' toolbar lives in
-  React.
+- Ungated, because they only reach the frame's own window or tile:
+  `window.setTitle`; `ui.setState`, which lets a host component draw real
+  chrome from the frame's view state (how Documents' toolbar lives in React);
+  `app.info`, which reports the shell's own record of the window (app id, data
+  folder, file it was opened with); `menus.set` and `dock.setBadge`, validated
+  by `menuSchema.ts`; and `fs.pick`, where the user's choice in a shell-drawn
+  dialog is itself the grant.
 
 Shell → frame events: `appCommand` (menu items routed to the frame) and
 `theme`, which pushes design tokens. A `srcdoc` document inherits no custom
@@ -619,17 +625,37 @@ tokens without flipping light/dark.
   named it. The registry refuses a bundle whose id is a built-in's
   (`isBuiltInAppId`): its by-id map is last-write-wins, so such a bundle
   would otherwise replace the built-in app everywhere.
+- What a window may do is `effectiveCapabilities` (`apps/effectiveCapabilities.ts`):
+  the user's grants plus access the shell hands out itself, computed from state
+  the shell owns and never written to `appGrantsStore`, so Settings lists only
+  what the user chose. That is `fs.read` and `fs.write` on the app's private
+  `Apps/<id>/data` folder (D8.10, created at install, backfilled at boot for
+  older installs, deleted with the bundle), and `fs.read` on single nodes: the
+  window's payload `fileId` (only the shell writes a payload) and whatever the
+  window picked, kept per window in `windowFilesStore` and dropped when it
+  closes. `fs.pick` draws `FilePickerDialog`, headed with the asking app's name;
+  the frame learns only the chosen file's entry.
+- `fileTypes` in the manifest (D8.11) feeds `candidateAppsForMime` and the
+  Default Apps pane. An installed app is only ever a choice, never a default.
+- `menus.set` stores sections per window in `appChromeStore`; the menu bar and
+  `shortcuts.ts` read them through `menusForWindow` ahead of the manifest's.
+  Items can't name a shell `command`, and `⌘W/M/Q/K` are refused so an app can't
+  take over closing its own window. `dock.setBadge` is per app, shown while it
+  runs, and cleared with its last window.
 - Revocation is live (D8.7). Each requested capability has a switch in
   Settings › Apps (`setCapabilityGranted`, which can restore what the manifest
   asked for but never widen past it). `ThirdPartyAppHost` subscribes to
   `appGrantsStore` and `SandboxedAppHost` syncs it into the context every
   bridge call reads, so a revoked capability is denied on the open window's
   next call with no reload.
-- `examples/scratchpad/` is the reference app (D8.8): a manifest and one
-  commented entry script that use every bridge method an app is likely to
-  want. `e2e/app-lifecycle.spec.ts` zips it from those files and runs
-  install → run → revoke → uninstall, so it can't rot. D8.9 makes it the
-  starter.
+- `docs/app-sdk.md` is the author contract and `sdk/kagami-client.js` the one
+  file an author copies (JSDoc-typed, no build step). `sdkClient.test.ts` runs
+  that exact file against the real bridge.
+- `examples/scratchpad/` is the reference app and the starter (D8.8, D8.9): its
+  entry is the client file unchanged plus the app, which a test pins.
+  `e2e/app-lifecycle.spec.ts` zips it from those files and runs install → run →
+  revoke → uninstall, and `e2e/app-files.spec.ts` covers opening and picking
+  files, so neither can rot.
 
 **A pattern worth remembering.** The first version had the shell create the
 entry script's `blob:` URL and pass it to the frame as `<script src>`. A
@@ -639,7 +665,11 @@ to load local resource"). `e2e/install-app.spec.ts` caught it once it ran a
 real installed app. The fix, `thirdPartyLoaderEntry.ts`, is a small loader
 served from `/sandbox/third-party-loader.js` that builds the `blob:` URL
 inside the frame from base64 bytes, the same trick `sandboxEntry.ts` uses for
-pdf.js's worker.
+pdf.js's worker. It decodes to bytes before building the blob: `atob` alone
+yields one character per byte, and a `Blob` of that string re-encodes it as
+UTF-8, garbling any non-ASCII source. `SandboxedAppHost` likewise attaches its
+message listener in a layout effect, since a frame's first call at start-up can
+otherwise land before a passive effect has run.
 
 ## Backup reminder and storage meter (`src/system/backup/`, `src/system/storage/`)
 
@@ -823,6 +853,6 @@ desktop e2e via `tauri-driver`).
 
 **Steps 13–16** are done: realigned docs, the review backlog closed, area U
 (depth and customization), the capability sandbox (16a), and Documents, the
-small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.8 in
-(described under Capability sandbox above); D8.9–D8.12 and steps 18–21 are
-in `ROADMAP.md` §4.
+small utilities and Code (16b). **Step 17**, the app SDK, has D8.1–D8.12 in
+(described under Capability sandbox above) and waits only on the LICENSE;
+steps 18–21 are in `ROADMAP.md` §4.

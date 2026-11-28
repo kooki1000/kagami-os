@@ -1,7 +1,7 @@
 # Kagami OS — Product Direction
 
 **Status:** direction set July 2026 · facts refreshed November 2026
-**Baseline:** steps 1–16 shipped, step 17 (the app SDK) in progress, native
+**Baseline:** steps 1–16 shipped, step 17 (the app SDK) built, waiting on the LICENSE, native
 N-1/N-2 shipped (see `ARCHITECTURE.md` § Phase status)
 
 This is the "where is Kagami going and why" document. `ARCHITECTURE.md`
@@ -153,7 +153,7 @@ filesystem access.
 Each bet is independently shippable, ordered so the contained,
 high-confidence work comes first and each unlocks the next. **Bets 1 and 2
 have shipped.** Bet 3 is committed (§5.3): its sandbox shipped in step 16a,
-and the SDK is `ROADMAP.md` step 17, half done.
+and the SDK is `ROADMAP.md` step 17, built and waiting on the LICENSE.
 
 ### 5.1 Bet 1 — Native shell + isolated filesystem — ✅ _shipped (N-1)_
 

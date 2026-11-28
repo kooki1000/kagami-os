@@ -2,7 +2,7 @@
 
 **Status:** revised November 2026
 **Baseline:** phases 1–12 and steps 13–16 shipped; step 17 (the app SDK)
-half shipped; native N-1 and N-2 shipped; the web build live at
+built, waiting only on the LICENSE; native N-1 and N-2 shipped; the web build live at
 [kooki1000.github.io/kagami-os](https://kooki1000.github.io/kagami-os/).
 
 This document says what "finished" means for Kagami, lists the gap between
@@ -69,8 +69,9 @@ several weeks, needs its own design note.
 layer around them. The disk is the user's only copy, and the backup leaves
 out every `localStorage` store, including the grants installed apps depend
 on. Nothing protects a file from being overwritten. ⌘K can't search inside
-files. And the SDK can install and run an app, but nobody outside the repo
-has a document to write one from, and an installed app can't open a file.
+files. The SDK is built (`docs/app-sdk.md`), but it stays behind a flag until
+the repository has a license, and an installed app can't yet write back to the
+file it was handed.
 
 ---
 
@@ -132,11 +133,11 @@ areas: **U** (U1–U17, step 15) and the D-area apps D1–D7 and D9.
 The list of apps is closed (§6.2). What's left is the SDK and the leftovers
 inside existing apps.
 
-| ID  | Feature                                                                                                                                                                                                                                                                 | Size | Notes                                                                                               |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
-| D8  | **Third-party app SDK** — D8.1–D8.8 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent, the Apps pane and uninstall, live revocation, the reference app). Remaining tasks are in step 17 | XL   | See §4                                                                                              |
-| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                                                                       | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
-| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13)                                                     | M    | Take these opportunistically; none blocks a step                                                    |
+| ID  | Feature                                                                                                                                                                                                                                                                                                                                                                                | Size | Notes                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
+| D8  | **Third-party app SDK** — D8.1–D8.12 shipped (fs write/delete, `/Apps` and the manifest schema, the flag, the dynamic registry and host, sideload install with consent, the Apps pane and uninstall, live revocation, the reference app, the SDK docs and client, the private data folder, opening files, menus and badges). What's left is the LICENSE (§6.3) and turning the flag on | XL   | See §4                                                                                              |
+| D10 | **Links between notes** — a `[[Note name]]` editor node whose only attribute is a VFS node id, opened through `openFile` inside the shell; a "Linked from" list using B9b's index                                                                                                                                                                                                      | M/L  | Changes the schema, so it needs the PR §6.8 asks for. Image embeds stay out: a `blob:` URL is a URL |
+| D11 | **App leftovers** — Documents: continuous scroll, text selection, find. Notes: nested lists. Terminal: multi-line input, `<` redirect, user variables. Player: Next/Previous should update the window payload (T13)                                                                                                                                                                    | M    | Take these opportunistically; none blocks a step                                                    |
 
 ### F. Platform
 
@@ -245,23 +246,33 @@ feature runs on.
 
 ### Step 17 — Finish the app SDK _(≈ 3–4 weeks)_
 
-D8.1–D8.5 shipped 2026-08-05, D8.6–D8.8 on 2026-11-26. The exit criterion has always been "an app
-written outside this repository", and the reference app in D8.8 proves the
-mechanics but not that an outsider could write one. D8.9–D8.12 close that.
+D8.1–D8.5 shipped 2026-08-05, D8.6–D8.8 on 2026-11-26, D8.9–D8.12 on
+2026-11-28. The exit criterion has always been "an app written outside this
+repository", and the reference app in D8.8 proved the mechanics but not that an
+outsider could write one. D8.9–D8.12 close that.
 
-| ID    | Task                                                                                                                                                                                                                                                                                                         | Size | Depends on | Accept                                                                                                              |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| D8.9  | **Author docs and starter** — `docs/app-sdk.md` (bundle format, manifest fields, every bridge method and its capability, error codes, the security model); the client published as one copyable file with its types; D8.8's app doubles as the template                                                      | M    | —          | Someone following only the doc builds and installs a working app                                                    |
-| D8.10 | **Private data folder** — every installed app gets `Apps/<id>/data` with read and write and no consent prompt; uninstall removes it                                                                                                                                                                          | S    | —          | An app persists state across reloads without requesting any fs scope                                                |
-| D8.11 | **Installed apps open files** — a `fileTypes` manifest field feeding `openFile.ts` and the Default Apps pane (never the default on install), plus a per-file grant: opening a file with an app grants access to that one node for that window, and `fs.pick` shows a shell-drawn picker that grants the same | M    | D8.9       | An installed viewer appears in Open With and reads only the file it was handed; negative tests for every other node |
-| D8.12 | **Menus and dock badges over the bridge** — a `menus.set` method validated against `MenuSection`, items carrying `appCommand` strings; a badge method for the dock tile. Both were in 16a's scope and never landed                                                                                           | S/M  | D8.4       | A sandboxed app's menus show in the menu bar and its chords dispatch                                                |
+| ID    | Task                                                                                                                                                                                                                   |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D8.9  | **Author docs and starter** — `docs/app-sdk.md`; the client as one copyable file, `sdk/kagami-client.js`, with JSDoc types; the reference app starts with that file unchanged, and a test pins it                      |
+| D8.10 | **Private data folder** — `Apps/<id>/data`, read and write with no consent prompt, removed on uninstall. `app.info` reports its id and `fs.list` reads it back                                                         |
+| D8.11 | **Installed apps open files** — a `fileTypes` manifest field feeding Open With and Default Apps (never the default on install); the file a window is opened with, and one chosen through `fs.pick`, are readable by it |
+| D8.12 | **Menus and dock badges over the bridge** — `menus.set` validated against `MenuSection` (no shell commands, shell chords refused), and `dock.setBadge`                                                                 |
 
-**Prerequisite:** the LICENSE (§6.3). Nobody can legally build against an
-SDK whose source carries no license.
+Two deliberate narrowings. A handed or picked file is **read-only**: `fs.write`
+authorizes against a folder, so writing back to one node needs a new method,
+and it waits for an app that asks (an editor). And `fs.delete` no longer covers
+the granted folder itself, only what's inside it, so an app can't trash its own
+data directory.
+
+**Prerequisite, still open:** the LICENSE (§6.3). Nobody can legally build
+against an SDK whose source carries no license. Until it lands the flag stays
+off, so the web demo shows no install UI.
 
 **Exit:** a developer who has only read `docs/app-sdk.md` builds an app that
 installs from a bundle, appears in the dock, opens a file handed to it from
-Files, reads only what it was granted, and uninstalls cleanly.
+Files, reads only what it was granted, and uninstalls cleanly. The pieces are
+shipped and tested (`e2e/app-lifecycle.spec.ts`, `e2e/app-files.spec.ts`); the
+step closes when the LICENSE lands and the flag is flipped.
 
 ### Step 18 — Safety net _(≈ 1–1.5 weeks)_
 
@@ -314,8 +325,7 @@ sandboxed iframe stays out of scope (`DIRECTION.md` §3.3).
 ### Dependencies
 
 ```text
-LICENSE ─────────────► step 17 (D8.9 publishes an SDK)
-D8.9 ► D8.11        D8.10 is unblocked
+LICENSE ─────────────► step 17's exit (publishing an SDK)
 T11 ► B16      T10 ► D10      B9b ► D10      §6.8 revisit ► D10
 §2 met ──────────────► distribution (X.3)
 ```
@@ -422,7 +432,7 @@ Reviewed at the start of each step.
 | R4  | **Steps slip.** One person, and step 17 is still the largest remaining step                                                                                                                                           | High       | Medium | Every step ends shippable; scope moves to the next step rather than quality dropping                                                  |
 | R5  | **Customization breaks the design**                                                                                                                                                                                   | Low        | Medium | The contrast validator and derived duotone (§6.5); presets stay the default                                                           |
 | R6  | **Drift toward macOS trade dress** as features approach OS parity                                                                                                                                                     | Medium     | Medium | The guardrails in §6 and `docs/design-system.md`'s drift register                                                                     |
-| R7  | **Sandbox escape or injected content.** Step 17 adds four bridge methods and a picker, each a new path from untrusted code to the shell                                                                               | Medium     | High   | Every method gets a refusal test when ungranted; capability checks stay in the shell, never the frame; D10 revisits §6.8 explicitly   |
+| R7  | **Sandbox escape or injected content.** Step 17 added seven bridge methods and a picker, each a new path from untrusted code to the shell                                                                             | Medium     | High   | Every method gets a refusal test when ungranted; capability checks stay in the shell, never the frame; D10 revisits §6.8 explicitly   |
 | R8  | **Flaky tests get ignored.** CI's `retries: 2` hides intermittent failures                                                                                                                                            | Medium     | Medium | `e2e/window-resize.spec.ts`'s near-edge test under WebKit was the known case; confirm or fix it before step 18 adds backup specs      |
 | R9  | **Native distribution burden** — signing, notarization, per-OS builds and auto-update cost what the web build gives for free                                                                                          | —          | —      | Deferred with N5                                                                                                                      |
 | R10 | **Dual-target rot** — `if (native)` checks scattered through components                                                                                                                                               | Low        | Medium | Every check goes through `isTauri()` (`system/platform.ts`)                                                                           |
@@ -513,9 +523,8 @@ clean, no new lint or type suppressions.
 ## 10. Immediate next steps
 
 1. **Pick a license** (§6.3). It needs the owner's decision, and step 17
-   can't finish without it.
-2. **D8.10, then D8.12.** Both are unblocked. D8.9 (publishing the SDK) waits on the license in item 1.
-3. **B18, the automatic backup folder.** The rest of step 18 (B13–B15, C5) is in.
-4. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
+   can't close without it. Then turn `third_party_apps` on by default.
+2. **B18, the automatic backup folder.** The rest of step 18 (B13–B15, C5) is in.
+3. **Confirm R8's WebKit case.** Run `e2e/window-resize.spec.ts` under
    WebKit in a loop; fix it or record why it's flaky before more specs pile
    onto CI's retries.
