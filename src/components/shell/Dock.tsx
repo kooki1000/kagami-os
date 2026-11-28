@@ -1,12 +1,12 @@
 import type { ContextMenuEntry } from "@/components/ui/ContextMenu";
 import type { AppManifest } from "@/system/apps/types";
 import type { DockPosition } from "@/system/dock/dockStore";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { useAppChromeStore } from "@/system/apps/appChromeStore";
 import { launchApp } from "@/system/apps/launch";
-import { getApp } from "@/system/apps/registry";
+import { getApp, getRegistryVersion, subscribeToRegistry } from "@/system/apps/registry";
 import { DOCK_TILE_PX, useDockStore } from "@/system/dock/dockStore";
 import { revealApp, useWindowStore } from "@/system/windows/windowStore";
 
@@ -48,6 +48,8 @@ const POSITION: Record<DockPosition, {
 };
 
 export function Dock() {
+  // A pinned installed app has no manifest until the boot-time scan lands.
+  useSyncExternalStore(subscribeToRegistry, getRegistryVersion);
   const pinnedIds = useDockStore(s => s.pinnedIds);
   const size = useDockStore(s => s.size);
   const position = useDockStore(s => s.position);

@@ -87,7 +87,10 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, dat
     contextRef.current = { appId, windowId, capabilities, dataFolderId, fileId };
   });
 
-  useEffect(() => {
+  // A layout effect, not a passive one: it must be listening before the frame
+  // can run, because a frame's very first call (an app setting its menus on
+  // start) otherwise races the listener and is silently dropped.
+  useLayoutEffect(() => {
     function handleMessage(event: MessageEvent) {
       // A sandboxed frame's origin is the literal string "null", so
       // authenticate by identity (is this message from *my* iframe's

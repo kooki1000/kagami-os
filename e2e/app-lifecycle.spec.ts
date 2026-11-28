@@ -43,6 +43,9 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     const status = frame.locator("#status");
     const press = (id: string) => frame.locator(`#${id}`).dispatchEvent("click");
 
+    // Non-ASCII source survives the trip into the frame intact.
+    await expect(frame.locator("#open")).toHaveText("Open…");
+
     // window.setTitle needs no capability.
     await frame.locator("#text").fill("Shopping list\nmilk");
     await expect(page.locator("[data-window-id]").getByText("Shopping list", { exact: true })).toBeVisible();
@@ -58,6 +61,13 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     await press("notify");
     await expect(status).toHaveText("notify: ok");
 
+    // The badge is the app's own (dock.setBadge), and its menu is in the menu
+    // bar while the window is focused (menus.set).
+    await expect(page.locator("[data-dock-app=\"scratchpad\"] [data-dock-badge]")).toHaveText("1");
+    await page.getByRole("button", { name: "Draft", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Clear Draft" }).click();
+    await expect(frame.locator("#text")).toHaveValue("");
+
     // Revoke one capability while the window is open: writes stop, reads don't.
     await openApp(page, "settings");
     await page.getByRole("switch", { name: "Allow Scratchpad to use fs.write:documents" }).click();
@@ -65,6 +75,19 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     await expect(status).toHaveText("save: capability_denied");
     await press("load");
     await expect(status).toHaveText("load: ok");
+
+    // The private data folder needs no grant, so the draft saves regardless,
+    // and is still there after a reload (D8.10).
+    await frame.locator("#text").fill("kept across reloads");
+    await expect(frame.locator("#draft")).toHaveText("draft: saved");
+    await page.locator("[data-dock-app=\"scratchpad\"]").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Pin to Dock" }).click();
+    await page.goto("/?fresh");
+    await openApp(page, "scratchpad");
+    await expect(page.frameLocator("iframe[title=\"scratchpad\"]").locator("#text")).toHaveValue("kept across reloads");
+
+    await openApp(page, "settings");
+    await page.getByRole("button", { name: "Apps", exact: true }).click();
 
     // Uninstall: window, dock tile and Apps-pane entry all go.
     await page.getByRole("button", { name: "Uninstall Scratchpad" }).click();
