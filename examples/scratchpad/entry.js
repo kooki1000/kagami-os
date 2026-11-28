@@ -261,14 +261,24 @@ document.body.append(
 
 // --- Start up: a file the app was opened with, else the saved draft ---------
 void (async () => {
-  const info = await kagami.info();
-  dataFolderId = info.dataFolderId;
-  if (info.fileId) {
-    text.value = await kagami.fs.readText(info.fileId);
-    return;
+  try {
+    const info = await kagami.info();
+    dataFolderId = info.dataFolderId;
+    if (info.fileId) {
+      text.value = await kagami.fs.readText(info.fileId);
+      return;
+    }
+    const entries = await kagami.fs.list(dataFolderId);
+    const draft = entries.find(entry => entry.name === DRAFT_NAME);
+    if (draft) {
+      text.value = await kagami.fs.readText(draft.id);
+      draftStatus.textContent = "draft: restored";
+    }
+    else {
+      draftStatus.textContent = `draft: none (${entries.map(entry => entry.name).join(", ") || "empty folder"})`;
+    }
   }
-  const entries = await kagami.fs.list(dataFolderId);
-  const draft = entries.find(entry => entry.name === DRAFT_NAME);
-  if (draft)
-    text.value = await kagami.fs.readText(draft.id);
+  catch (error) {
+    draftStatus.textContent = `draft: ${error.code ?? "error"} on restore`;
+  }
 })();

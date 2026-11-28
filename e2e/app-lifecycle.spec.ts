@@ -86,7 +86,9 @@ test.describe("Reference app lifecycle (step 17, D8.8)", () => {
     await page.getByRole("menuitem", { name: "Pin to Dock" }).click();
     await page.goto("/?fresh");
     await openApp(page, "scratchpad");
-    await expect(page.frameLocator("iframe[title=\"scratchpad\"]").locator("#text")).toHaveValue("kept across reloads");
+    const reopened = page.frameLocator("iframe[title=\"scratchpad\"]");
+    await expect(reopened.locator("#draft")).toHaveText("draft: restored");
+    await expect(reopened.locator("#text")).toHaveValue("kept across reloads");
 
     await openApp(page, "settings");
     await page.getByRole("button", { name: "Apps", exact: true }).click();
