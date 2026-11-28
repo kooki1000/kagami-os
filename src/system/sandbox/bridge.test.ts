@@ -223,17 +223,23 @@ describe("dispatchSandboxRequest — fs.delete", () => {
     expect(deps.fileSystem.delete).not.toHaveBeenCalled();
   });
 
-  it("maps a nonexistent id to not_found via the getNodes() pre-check, rather than a silent fake success", async () => {
+  it("refuses a nonexistent id, even one named as the scope itself", async () => {
     const deps = makeDeps();
-    // Granted by exact scope match on an id that names no real node — the
-    // capability check alone can't rule this out (it doesn't require the
-    // scope to resolve to an existing node), so the handler must.
+    // A delete is only authorized for a node that sits *under* the granted
+    // folder, which an id naming no node can never do.
     const ghostContext: SandboxContext = { ...context, capabilities: ["fs.write:ghostId"] };
-    const response = await dispatchSandboxRequest(request("fs.delete", { id: "ghostId" }), ghostContext, deps);
+    const response = await dispatchSandboxRequest(request("fs.delete", { id: "ghostId" }), ghostContext, deps, vi.fn());
     expect(response.ok).toBe(false);
     if (response.ok)
-      throw new Error("expected not_found response");
-    expect(response.error.code).toBe("not_found");
+      throw new Error("expected denied response");
+    expect(response.error.code).toBe("capability_denied");
+    expect(deps.fileSystem.delete).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete the granted folder itself", async () => {
+    const deps = makeDeps();
+    const response = await dispatchSandboxRequest(request("fs.delete", { id: "documents" }), context, deps, vi.fn());
+    expect(response.ok).toBe(false);
     expect(deps.fileSystem.delete).not.toHaveBeenCalled();
   });
 });
@@ -322,5 +328,47 @@ describe("ui.setState", () => {
       makeDeps(),
     );
     expect(response.ok).toBe(true);
+  });
+});
+
+describe("dispatchSandboxRequest — fs.list", () => {
+  it("lists a granted folder as narrow entries, with no internal FsNode fields", async () => {
+    const response = await dispatchSandboxRequest(request("fs.list", { id: "documents" }), context, makeDeps());
+
+    expect(response.ok).toBe(true);
+    if (!response.ok)
+      throw new Error("expected ok response");
+    expect(response.data).toEqual([
+      { id: "reportDoc", name: "report.txt", type: "file", mimeType: undefined, size: 11, modifiedAt: 0 },
+    ]);
+  });
+
+  it("refuses a folder outside the granted scope", async () => {
+    const response = await dispatchSandboxRequest(request("fs.list", { id: "desktop" }), context, makeDeps(), vi.fn());
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected denied response");
+    expect(response.error.code).toBe("capability_denied");
+  });
+
+  it("reports not_found for a granted id that is a file", async () => {
+    const response = await dispatchSandboxRequest(request("fs.list", { id: "reportDoc" }), context, makeDeps());
+    expect(response.ok).toBe(false);
+    if (response.ok)
+      throw new Error("expected error response");
+    expect(response.error.code).toBe("not_found");
+  });
+});
+
+describe("dispatchSandboxRequest — app.info", () => {
+  it("reports the shell's own record of the window, whatever the frame sends", async () => {
+    const ctx: SandboxContext = { ...context, appId: "cool-app", dataFolderId: "appData", fileId: "reportDoc" };
+    const response = await dispatchSandboxRequest(request("app.info", { dataFolderId: "forged" }), ctx, makeDeps());
+    expect(response).toMatchObject({ ok: true, data: { appId: "cool-app", dataFolderId: "appData", fileId: "reportDoc" } });
+  });
+
+  it("reports null for an app with no data folder and no file", async () => {
+    const response = await dispatchSandboxRequest(request("app.info"), context, makeDeps());
+    expect(response).toMatchObject({ ok: true, data: { dataFolderId: null, fileId: null } });
   });
 });

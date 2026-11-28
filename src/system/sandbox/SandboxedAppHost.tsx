@@ -1,3 +1,4 @@
+import type { SandboxContext } from "./bridge";
 import type { SandboxResponse } from "./types";
 import type { AppWindowProps } from "@/system/apps/types";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
@@ -22,6 +23,8 @@ export interface SandboxedAppHostProps extends AppWindowProps {
    */
   entryHtml: string;
   capabilities: string[];
+  /** The app's private data folder, reported to the frame by `app.info`. */
+  dataFolderId?: string;
   /**
    * Receives whatever the frame reports through `ui.setState` — how an app
    * that draws its chrome in React (Documents' toolbar) learns which page it
@@ -61,7 +64,7 @@ function postResponse(target: Window, response: SandboxResponse) {
  * (`Window.tsx`, menu/appCommand routing) needs to know an app is
  * sandboxed at all.
  */
-export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onAppState, themeVars }: SandboxedAppHostProps) {
+export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, dataFolderId, onAppState, themeVars }: SandboxedAppHostProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // Same ref-sync reason as `contextRef` below: a caller that doesn't
   // memoize its handler must not force the message listener to re-attach.
@@ -74,9 +77,9 @@ export function SandboxedAppHost({ windowId, appId, entryHtml, capabilities, onA
   // that doesn't memoize `capabilities` can't force the message listener
   // below to tear down and re-attach on every render — same ref-sync
   // pattern useAppCommand uses for its own handler.
-  const contextRef = useRef({ appId, windowId, capabilities });
+  const contextRef = useRef<SandboxContext>({ appId, windowId, capabilities, dataFolderId });
   useLayoutEffect(() => {
-    contextRef.current = { appId, windowId, capabilities };
+    contextRef.current = { appId, windowId, capabilities, dataFolderId };
   });
 
   useEffect(() => {

@@ -1,9 +1,9 @@
-import type { Capability, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse, SandboxWriteResultDto } from "./types";
+import type { Capability, SandboxAppInfoDto, SandboxEntryDto, SandboxErrorCode, SandboxFileDto, SandboxRequest, SandboxResponse, SandboxWriteResultDto } from "./types";
 import type { NodeMap } from "@/system/fs/fsStore";
 import type { BlobStore, FileSystemProvider, FsNode } from "@/system/fs/types";
 import type { NotifyInput } from "@/system/notifications/notificationStore";
 import { resolveFileBytes } from "@/apps/files/download";
-import { fileBytes } from "@/system/fs/fsStore";
+import { childrenOf, fileBytes } from "@/system/fs/fsStore";
 import { isMethodAuthorized } from "./capabilities";
 import { buildErrorResponse, buildSuccessResponse } from "./rpc";
 
@@ -16,6 +16,10 @@ export interface SandboxContext {
   appId: string;
   windowId: string;
   capabilities: readonly Capability[];
+  /** The app's private data folder (`Apps/<id>/data`), reported by `app.info`. */
+  dataFolderId?: string;
+  /** The file this window was opened with, reported by `app.info`. */
+  fileId?: string;
 }
 
 /**
@@ -81,6 +85,36 @@ async function handleFsRead(params: Record<string, unknown>, deps: BridgeDeps): 
     // Untyped inline content (no mimeType) is the common case for
     // Notes/Terminal-authored files and is always text.
     isText: (node.mimeType ?? "text/plain").startsWith("text/"),
+  };
+}
+
+function toEntryDto(node: FsNode): SandboxEntryDto {
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    mimeType: node.mimeType,
+    size: node.type === "file" ? fileBytes(node) : 0,
+    modifiedAt: node.modifiedAt,
+  };
+}
+
+/** One level of a folder, folders first, in the same entry shape every method reports. */
+function handleFsList(params: Record<string, unknown>, deps: BridgeDeps): SandboxEntryDto[] {
+  // isMethodAuthorized already required params.id to be a string granted
+  // under some fs.read:<scope> capability before this handler runs.
+  const id = params.id as string;
+  const nodes = deps.getNodes();
+  if (nodes[id]?.type !== "folder")
+    throw new SandboxRequestError("not_found", `"${id}" is not a folder.`);
+  return childrenOf(nodes, id).map(toEntryDto);
+}
+
+function handleAppInfo(context: SandboxContext): SandboxAppInfoDto {
+  return {
+    appId: context.appId,
+    dataFolderId: context.dataFolderId ?? null,
+    fileId: context.fileId ?? null,
   };
 }
 
@@ -189,6 +223,8 @@ export async function dispatchSandboxRequest(
     switch (request.method) {
       case "fs.read":
         return buildSuccessResponse(request.id, await handleFsRead(params, deps));
+      case "fs.list":
+        return buildSuccessResponse(request.id, handleFsList(params, deps));
       case "fs.write":
         return buildSuccessResponse(request.id, await handleFsWrite(params, deps));
       case "fs.delete":
@@ -199,6 +235,8 @@ export async function dispatchSandboxRequest(
         return buildSuccessResponse(request.id, handleSetTitle(params, context.windowId, deps));
       case "ui.setState":
         return buildSuccessResponse(request.id, handleSetAppState(params, context.windowId, deps));
+      case "app.info":
+        return buildSuccessResponse(request.id, handleAppInfo(context));
     }
   }
   catch (error) {

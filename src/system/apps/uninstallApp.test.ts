@@ -52,6 +52,19 @@ describe("uninstallApp (step 17, D8.6)", () => {
     expect(Object.keys(useFsStore.getState().nodes).sort()).toEqual(baseline);
   });
 
+  it("removes the private data folder and what the app saved in it", async () => {
+    await commitInstall(bundle("gone-app"));
+    const nodes = () => useFsStore.getState().nodes;
+    const appFolder = childrenOf(nodes(), APPS_ID)[0];
+    const dataFolder = childrenOf(nodes(), appFolder.id).find(n => n.name === "data");
+    expect(dataFolder?.type).toBe("folder");
+    useFsStore.getState().createFile(dataFolder!.id, "state.json", "{}");
+
+    await uninstallApp("gone-app");
+
+    expect(Object.values(nodes()).some(n => n.name === "state.json" || n.name === "data")).toBe(false);
+  });
+
   it("clears every preference that names the app, and only that app", async () => {
     await commitInstall(bundle("gone-app"));
     await commitInstall(bundle("kept-app"));

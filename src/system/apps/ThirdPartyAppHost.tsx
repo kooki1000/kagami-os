@@ -1,16 +1,19 @@
 import type { AppWindowProps } from "./types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { resolveFileBytes } from "@/apps/files/download";
 import { blobStore } from "@/system/fs/blobStore";
 import { fileSystem } from "@/system/fs/provider";
 import { SandboxedAppHost } from "@/system/sandbox/SandboxedAppHost";
 import { NO_GRANTS, useAppGrantsStore } from "./appGrantsStore";
+import { effectiveCapabilities } from "./effectiveCapabilities";
 import { buildThirdPartyEntryHtml } from "./thirdPartyEntryHtml";
 
 export interface ThirdPartyAppHostProps extends AppWindowProps {
   appId: string;
   /** fs node id of the app's entry script, resolved once at scan time (`installedApps.ts`). */
   entryNodeId: string;
+  /** The app's private data folder, or `null` if it has none (`installedApps.ts`). */
+  dataFolderId: string | null;
 }
 
 /**
@@ -21,12 +24,13 @@ export interface ThirdPartyAppHostProps extends AppWindowProps {
  * file's doc comment for why this side can't build the blob: URL itself.
  */
 export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
-  const { appId, entryNodeId } = props;
+  const { appId, entryNodeId, dataFolderId } = props;
   // Subscribed rather than passed in: what an app may do can change while its
   // window is open (Settings › Apps, D8.7), and `SandboxedAppHost` syncs this
   // into the context every bridge call reads, so a revoked capability is
   // denied on the very next call with no reload.
-  const capabilities = useAppGrantsStore(s => s.grants[appId] ?? NO_GRANTS);
+  const grants = useAppGrantsStore(s => s.grants[appId] ?? NO_GRANTS);
+  const capabilities = useMemo(() => effectiveCapabilities(grants, { dataFolderId }), [grants, dataFolderId]);
   const [entryHtml, setEntryHtml] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,7 +62,8 @@ export function ThirdPartyAppHost(props: ThirdPartyAppHostProps) {
     <SandboxedAppHost
       {...props}
       entryHtml={entryHtml}
-      capabilities={capabilities as string[]}
+      capabilities={capabilities}
+      dataFolderId={dataFolderId ?? undefined}
     />
   );
 }

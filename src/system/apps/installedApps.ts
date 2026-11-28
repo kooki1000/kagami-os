@@ -4,6 +4,7 @@ import type { BlobStore } from "@/system/fs/types";
 import { resolveFileBytes } from "@/apps/files/download";
 import { childrenOf } from "@/system/fs/fsStore";
 import { APPS_ID } from "@/system/fs/types";
+import { DATA_FOLDER_NAME } from "./effectiveCapabilities";
 import { parseAppManifest } from "./manifestSchema";
 
 /** One installed bundle: its parsed manifest, plus the fs node id of its entry script. */
@@ -12,6 +13,8 @@ export interface InstalledAppBundle {
   entryNodeId: string;
   /** The `/Apps/<id>` folder holding the bundle — what uninstalling removes. */
   folderId: string;
+  /** `/Apps/<id>/data`, or `null` for a bundle installed before the folder existed. */
+  dataFolderId: string | null;
 }
 
 /**
@@ -45,7 +48,8 @@ export async function resolveInstalledAppBundles(nodes: NodeMap, blobStore: Blob
       const entryNode = siblings.find(n => n.type === "file" && n.name === manifest.entry);
       if (!entryNode)
         continue;
-      bundles.push({ manifest, entryNodeId: entryNode.id, folderId: folder.id });
+      const dataFolder = siblings.find(n => n.type === "folder" && n.name === DATA_FOLDER_NAME);
+      bundles.push({ manifest, entryNodeId: entryNode.id, folderId: folder.id, dataFolderId: dataFolder?.id ?? null });
     }
     catch {
       // Malformed JSON, missing bytes, or a corrupt blob — skip this bundle.

@@ -47,6 +47,25 @@ export interface SandboxWriteResultDto {
   modifiedAt: number;
 }
 
+/** One child of a folder, as `fs.list` and `fs.pick` report it. */
+export interface SandboxEntryDto {
+  id: string;
+  name: string;
+  type: "file" | "folder";
+  mimeType: string | undefined;
+  size: number;
+  modifiedAt: number;
+}
+
+/** What `app.info` tells a frame about its own window. */
+export interface SandboxAppInfoDto {
+  appId: string;
+  /** The app's private `Apps/<id>/data` folder; `null` for an app that has none. */
+  dataFolderId: string | null;
+  /** The file the window was opened with, if any; readable without a grant request. */
+  fileId: string | null;
+}
+
 /**
  * Methods the bridge dispatches. Kept as a closed union so an unknown
  * `method` is a request-time validation failure, not a runtime surprise.
@@ -58,13 +77,21 @@ export interface SandboxWriteResultDto {
  * document doesn't inherit custom properties. The payload is opaque here on
  * purpose: the protocol has no idea what a PDF page is, and shouldn't.
  */
-export type SandboxMethod = "fs.read" | "fs.write" | "fs.delete" | "notifications.notify" | "window.setTitle" | "ui.setState";
+export type SandboxMethod
+  = | "fs.read"
+    | "fs.list"
+    | "fs.write"
+    | "fs.delete"
+    | "notifications.notify"
+    | "window.setTitle"
+    | "ui.setState"
+    | "app.info";
 
 /**
  * Every valid `SandboxMethod`, for request-time validation against the
  * closed union (`rpc.ts` has no other way to check membership at runtime).
  */
-export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "fs.write", "fs.delete", "notifications.notify", "window.setTitle", "ui.setState"];
+export const SANDBOX_METHODS: readonly SandboxMethod[] = ["fs.read", "fs.list", "fs.write", "fs.delete", "notifications.notify", "window.setTitle", "ui.setState", "app.info"];
 
 export type SandboxErrorCode = "capability_denied" | "invalid_request" | "not_found" | "internal";
 

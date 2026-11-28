@@ -1,6 +1,6 @@
 import type { NodeMap } from "@/system/fs/fsStore";
 import { describe, expect, it } from "vitest";
-import { canReadFsNode, canWriteFsNode, hasCapability, isMethodAuthorized } from "./capabilities";
+import { canDeleteFsNode, canReadFsNode, canWriteFsNode, hasCapability, isMethodAuthorized } from "./capabilities";
 
 function node(id: string, parentId: string | null) {
   return { id, parentId, name: id, type: "file", createdAt: 0, modifiedAt: 0 } as unknown as NodeMap[string];
@@ -139,6 +139,28 @@ describe("isMethodAuthorized", () => {
 
   it("refuses fs.delete with a missing id param", () => {
     expect(isMethodAuthorized(["fs.write:documents"], "fs.delete", {}, nodes)).toBe(false);
+  });
+
+  it("refuses fs.delete of the granted folder itself, but not of what's inside it", () => {
+    expect(canDeleteFsNode(["fs.write:documents"], "documents", nodes)).toBe(false);
+    expect(canDeleteFsNode(["fs.write:documents"], "nestedFile", nodes)).toBe(true);
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.delete", { id: "documents" }, nodes)).toBe(false);
+  });
+
+  it("refuses fs.delete under a read-only grant", () => {
+    expect(isMethodAuthorized(["fs.read:documents"], "fs.delete", { id: "reportDoc" }, nodes)).toBe(false);
+  });
+
+  it("authorizes fs.list under an fs.read grant on the folder, and refuses it elsewhere", () => {
+    expect(isMethodAuthorized(["fs.read:documents"], "fs.list", { id: "documents" }, nodes)).toBe(true);
+    expect(isMethodAuthorized(["fs.read:documents"], "fs.list", { id: "nestedFolder" }, nodes)).toBe(true);
+    expect(isMethodAuthorized(["fs.read:documents"], "fs.list", { id: "desktop" }, nodes)).toBe(false);
+    expect(isMethodAuthorized(["fs.write:documents"], "fs.list", { id: "documents" }, nodes)).toBe(false);
+    expect(isMethodAuthorized([], "fs.list", {}, nodes)).toBe(false);
+  });
+
+  it("always authorizes app.info", () => {
+    expect(isMethodAuthorized([], "app.info", {}, nodes)).toBe(true);
   });
 
   it("authorizes notifications.notify only when granted", () => {

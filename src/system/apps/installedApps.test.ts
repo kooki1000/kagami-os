@@ -41,8 +41,20 @@ describe("resolveInstalledAppBundles", () => {
     ]);
     const result = await resolveInstalledAppBundles(nodes, createMemoryBlobStore());
     expect(result).toEqual([
-      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry", folderId: "cool-app" },
+      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry", folderId: "cool-app", dataFolderId: null },
     ]);
+  });
+
+  it("finds the bundle's data folder when it has one", async () => {
+    const nodes = indexNodes([
+      folder(APPS_ID, ROOT_ID),
+      folder("cool-app", APPS_ID),
+      file("manifest", "cool-app", "manifest.json", VALID_MANIFEST),
+      file("entry", "cool-app", "entry.js", "console.log('hi')"),
+      { ...folder("appData", "cool-app"), name: "data" },
+    ]);
+    const [bundle] = await resolveInstalledAppBundles(nodes, createMemoryBlobStore());
+    expect(bundle.dataFolderId).toBe("appData");
   });
 
   it("skips a subfolder with no manifest.json", async () => {
@@ -93,7 +105,7 @@ describe("resolveInstalledAppBundles", () => {
     ]);
     const result = await resolveInstalledAppBundles(nodes, createMemoryBlobStore());
     expect(result).toEqual([
-      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry", folderId: "cool-app" },
+      { manifest: { id: "cool-app", name: "Cool App", version: "1.0.0", entry: "entry.js", capabilities: ["notifications"] }, entryNodeId: "entry", folderId: "cool-app", dataFolderId: null },
     ]);
   });
 
